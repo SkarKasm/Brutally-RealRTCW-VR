@@ -46,7 +46,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // Used to determine where to store user-specific files
 static char homePath[ MAX_OSPATH ] = { 0 };
 
-#ifdef STEAM
+#if defined(STEAM) || defined(_WIN32)   // RealRTCW-VR: find vanilla RTCW through the Steam libraries in every Windows build
 
 static char steamInstallPath[ MAX_OSPATH ];
 static char steamGamePath[ MAX_OSPATH ];
@@ -101,7 +101,9 @@ Sys_DefaultHomePath
 char *Sys_DefaultHomePath( void )
 {
 	TCHAR szPath[MAX_PATH];
-	FARPROC qSHGetFolderPath;
+	// typed so newer GCC accepts the call (same fix as RealRTCW)
+	typedef HRESULT (WINAPI *PSHGETFOLDERPATH_COOP)( HWND, int, HANDLE, DWORD, LPSTR );
+	PSHGETFOLDERPATH_COOP qSHGetFolderPath;
 	HMODULE shfolder = LoadLibrary("shfolder.dll");
 
 	if(shfolder == NULL)
@@ -112,7 +114,7 @@ char *Sys_DefaultHomePath( void )
 
 	if(!*homePath && com_homepath)
 	{
-		qSHGetFolderPath = GetProcAddress(shfolder, "SHGetFolderPathA");
+		qSHGetFolderPath = (PSHGETFOLDERPATH_COOP)GetProcAddress(shfolder, "SHGetFolderPathA");
 		if(qSHGetFolderPath == NULL)
 		{
 			Com_Printf("Unable to find SHGetFolderPath in SHFolder.dll\n");
@@ -141,7 +143,7 @@ char *Sys_DefaultHomePath( void )
 	return homePath;
 }
 
-#ifdef STEAM
+#if defined(STEAM) || defined(_WIN32)   // RealRTCW-VR: find vanilla RTCW through the Steam libraries in every Windows build
 static qboolean DirExists(const char *path)
 {
 	DWORD file_attrib = GetFileAttributes(path);
@@ -256,7 +258,7 @@ static void FindSteamPaths()
 #endif // !STANDALONE
 
 
-#ifdef STEAM
+#if defined(STEAM) || defined(_WIN32)   // RealRTCW-VR: find vanilla RTCW through the Steam libraries in every Windows build
 /*
 ================
 Sys_SteamPath

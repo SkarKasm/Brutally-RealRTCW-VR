@@ -1221,7 +1221,7 @@ char    *Sys_Cwd( void );
 char    *Sys_DefaultBasePath( void );
 char    *Sys_DefaultInstallPath( void );
 
-#ifdef STEAM
+#if defined(STEAM) || defined(_WIN32)   // RealRTCW-VR: find vanilla RTCW through the Steam libraries in every Windows build
 char    *Sys_SteamPath(void);
 //char	*Sys_GogPath(void);
 #endif

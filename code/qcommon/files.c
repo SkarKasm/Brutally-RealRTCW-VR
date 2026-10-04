@@ -294,7 +294,7 @@ static cvar_t      *fs_homepath;
 static  cvar_t          *fs_apppath;
 #endif
 
-#ifdef STEAM
+#if defined(STEAM) || defined(_WIN32)   // RealRTCW-VR: find vanilla RTCW through the Steam libraries in every Windows build
 static	cvar_t		*fs_steampath;
 //static	cvar_t		*fs_gogpath;
 #endif
@@ -903,7 +903,7 @@ long FS_SV_FOpenFileRead(const char *filename, fileHandle_t *fp)
 			fsh[f].handleSync = qfalse;
 		}
 
-#ifdef STEAM
+#if defined(STEAM) || defined(_WIN32)   // RealRTCW-VR: find vanilla RTCW through the Steam libraries in every Windows build
 		// Check fs_steampath
 		if (!fsh[f].handleFiles.file.o && fs_steampath->string[0])
 		{
@@ -2950,7 +2950,7 @@ int	FS_GetModList( char *listbuf, int bufsize ) {
 
 	pFiles0 = Sys_ListFiles( fs_homepath->string, NULL, NULL, &dummy, qtrue );
 	pFiles1 = Sys_ListFiles( fs_basepath->string, NULL, NULL, &dummy, qtrue );
-#ifdef STEAM
+#if defined(STEAM) || defined(_WIN32)   // RealRTCW-VR: find vanilla RTCW through the Steam libraries in every Windows build
 	pFiles2 = Sys_ListFiles( fs_steampath->string, NULL, NULL, &dummy, qtrue );
 	//pFiles3 = Sys_ListFiles( fs_gogpath->string, NULL, NULL, &dummy, qtrue );
 #endif
@@ -3005,7 +3005,7 @@ int	FS_GetModList( char *listbuf, int bufsize ) {
 				Sys_FreeFileList( pPaks );
 			}
 
-#ifdef STEAM
+#if defined(STEAM) || defined(_WIN32)   // RealRTCW-VR: find vanilla RTCW through the Steam libraries in every Windows build
 			/* try on steam path */
 			if ( nPaks <= 0 )
 			{
@@ -3814,7 +3814,7 @@ static void FS_Startup( const char *gameName )
 	}
 
 	// add search path elements in reverse priority order
-#ifdef STEAM
+#if defined(STEAM) || defined(_WIN32)   // RealRTCW-VR: find vanilla RTCW through the Steam libraries in every Windows build
 	/*path = Cvar_Get ("fs_gogpath", Sys_GogPath(), CVAR_INIT|CVAR_PROTECTED );
 	if (fs_gogpath->string[0]) {
 		FS_AddGameDirectory( fs_gogpath->string, gameName, qtrue );
@@ -3850,7 +3850,7 @@ static void FS_Startup( const char *gameName )
 
 	// check for additional base game so mods can be based upon other mods
 	if ( fs_basegame->string[0] && Q_stricmp( fs_basegame->string, gameName ) ) {
-#ifdef STEAM
+#if defined(STEAM) || defined(_WIN32)   // RealRTCW-VR: find vanilla RTCW through the Steam libraries in every Windows build
 		/*if (fs_gogpath->string[0]) {
 			FS_AddGameDirectory( fs_gogpath->string, fs_basegame->string, qtrue );
 		}
@@ -3870,7 +3870,7 @@ static void FS_Startup( const char *gameName )
 
 	// check for additional game folder for mods
 	if ( fs_gamedirvar->string[0] && Q_stricmp( fs_gamedirvar->string, gameName ) ) {
-#ifdef STEAM
+#if defined(STEAM) || defined(_WIN32)   // RealRTCW-VR: find vanilla RTCW through the Steam libraries in every Windows build
 		/*if (fs_gogpath->string[0]) {
 			FS_AddGameDirectory( fs_gogpath->string, fs_gamedirvar->string, qtrue );
 		}
