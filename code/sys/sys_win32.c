@@ -833,6 +833,105 @@ static LONG WINAPI Sys_CrashHandler( EXCEPTION_POINTERS *ExceptionInfo )
 
 /*
 ==============
+Sys_CrashReport
+
+RealRTCW-VR: writes the faulting module+offset and a raw call stack to crash_report.txt
+next to the executable when our own code faults, so crashes can be traced to a source
+line with nm/addr2line. Only access violations inside the game's own modules are
+reported, other first chance exceptions (drivers, runtimes) are left alone.
+==============
+*/
+static qboolean Sys_IsGameModule( HMODULE mod, char *name, int size )
+{
+	char path[MAX_OSPATH];
+	const char *base;
+
+	if ( !mod || !GetModuleFileNameA( mod, path, sizeof( path ) ) ) {
+		return qfalse;
+	}
+	base = strrchr( path, '\\' );
+	base = base ? base + 1 : path;
+	Q_strncpyz( name, base, size );
+	return !Q_stricmpn( base, "RealRTCW", 8 ) || !Q_stricmpn( base, "renderer_", 9 ) ||
+		   !Q_stricmpn( base, "cgame_", 6 ) || !Q_stricmpn( base, "qagame_", 7 ) || !Q_stricmpn( base, "ui_", 3 );
+}
+
+static void Sys_DescribeAddress( FILE *f, void *addr )
+{
+	HMODULE mod = NULL;
+	char name[MAX_QPATH] = "?";
+
+	GetModuleHandleExA( GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+						(LPCSTR)addr, &mod );
+	if ( mod ) {
+		char path[MAX_OSPATH];
+		const char *base;
+		GetModuleFileNameA( mod, path, sizeof( path ) );
+		base = strrchr( path, '\\' );
+		Q_strncpyz( name, base ? base + 1 : path, sizeof( name ) );
+	}
+	fprintf( f, "  %p  %s+0x%llx\n", addr, name,
+			 (unsigned long long)( (char *)addr - (char *)mod ) );
+}
+
+static LONG CALLBACK Sys_CrashReport( PEXCEPTION_POINTERS info )
+{
+	static int reported = 0;
+	PEXCEPTION_RECORD rec = info->ExceptionRecord;
+	HMODULE mod = NULL;
+	char name[MAX_QPATH];
+	CONTEXT ctx;
+	int i;
+	FILE *f;
+
+	// a few faults are enough to diagnose; faults in other modules (VR runtime, drivers) may be
+	// handled by them, so those are logged but marked as possibly harmless
+	if ( reported >= 4 || rec->ExceptionCode != EXCEPTION_ACCESS_VIOLATION ) {
+		return EXCEPTION_CONTINUE_SEARCH;
+	}
+	GetModuleHandleExA( GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+						(LPCSTR)rec->ExceptionAddress, &mod );
+
+	f = fopen( "crash_report.txt", reported ? "a" : "w" );
+	reported++;
+	if ( f && !Sys_IsGameModule( mod, name, sizeof( name ) ) ) {
+		fprintf( f, "(fault outside the game's own modules, may be handled)\n" );
+	}
+	if ( f ) {
+		fprintf( f, "Access violation (%s address %p)\n",
+				 rec->ExceptionInformation[0] ? "writing" : "reading", (void *)rec->ExceptionInformation[1] );
+		fprintf( f, "at:\n" );
+		Sys_DescribeAddress( f, rec->ExceptionAddress );
+		fprintf( f, "stack:\n" );
+#ifdef _WIN64
+		// unwind from the faulting context
+		ctx = *info->ContextRecord;
+		for ( i = 0; i < 40 && ctx.Rip; i++ ) {
+			DWORD64 imageBase, establisher;
+			PVOID handlerData;
+			PRUNTIME_FUNCTION fn;
+
+			Sys_DescribeAddress( f, (void *)ctx.Rip );
+			fn = RtlLookupFunctionEntry( ctx.Rip, &imageBase, NULL );
+			if ( fn ) {
+				RtlVirtualUnwind( UNW_FLAG_NHANDLER, imageBase, ctx.Rip, fn, &ctx, &handlerData, &establisher, NULL );
+			} else {
+				// leaf function: return address is on top of the stack
+				ctx.Rip = *(DWORD64 *)ctx.Rsp;
+				ctx.Rsp += 8;
+			}
+		}
+#else
+		(void)ctx;
+		(void)i;
+#endif
+		fclose( f );
+	}
+	return EXCEPTION_CONTINUE_SEARCH;
+}
+
+/*
+==============
 Sys_PlatformInit
 
 Windows specific initialisation
@@ -843,6 +942,8 @@ void Sys_PlatformInit( void )
 #ifndef DEDICATED
 	TIMECAPS ptc;
 #endif
+
+	AddVectoredExceptionHandler( 1, Sys_CrashReport );
 
 	SetUnhandledExceptionFilter( Sys_CrashHandler );
 

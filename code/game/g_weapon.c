@@ -67,19 +67,104 @@ KNIFE/GAUNTLET (NOTE: gauntlet is now the Zombie melee)
 Weapon_Knife
 ==============
 */
+static void G_KnifeHit( gentity_t *ent, trace_t *trp );
+
 void Weapon_Knife( gentity_t *ent ) {
 	trace_t tr;
-	gentity_t   *traceEnt, *tent;
-	int damage, mod;
-
 	vec3_t end;
+	vec3_t hand;
 
-	mod = MOD_KNIFE;
+	// RealRTCW-VR: in VR the trigger doesn't stab, G_VR_KnifeStab does
+	if ( G_VR_WeaponOrigin( ent, hand ) ) {
+		return;
+	}
 
 	AngleVectors( ent->client->ps.viewangles, forward, right, up );
 	CalcMuzzlePoint( ent, ent->s.weapon, forward, right, up, muzzleTrace );
 	VectorMA( muzzleTrace, KNIFE_DIST, forward, end );
 	trap_Trace( &tr, muzzleTrace, NULL, NULL, end, ent->s.number, MASK_SHOT );
+
+	G_KnifeHit( ent, &tr );
+}
+
+/*
+==============
+G_VR_KnifeStab
+
+RealRTCW-VR: with a headset the knife does damage when the blade is driven into
+something fast enough. Every usercmd the blade is swept from where its tip was on the
+previous command to where it is now, plus along its length.
+==============
+*/
+#define VR_KNIFE_BLADE      12.0f   // hand to tip, game units
+#define VR_KNIFE_SPEED      1.2f    // metres per second needed to cut
+#define VR_KNIFE_COOLDOWN   350     // msec between hits
+
+void G_VR_KnifeStab( gentity_t *ent ) {
+	static vec3_t lastTip;
+	static int lastTime, nextHitTime;
+	static qboolean lastValid;
+	vec3_t hand, fwd, tip, base;
+	trace_t tr;
+	float dist, speed;
+	int dt, dom;
+	int now = ent->client->ps.commandTime;    // per usercmd, level.time only moves per server frame
+
+	if ( ent->client->ps.weapon != WP_KNIFE || ent->client->ps.stats[STAT_HEALTH] <= 0 ||
+		 !G_VR_WeaponOrigin( ent, hand ) ) {
+		lastValid = qfalse;
+		return;
+	}
+
+	AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
+	VectorMA( hand, VR_KNIFE_BLADE, fwd, tip );
+
+	dt = now - lastTime;
+	if ( !lastValid || dt <= 0 || dt > 200 ) {
+		// first sample, or the frame came from a different timeline
+		VectorCopy( tip, lastTip );
+		lastTime = now;
+		lastValid = qtrue;
+		return;
+	}
+
+	dist = Distance( tip, lastTip );
+	speed = ( dist / gVR->worldScale ) / ( dt * 0.001f );
+
+	if ( speed >= VR_KNIFE_SPEED && now >= nextHitTime ) {
+		// the swept path of the tip, then the blade itself
+		trap_Trace( &tr, lastTip, NULL, NULL, tip, ent->s.number, MASK_SHOT );
+		if ( tr.fraction == 1.0f ) {
+			VectorMA( hand, 2.0f, fwd, base );
+			trap_Trace( &tr, base, NULL, NULL, tip, ent->s.number, MASK_SHOT );
+		}
+		if ( tr.fraction < 1.0f && !( tr.surfaceFlags & SURF_NOIMPACT ) ) {
+			G_KnifeHit( ent, &tr );
+			nextHitTime = now + VR_KNIFE_COOLDOWN;
+
+			dom = gVR->rightHanded ? VR_HAND_RIGHT : VR_HAND_LEFT;
+			gVR->hapticAmplitude[dom] = tr.entityNum == ENTITYNUM_WORLD ? 0.5f : 1.0f;
+			gVR->hapticDuration[dom] = 80;
+		}
+	}
+
+	VectorCopy( tip, lastTip );
+	lastTime = now;
+}
+
+/*
+==============
+G_KnifeHit
+
+Impact effect and damage for a knife trace that touched something.
+==============
+*/
+static void G_KnifeHit( gentity_t *ent, trace_t *trp ) {
+	trace_t tr = *trp;
+	gentity_t   *traceEnt, *tent;
+	int damage, mod;
+
+	mod = MOD_KNIFE;
 
 	if ( tr.surfaceFlags & SURF_NOIMPACT ) {
 		return;
