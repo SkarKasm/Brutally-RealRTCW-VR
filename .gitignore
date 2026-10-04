@@ -45,3 +45,4 @@ profile
 .vscode/
 /.vs
 run/
+run_test/

@@ -1151,7 +1151,10 @@ Runs before the renderer starts, so it can size the renderer for the headset.
 =================
 */
 void CL_VR_Init( void ) {
-	vr_enable = Cvar_Get( "vr_enable", "1", CVAR_LATCH );   // not archived: a one-off flat launch must not stick
+	vr_enable = Cvar_Get( "vr_enable", "1", CVAR_LATCH );
+	// never saved: a one-off flat launch must not stick (an old "seta" line in a config
+	// would otherwise keep re-marking it for saving)
+	vr_enable->flags &= ~CVAR_ARCHIVE;
 	vr_resolutionScale = Cvar_Get( "vr_resolutionScale", "1.0", CVAR_ARCHIVE | CVAR_LATCH );
 	vr_worldScale = Cvar_Get( "vr_worldScale", "39.37", CVAR_ARCHIVE );
 	vr_rightHanded = Cvar_Get( "vr_rightHanded", "1", CVAR_ARCHIVE );
