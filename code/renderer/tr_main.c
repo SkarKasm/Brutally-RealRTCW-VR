@@ -804,6 +804,74 @@ void R_SetupFrustum (viewParms_t *dest, float xmin, float xmax, float ymax, floa
 
 /*
 ===============
+R_SetupVRProjection
+
+RealRTCW-VR: asymmetric off-axis projection straight from the headset's per-eye
+field of view tangents. The eye offset is already baked into the view origin.
+===============
+*/
+static void R_SetupVRProjection( viewParms_t *dest, float zProj, qboolean computeFrustum )
+{
+	const float tanL = dest->vrFovTan[0], tanR = dest->vrFovTan[1];
+	const float tanU = dest->vrFovTan[2], tanD = dest->vrFovTan[3];
+	float xmin = zProj * tanL, xmax = zProj * tanR;
+	float ymin = zProj * tanD, ymax = zProj * tanU;
+	float width = xmax - xmin, height = ymax - ymin;
+	vec3_t n;
+	float len;
+	int i;
+
+	dest->projectionMatrix[0] = 2 * zProj / width;
+	dest->projectionMatrix[4] = 0;
+	dest->projectionMatrix[8] = ( xmax + xmin ) / width;
+	dest->projectionMatrix[12] = 0;
+
+	dest->projectionMatrix[1] = 0;
+	dest->projectionMatrix[5] = 2 * zProj / height;
+	dest->projectionMatrix[9] = ( ymax + ymin ) / height;
+	dest->projectionMatrix[13] = 0;
+
+	dest->projectionMatrix[3] = 0;
+	dest->projectionMatrix[7] = 0;
+	dest->projectionMatrix[11] = -1;
+	dest->projectionMatrix[15] = 0;
+
+	if ( !computeFrustum ) {
+		return;
+	}
+
+	// inward facing side planes through the eye. axis[1] is left, axis[2] is up, and an
+	// edge direction is forward + tan * (right or up)
+	// right edge
+	VectorScale( dest->or.axis[0], tanR, n );
+	VectorMA( n, 1.0f, dest->or.axis[1], n );
+	len = VectorLength( n );
+	VectorScale( n, 1.0f / len, dest->frustum[0].normal );
+	// left edge
+	VectorScale( dest->or.axis[0], -tanL, n );
+	VectorMA( n, -1.0f, dest->or.axis[1], n );
+	len = VectorLength( n );
+	VectorScale( n, 1.0f / len, dest->frustum[1].normal );
+	// bottom edge
+	VectorScale( dest->or.axis[0], -tanD, n );
+	VectorMA( n, 1.0f, dest->or.axis[2], n );
+	len = VectorLength( n );
+	VectorScale( n, 1.0f / len, dest->frustum[2].normal );
+	// top edge
+	VectorScale( dest->or.axis[0], tanU, n );
+	VectorMA( n, -1.0f, dest->or.axis[2], n );
+	len = VectorLength( n );
+	VectorScale( n, 1.0f / len, dest->frustum[3].normal );
+
+	for ( i = 0 ; i < 4 ; i++ ) {
+		dest->frustum[i].type = PLANE_NON_AXIAL;
+		dest->frustum[i].dist = DotProduct( dest->or.origin, dest->frustum[i].normal );
+		SetPlaneSignbits( &dest->frustum[i] );
+	}
+}
+
+/*
+===============
 R_SetupProjection
 ===============
 */
@@ -811,6 +879,11 @@ void R_SetupProjection(viewParms_t *dest, float zProj, qboolean computeFrustum)
 {
 	float	xmin, xmax, ymin, ymax;
 	float	width, height, stereoSep = r_stereoSeparation->value;
+
+	if ( dest->vrEye ) {
+		R_SetupVRProjection( dest, zProj, computeFrustum );
+		return;
+	}
 
 	/*
 	 * offset the view origin of the viewer for stereo rendering 

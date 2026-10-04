@@ -702,7 +702,7 @@ void MSG_WriteDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *
 		MSG_WriteBits( msg, 1, 1 );
 		MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrMove[0], (unsigned short)to->vrMove[0], 16 );
 		MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrMove[1], (unsigned short)to->vrMove[1], 16 );
-		MSG_WriteDeltaKey( msg, key, from->vrFlags, to->vrFlags, 8 );
+		MSG_WriteDeltaKey( msg, key, from->vrFlags, to->vrFlags, 16 );
 		MSG_WriteDeltaKey( msg, key, from->vrEject, to->vrEject, 8 );
 		MSG_WriteDeltaKey( msg, key, from->vrEyeHeight, to->vrEyeHeight, 8 );
 		MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrRoll, (unsigned short)to->vrRoll, 16 );
@@ -758,7 +758,7 @@ void MSG_ReadDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *t
 			int i, j;
 			to->vrMove[0] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrMove[0], 16 );
 			to->vrMove[1] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrMove[1], 16 );
-			to->vrFlags = MSG_ReadDeltaKey( msg, key, from->vrFlags, 8 );
+			to->vrFlags = MSG_ReadDeltaKey( msg, key, from->vrFlags, 16 );
 			to->vrEject = MSG_ReadDeltaKey( msg, key, from->vrEject, 8 );
 			to->vrEyeHeight = MSG_ReadDeltaKey( msg, key, from->vrEyeHeight, 8 );
 			to->vrRoll = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrRoll, 16 );

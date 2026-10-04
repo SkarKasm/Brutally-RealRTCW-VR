@@ -120,6 +120,16 @@ typedef struct {
 	int ( *GetTextureId )( const char *imagename );
 
 	void (*TakeVideoFrame)( int h, int w, byte* captureBuffer, byte *encodeBuffer, qboolean motionJpeg );
+
+	// RealRTCW-VR: headset rendering, see renderer/tr_vr.c
+	// eye < 0 leaves headset mode, fovTangents are left, right, up, down
+	void ( *VR_SetEye )( int eye, const float *fovTangents, const vec3_t eyeOffset );
+	// direct all following rendering into targetFramebuffer (cleared to clearColor)
+	void ( *VR_BeginPass )( unsigned int targetFramebuffer, const float *clearColor );
+	// back to the window
+	void ( *VR_EndPasses )( void );
+	// show a headset image on the window and swap it
+	void ( *VR_PresentMirror )( unsigned int sourceFramebuffer, int sourceWidth, int sourceHeight );
 } refexport_t;
 
 //

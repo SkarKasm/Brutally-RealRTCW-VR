@@ -573,6 +573,9 @@ typedef struct {
 	float zFar;
 	stereoFrame_t	stereoFrame;
 
+	qboolean vrEye;                 // RealRTCW-VR: asymmetric headset projection from vrFovTan
+	float vrFovTan[4];              // left, right, up, down tangents (left/down negative)
+
 	int dirty;
 
 	glfog_t glFog;                  // fog parameters	//----(SA)	added
@@ -1462,6 +1465,26 @@ IMPLEMENTATION SPECIFIC FUNCTIONS
 void	GLimp_Init( qboolean fixedFunction );
 void	GLimp_Shutdown( void );
 void	GLimp_EndFrame( void );
+void	GLimp_GetWindowPixelSize( int *width, int *height );
+
+// RealRTCW-VR headset rendering state, see tr_vr.c
+typedef struct {
+	int      eye;                   // eye being rendered, -1 when not rendering for a headset
+	float    fovTan[4];             // left, right, up, down tangents of that eye
+	vec3_t   eyeOffset;             // eye relative to the head, game units (forward, left, up)
+	unsigned int targetFbo;         // swapchain framebuffer being drawn into, 0 = window
+	qboolean passActive;            // drawing into targetFbo: don't swap the window
+} vrRenderState_t;
+
+extern vrRenderState_t vrRender;
+
+void     R_VR_SetupViewParms( viewParms_t *parms, int rdflags );
+qboolean R_VR_IsHandSurface( const char *name );
+void     RE_VR_SetEye( int eye, const float *fovTangents, const vec3_t eyeOffset );
+void     RE_VR_BeginPass( unsigned int targetFramebuffer, const float *clearColor );
+void     RE_VR_EndPasses( void );
+void     RE_VR_PresentMirror( unsigned int sourceFramebuffer, int sourceWidth, int sourceHeight );
+void	*GLimp_VR_GetProc( const char *name );
 
 void	GLimp_LogComment( char *comment );
 void	GLimp_Minimize(void);

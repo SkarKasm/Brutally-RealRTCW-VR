@@ -44,6 +44,9 @@ the Free Software Foundation, either version 3 of the License, or
 #define VRF_MUZZLE      32      // vrMuzzle is valid
 #define VRF_HAND_LEFT   64      // vrHand[VR_HAND_LEFT] is tracked
 #define VRF_HAND_RIGHT  128
+#define VRF_MANUAL      256     // the player wants to reload by hand
+#define VRF_SPREAD_SHIFT 9      // 2 bits: aim spread setting, see BG_VR_SpreadScale
+#define VRF_SPREAD_MASK ( 3 << VRF_SPREAD_SHIFT )
 
 // playerState_t.vrState
 #define VRS_MANUAL      0x0001  // current weapon is reloaded by hand
@@ -53,6 +56,8 @@ the Free Software Foundation, either version 3 of the License, or
 #define VRS_CHARGEHELD  0x0020
 #define VRS_PULL_SHIFT  8       // 8 bits: slide / bolt pull 0..255
 #define VRS_DROP_SHIFT  16      // 8 bits: magazine drop counter
+#define VRS_BUZZ_SHIFT  24      // 4 bits: bumped for a strong gun hand buzz (knife hits)
+#define VRS_GRAB_SHIFT  28      // 4 bits: bumped when the off hand grabs something
 
 // refEntity renderfx: don't draw hand / arm / sleeve / glove surfaces (first person weapon in VR)
 #define RF_VR_NOHANDS   ( 1 << 12 )

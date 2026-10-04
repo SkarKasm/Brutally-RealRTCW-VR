@@ -1620,7 +1620,7 @@ typedef struct usercmd_s {
 	// RealRTCW-VR: a headset player's body and hands, so the server (another machine in
 	// co-op) knows where they are. Positions are 1/8 game units.
 	short vrMove[2];            // room-scale body displacement for this command (forward, left)
-	byte vrFlags;               // VRF_*
+	unsigned short vrFlags;     // VRF_*
 	byte vrEject;               // bumped by the "drop magazine" gesture
 	byte vrEyeHeight;           // eye height above the origin the view used, units + 64
 	short vrRoll;               // gun roll, ANGLE2SHORT

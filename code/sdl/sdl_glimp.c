@@ -1180,6 +1180,22 @@ success:
 	glConfig.deviceSupportsGamma = !r_ignorehwgamma->integer &&
 		SDL_SetWindowBrightness( SDL_window, 1.0f ) >= 0;
 
+	// RealRTCW-VR: with a headset attached the renderer draws straight into the eye
+	// swapchain images, and the window only shows a mirror of them (RE_VR_PresentMirror).
+	// Hardware gamma never reaches the headset, so it is not used either.
+	{
+		int vrWidth = ri.Cvar_VariableIntegerValue( "vr_renderWidth" );
+		int vrHeight = ri.Cvar_VariableIntegerValue( "vr_renderHeight" );
+
+		if ( vrWidth > 0 && vrHeight > 0 ) {
+			ri.Printf( PRINT_ALL, "VR: rendering at %dx%d per eye, window is a mirror\n", vrWidth, vrHeight );
+			glConfig.vidWidth = vrWidth;
+			glConfig.vidHeight = vrHeight;
+			glConfig.windowAspect = (float)vrWidth / (float)vrHeight;
+			glConfig.deviceSupportsGamma = qfalse;
+		}
+	}
+
 	// get our config strings
 	Q_strncpyz( glConfig.vendor_string, (char *) qglGetString (GL_VENDOR), sizeof( glConfig.vendor_string ) );
 	Q_strncpyz( glConfig.renderer_string, (char *) qglGetString (GL_RENDERER), sizeof( glConfig.renderer_string ) );
@@ -1237,6 +1253,19 @@ GLimp_EndFrame
 Responsible for doing a swapbuffers
 ===============
 */
+void GLimp_GetWindowPixelSize( int *width, int *height )
+{
+	*width = *height = 0;
+	if ( SDL_window ) {
+		SDL_GL_GetDrawableSize( SDL_window, width, height );
+	}
+}
+
+void *GLimp_VR_GetProc( const char *name )
+{
+	return SDL_GL_GetProcAddress( name );
+}
+
 void GLimp_EndFrame( void )
 {
 	// don't flip if drawing to front buffer

@@ -768,6 +768,24 @@ void CIN_CloseAllVideos( void );
 //
 void CL_InitCGame( void );
 void CL_ShutdownCGame( void );
+
+//
+// cl_vr.c  (RealRTCW-VR)
+//
+void CL_VR_Init( void );
+void CL_VR_Shutdown( void );
+void CL_VR_InitSession( void );
+void CL_VR_ShutdownSession( void );
+void CL_VR_BeginFrame( void );
+void CL_VR_EndFrame( void );
+void CL_VR_ProcessInput( void );
+void CL_VR_CreateCmd( usercmd_t *cmd );
+void CL_VR_MouseMoved( int dx, int dy );
+qboolean CL_VR_RenderFrame( void );
+qboolean CL_VR_Active( void );
+void CL_VR_Recenter_f( void );
+void CL_VR_Key_f( void );
+void CL_VR_Cursor_f( void );
 qboolean CL_GameCommand( void );
 void CL_CGameRendering( stereoFrame_t stereo );
 void CL_SetCGameTime( void );

@@ -1528,7 +1528,10 @@ const void  *RB_DrawBuffer( const void *data ) {
 	cmd = (const drawBufferCommand_t *)data;
 
 #ifndef USE_OPENGLES
-	qglDrawBuffer( cmd->buffer );
+	// RealRTCW-VR: a swapchain framebuffer only has its single colour attachment
+	if ( !vrRender.passActive ) {
+		qglDrawBuffer( cmd->buffer );
+	}
 #endif
 
 	// clear screen for debugging
@@ -1707,13 +1710,19 @@ const void  *RB_SwapBuffers( const void *data ) {
 #endif
 
 
-	if ( !glState.finishCalled ) {
+	// headset passes are synchronised by the OpenXR runtime when the swapchain image is
+	// released, a glFinish per eye would just stall the pipeline
+	if ( !glState.finishCalled && !vrRender.passActive ) {
 		qglFinish();
 	}
 
 	GLimp_LogComment( "***************** RB_SwapBuffers *****************\n\n\n" );
 
-	GLimp_EndFrame();
+	// RealRTCW-VR: a headset pass draws into a swapchain image, the window is
+	// presented separately by RE_VR_PresentMirror
+	if ( !vrRender.passActive ) {
+		GLimp_EndFrame();
+	}
 
 	backEnd.projection2D = qfalse;
 

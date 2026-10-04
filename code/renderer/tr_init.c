@@ -1653,6 +1653,12 @@ refexport_t *GetRefAPI( int apiVersion, refimport_t *rimp ) {
 	re.GetTextureId = R_GetTextureId;
 	re.RenderToTexture = RE_RenderToTexture;
 
+	// RealRTCW-VR
+	re.VR_SetEye = RE_VR_SetEye;
+	re.VR_BeginPass = RE_VR_BeginPass;
+	re.VR_EndPasses = RE_VR_EndPasses;
+	re.VR_PresentMirror = RE_VR_PresentMirror;
+
 	return &re;
 }
 

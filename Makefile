@@ -1632,6 +1632,7 @@ $(Q3ASM): $(Q3ASMOBJ)
 
 Q3OBJ = \
   $(B)/client/cl_cgame.o \
+  $(B)/client/cl_vr.o \
   $(B)/client/cl_cin.o \
   $(B)/client/cl_console.o \
   $(B)/client/cl_input.o \
@@ -1859,6 +1860,7 @@ Q3ROBJ = \
   $(B)/renderer/tr_sky.o \
   $(B)/renderer/tr_surface.o \
   $(B)/renderer/tr_world.o \
+  $(B)/renderer/tr_vr.o \
 
 ifeq ($(USE_BLOOM),1)
   Q3ROBJ += $(B)/renderer/tr_bloom.o 

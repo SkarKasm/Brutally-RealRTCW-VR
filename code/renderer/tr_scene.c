@@ -160,8 +160,8 @@ void RE_AddPolyToScene( qhandle_t hShader, int numVerts, const polyVert_t *verts
 	r_numpolys++;
 	r_numpolyverts += numVerts;
 
-	// see if it is in a fog volume
-	if ( tr.world->numfogs == 1 ) {
+	// see if it is in a fog volume (no world: menu models and headset UI)
+	if ( !tr.world || tr.world->numfogs == 1 ) {
 		fogIndex = 0;
 	} else {
 		// find which fog volume the poly is in
@@ -530,6 +530,9 @@ void RE_RenderScene( const refdef_t *fd ) {
 	VectorCopy( fd->viewaxis[2], parms.or.axis[2] );
 
 	VectorCopy( fd->vieworg, parms.pvsOrigin );
+
+	// RealRTCW-VR: per-eye frustum and offset for headset world views
+	R_VR_SetupViewParms( &parms, fd->rdflags );
 
 	R_RenderView( &parms );
 

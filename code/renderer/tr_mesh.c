@@ -428,6 +428,13 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 
 		// we will add shadows even if the main object isn't visible in the view
 
+		// RealRTCW-VR: the headset draws its own hands at the controllers, so the
+		// first person weapon's built-in hands and sleeves are left out
+		if ( ( ent->e.renderfx & RF_VR_NOHANDS ) && R_VR_IsHandSurface( surface->name ) ) {
+			surface = ( md3Surface_t * )( (byte *)surface + surface->ofsEnd );
+			continue;
+		}
+
 		// stencil shadows can't do personal models unless I polyhedron clip
 		if ( !personalModel
 			 && r_shadows->integer == 2

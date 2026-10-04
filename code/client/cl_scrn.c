@@ -501,6 +501,14 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 
 	re.BeginFrame( stereoFrame );
 
+	// RealRTCW-VR: headset eye passes only carry the 3D world, all 2D goes to the UI layer
+	if ( com_vr.pass == VR_PASS_EYE ) {
+		if ( clc.state == CA_ACTIVE ) {
+			CL_CGameRendering( stereoFrame );
+		}
+		return;
+	}
+
 	uiFullscreen = (uivm && VM_Call( uivm, UI_IS_FULLSCREEN ));
 
 	// wide aspect ratio screens need to have the sides cleared
@@ -598,6 +606,12 @@ void SCR_UpdateScreen( void ) {
 		Com_Error( ERR_FATAL, "SCR_UpdateScreen: recursively called" );
 	}
 	recursive = 1;
+
+	// RealRTCW-VR: the headset draws its own eyes and UI layer, mirrored to the window
+	if ( uivm && CL_VR_RenderFrame() ) {
+		recursive = 0;
+		return;
+	}
 
 	// If there is no VM, there are also no rendering commands issued. Stop the renderer in
 	// that case.
