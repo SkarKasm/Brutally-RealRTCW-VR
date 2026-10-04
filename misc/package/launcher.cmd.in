@@ -1,0 +1,7 @@
+@echo off
+rem RealRTCW-VR co-op: @TITLE@
+rem   @NAME@                 main menu (CREATE SERVER to host, JOIN GAME to join)
+rem   @NAME@ +connect <ip>   join a friend's game directly
+call "%~dp0game\find_coop.cmd" || exit /b 1
+cd /d "%~dp0game"
+start "" RTCWCoop.x64.exe +set fs_basepath "%COOP%" +set fs_homepath "%~dp0game" @ARGS@ %*
