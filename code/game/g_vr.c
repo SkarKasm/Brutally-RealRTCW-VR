@@ -35,7 +35,8 @@ the Free Software Foundation, either version 3 of the License, or
 #define VR_CHEST_RADIUS     18.0f   // ~45cm around the chest counts as "the pouch"
 #define VR_CHEST_DROP       12.0f   // chest is this far below the eyes
 #define VR_INSERT_RADIUS    8.0f    // ~20cm around the magazine well / loading port
-#define VR_CHARGE_RADIUS    9.0f    // ~23cm around the slide / bolt / pump
+#define VR_CHARGE_RADIUS    11.0f   // ~28cm around the slide / bolt / pump
+#define VR_ACTION_RADIUS    9.0f    // ~23cm around the gun hand also reaches the action
 #define VR_CHARGE_PULL      0.6f    // fraction of the travel that counts as racked
 #define VR_GRAB_MARGIN      6.0f    // reach around a body's box
 #define VR_THROW_MAX        600.0f
@@ -307,7 +308,12 @@ static qboolean G_VR_Reload( gentity_t *ent, const vec3_t offHand, qboolean pres
 
 	// rack the slide / work the bolt / pump
 	if ( cls == VRR_MAG || cls == VRR_BOLT || cls == VRR_PUMP || cls == VRR_SHELLS ) {
-		if ( pressed && !used && !vrp.heldItem && !vrp.chargeHeld && Distance( offHand, chargePoint ) < VR_CHARGE_RADIUS ) {
+		// the measured handle, or (except for a pump's forestock) anywhere close to the gun
+		// hand, where slides and bolts are
+		qboolean nearAction = Distance( offHand, chargePoint ) < VR_CHARGE_RADIUS ||
+							  ( cls != VRR_PUMP && Distance( offHand, hand ) < VR_ACTION_RADIUS );
+
+		if ( pressed && !used && !vrp.heldItem && !vrp.chargeHeld && nearAction ) {
 			vrp.chargeHeld = qtrue;
 			vrp.chargeDone = qfalse;
 			VectorCopy( offHand, vrp.chargeStart );

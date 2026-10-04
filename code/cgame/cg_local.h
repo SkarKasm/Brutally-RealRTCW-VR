@@ -1824,6 +1824,8 @@ typedef struct {
 	vec3_t      gunOrigin;
 	vec3_t      gunAxis[3];
 	int         lastMagDrop;        // cgVR->magDropCount already handled
+	vec3_t      magAxis[3];         // magazine part's orientation relative to the gun
+	qboolean    magAxisValid;
 
 	qboolean    cutsceneBaseValid;  // head pose when the current cutscene started
 	vec3_t      cutsceneHmdBase;

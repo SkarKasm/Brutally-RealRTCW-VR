@@ -286,6 +286,7 @@ static struct {
 	char            heldCommands[16][32];
 	int             numHeldCommands;
 	qboolean        rightGripCombo;     // right grip was used as a modifier while held
+	qboolean        steadyLatched;      // off hand grip closed in front of the gun: two handed aim
 } xr;
 
 static cvar_t *vr_enable;
@@ -1291,13 +1292,29 @@ static void VR_UpdateTracking( void ) {
 		VectorCopy( com_vr.handAngles[dom], com_vr.weaponAngles );
 		com_vr.weaponAngles[PITCH] += vr_weaponPitch->value;
 
+		// Two handed aim is decided when the off hand closes its grip: only a hold in front
+		// of the gun hand, along the barrel, steadies the gun. Anywhere else (the bolt, the
+		// slide, a magazine well) leaves the aim alone so the game can use the grab.
+		if ( !xr.hands[!dom].down[VRB_SQUEEZE] || !com_vr.handValid[!dom] ) {
+			xr.steadyLatched = qfalse;
+		} else if ( !xr.hands[!dom].wasDown[VRB_SQUEEZE] ) {
+			vec3_t rel, fwd, lateral;
+			float along;
+
+			VectorSubtract( com_vr.handOrigin[!dom], com_vr.handOrigin[dom], rel );
+			AngleVectors( com_vr.weaponAngles, fwd, NULL, NULL );
+			along = DotProduct( rel, fwd );
+			VectorMA( rel, -along, fwd, lateral );
+			xr.steadyLatched = along > 0.25f * vr_worldScale->value &&
+							   VectorLength( lateral ) < 0.15f * vr_worldScale->value;
+		}
+
 		com_vr.twoHanded = qfalse;
 		// (not while the off hand is busy reloading or carrying a body)
-		if ( com_vr.handValid[!dom] && xr.hands[!dom].down[VRB_SQUEEZE] && com_vr.twoHandAllowed &&
+		if ( xr.steadyLatched && com_vr.twoHandAllowed &&
 			 !com_vr.heldItem && !com_vr.chargeHeld && com_vr.grabbedEntity < 0 ) {
 			vec3_t dir, ang;
 			VectorSubtract( com_vr.handOrigin[!dom], com_vr.handOrigin[dom], dir );
-			// only when the off hand is actually in front of the gun hand
 			if ( VectorLength( dir ) > 0.12f * vr_worldScale->value ) {
 				vectoangles( dir, ang );
 				com_vr.weaponAngles[PITCH] = AngleNormalize180( ang[PITCH] );

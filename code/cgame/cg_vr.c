@@ -230,6 +230,9 @@ void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t axis[3] ) {
 	BG_VR_WeaponFrame( &geom, cgvr.handOrigin[CG_VR_DominantHand()], cgvr.weaponAngles, adj, origin, axis );
 
 	// remembered for the reload visuals
+	if ( weapon != cgvr.gunWeapon ) {
+		cgvr.magAxisValid = qfalse;
+	}
 	cgvr.gunWeapon = weapon;
 	VectorCopy( origin, cgvr.gunOrigin );
 	AxisCopy( axis, cgvr.gunAxis );
@@ -256,8 +259,18 @@ qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_
 	CG_VR_Geom( weapon, &geom );
 	cls = BG_VR_ReloadClass( weapon );
 
-	if ( part == geom.magPart && cgVR->magOut ) {
-		return qfalse;
+	if ( part == geom.magPart ) {
+		// how the magazine sits in the gun, for drawing it in the hand / falling out
+		int i, j;
+		for ( i = 0; i < 3; i++ ) {
+			for ( j = 0; j < 3; j++ ) {
+				cgvr.magAxis[i][j] = DotProduct( ent->axis[i], parent->axis[j] );
+			}
+		}
+		cgvr.magAxisValid = qtrue;
+		if ( cgVR->magOut ) {
+			return qfalse;
+		}
 	}
 
 	if ( part == geom.chargePart ) {
@@ -272,6 +285,22 @@ qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_
 		}
 	}
 	return qtrue;
+}
+
+// the magazine's orientation in the world, given the gun's
+static void CG_VR_MagAxis( vec3_t gunAxis[3], vec3_t out[3] ) {
+	int i, j;
+
+	if ( !cgvr.magAxisValid ) {
+		AxisCopy( gunAxis, out );
+		return;
+	}
+	for ( i = 0; i < 3; i++ ) {
+		for ( j = 0; j < 3; j++ ) {
+			out[i][j] = cgvr.magAxis[i][0] * gunAxis[0][j] + cgvr.magAxis[i][1] * gunAxis[1][j] +
+						cgvr.magAxis[i][2] * gunAxis[2][j];
+		}
+	}
 }
 
 /*
@@ -306,9 +335,9 @@ void CG_VR_AddReloadItems( void ) {
 			refEntity_t *re = &le->refEntity;
 
 			BG_VR_ModelPoint( cgvr.gunOrigin, cgvr.gunAxis, geom.mag, magPoint );
-			BG_VR_ModelDir( cgvr.gunAxis, geom.magLocal, re->origin );
+			CG_VR_MagAxis( cgvr.gunAxis, re->axis );
+			BG_VR_ModelDir( re->axis, geom.magLocal, re->origin );
 			VectorSubtract( magPoint, re->origin, re->origin );
-			AxisCopy( cgvr.gunAxis, re->axis );
 			re->hModel = model;
 			re->renderfx = RF_MINLIGHT;
 
@@ -331,7 +360,7 @@ void CG_VR_AddReloadItems( void ) {
 	if ( cgVR->heldItem && cgVR->handValid[off] ) {
 		memset( &ent, 0, sizeof( ent ) );
 		ent.hModel = model ? model : cgs.media.smallgunBrassModel;
-		AxisCopy( cgvr.gunAxis, ent.axis );
+		CG_VR_MagAxis( cgvr.gunAxis, ent.axis );    // lined up with the gun, ready to go in
 		if ( model ) {
 			BG_VR_ModelDir( ent.axis, geom.magLocal, ent.origin );
 			VectorSubtract( cgvr.handOrigin[off], ent.origin, ent.origin );
