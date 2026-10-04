@@ -3300,7 +3300,11 @@ static void PM_Weapon( void ) {
 	// weapon cool down
 	PM_CoolWeapons();
 	// do the recoil before setting the values, that way it will be shown next frame and not this
-	PM_HandleRecoil();
+	// RealRTCW-VR: recoil kicks the view by shifting delta_angles, which would push a tracked
+	// hand's aim off (and spin the world in yaw); the gun model's own kick shows the recoil
+	if ( !pm->vrAim ) {
+		PM_HandleRecoil();
+	}
 
 
 	// check for item using
@@ -4901,6 +4905,12 @@ void PmoveSingle( pmove_t *pmove ) {
 	if ( !isDummy ) {
 		// done.
 		if ( !( pm->ps->pm_flags & PMF_LIMBO ) ) { // JPW NERVE
+			// RealRTCW-VR: the controller's pitch is the aim, nothing may offset it (spawn
+			// angles, recoil kick); yaw keeps its offset, which carries the artificial turn
+			if ( pm->vrAim ) {
+				pm->ps->delta_angles[PITCH] = 0;
+				pm->ps->delta_angles[ROLL] = 0;
+			}
 			PM_UpdateViewAngles( pm->ps, &pm->cmd, pm->trace ); //----(SA)	modified
 
 		}
