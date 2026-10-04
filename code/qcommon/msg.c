@@ -633,6 +633,23 @@ usercmd_t communication
 ============================================================================
 */
 
+// RealRTCW-VR: the headset block of a usercmd
+static qboolean MSG_VRCmdChanged( const usercmd_t *a, const usercmd_t *b ) {
+	return memcmp( a->vrMove, b->vrMove, sizeof( a->vrMove ) ) || a->vrFlags != b->vrFlags ||
+		   a->vrEject != b->vrEject || a->vrEyeHeight != b->vrEyeHeight || a->vrRoll != b->vrRoll ||
+		   memcmp( a->vrHand, b->vrHand, sizeof( a->vrHand ) ) || memcmp( a->vrMuzzle, b->vrMuzzle, sizeof( a->vrMuzzle ) );
+}
+
+static void MSG_VRCmdCopy( const usercmd_t *from, usercmd_t *to ) {
+	memcpy( to->vrMove, from->vrMove, sizeof( to->vrMove ) );
+	to->vrFlags = from->vrFlags;
+	to->vrEject = from->vrEject;
+	to->vrEyeHeight = from->vrEyeHeight;
+	to->vrRoll = from->vrRoll;
+	memcpy( to->vrHand, from->vrHand, sizeof( to->vrHand ) );
+	memcpy( to->vrMuzzle, from->vrMuzzle, sizeof( to->vrMuzzle ) );
+}
+
 /*
 ========================
 MSG_WriteDeltaUsercmdKey
@@ -657,7 +674,8 @@ void MSG_WriteDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *
 		 from->weapon == to->weapon &&
 		 from->holdable == to->holdable &&
 		 from->wolfkick == to->wolfkick &&
-		 from->cld == to->cld ) {                   // NERVE - SMF
+		 from->cld == to->cld &&                    // NERVE - SMF
+		 !MSG_VRCmdChanged( from, to ) ) {
 		MSG_WriteBits( msg, 0, 1 );                 // no change
 		oldsize += 7;
 		return;
@@ -677,6 +695,28 @@ void MSG_WriteDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *
 	MSG_WriteDeltaKey( msg, key, from->wolfkick, to->wolfkick, 8 );
 
 	MSG_WriteDeltaKey( msg, key, from->cld, to->cld, 16 );      // NERVE - SMF - for multiplayer clientDamage
+
+	// RealRTCW-VR
+	if ( MSG_VRCmdChanged( from, to ) ) {
+		int i, j;
+		MSG_WriteBits( msg, 1, 1 );
+		MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrMove[0], (unsigned short)to->vrMove[0], 16 );
+		MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrMove[1], (unsigned short)to->vrMove[1], 16 );
+		MSG_WriteDeltaKey( msg, key, from->vrFlags, to->vrFlags, 8 );
+		MSG_WriteDeltaKey( msg, key, from->vrEject, to->vrEject, 8 );
+		MSG_WriteDeltaKey( msg, key, from->vrEyeHeight, to->vrEyeHeight, 8 );
+		MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrRoll, (unsigned short)to->vrRoll, 16 );
+		for ( i = 0; i < 2; i++ ) {
+			for ( j = 0; j < 3; j++ ) {
+				MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrHand[i][j], (unsigned short)to->vrHand[i][j], 16 );
+			}
+		}
+		for ( j = 0; j < 3; j++ ) {
+			MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrMuzzle[j], (unsigned short)to->vrMuzzle[j], 16 );
+		}
+	} else {
+		MSG_WriteBits( msg, 0, 1 );
+	}
 }
 
 
@@ -712,6 +752,27 @@ void MSG_ReadDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *t
 		to->wolfkick = MSG_ReadDeltaKey( msg, key, from->wolfkick, 8 );
 
 		to->cld = MSG_ReadDeltaKey( msg, key, from->cld, 16 );           // NERVE - SMF - for multiplayer clientDamage
+
+		// RealRTCW-VR
+		if ( MSG_ReadBits( msg, 1 ) ) {
+			int i, j;
+			to->vrMove[0] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrMove[0], 16 );
+			to->vrMove[1] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrMove[1], 16 );
+			to->vrFlags = MSG_ReadDeltaKey( msg, key, from->vrFlags, 8 );
+			to->vrEject = MSG_ReadDeltaKey( msg, key, from->vrEject, 8 );
+			to->vrEyeHeight = MSG_ReadDeltaKey( msg, key, from->vrEyeHeight, 8 );
+			to->vrRoll = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrRoll, 16 );
+			for ( i = 0; i < 2; i++ ) {
+				for ( j = 0; j < 3; j++ ) {
+					to->vrHand[i][j] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrHand[i][j], 16 );
+				}
+			}
+			for ( j = 0; j < 3; j++ ) {
+				to->vrMuzzle[j] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrMuzzle[j], 16 );
+			}
+		} else {
+			MSG_VRCmdCopy( from, to );
+		}
 	} else {
 		to->angles[0] = from->angles[0];
 		to->angles[1] = from->angles[1];
@@ -726,6 +787,8 @@ void MSG_ReadDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *t
 		to->wolfkick = from->wolfkick;
 
 		to->cld = from->cld;                    // NERVE - SMF
+
+		MSG_VRCmdCopy( from, to );      // RealRTCW-VR
 	}
 }
 
@@ -1402,6 +1465,8 @@ netField_t playerStateFields[] =
 	{ PSF( serverCursorHintVal ), 8}, //----(SA)	added
 	{ PSF( classWeaponTime ), 32}, // JPW NERVE
 	{ PSF( footstepCount ), 0},
+	{ PSF( vrState ), 32 },     // RealRTCW-VR
+	{ PSF( vrGrab ), 11 },
 };
 
 /*

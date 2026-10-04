@@ -1552,6 +1552,9 @@ typedef struct playerState_s {
 
 	float footstepCount;
 
+	int vrState;                // RealRTCW-VR: hand reloading state, VRS_*
+	int vrGrab;                 // RealRTCW-VR: body held by the off hand + 1, 0 none
+
 } playerState_t;
 
 
@@ -1613,6 +1616,16 @@ typedef struct usercmd_s {
 	signed char wolfkick;       // RF, we should move this over to a wbutton, this is a huge waste of bandwidth
 
 	unsigned short cld;         // NERVE - SMF - send client damage in usercmd instead of as a server command
+
+	// RealRTCW-VR: a headset player's body and hands, so the server (another machine in
+	// co-op) knows where they are. Positions are 1/8 game units.
+	short vrMove[2];            // room-scale body displacement for this command (forward, left)
+	byte vrFlags;               // VRF_*
+	byte vrEject;               // bumped by the "drop magazine" gesture
+	byte vrEyeHeight;           // eye height above the origin the view used, units + 64
+	short vrRoll;               // gun roll, ANGLE2SHORT
+	short vrHand[2][3];         // hands relative to the head, play space (Quake axes)
+	short vrMuzzle[3];          // gun muzzle relative to the gun hand, in the aim frame
 } usercmd_t;
 
 //===================================================================
@@ -1859,5 +1872,7 @@ typedef enum {
 #define VOTEFLAGS_TYPE		( 1 << 5 )
 #define VOTEFLAGS_KICK		( 1 << 6 )
 #define VOTEFLAGS_MAP		( 1 << 7 )
+
+#include "vr_shared.h"     // RealRTCW-VR
 
 #endif  // __Q_SHARED_H
