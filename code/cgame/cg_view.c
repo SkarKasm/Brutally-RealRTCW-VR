@@ -1608,6 +1608,7 @@ Generates and draws a game scene and status information at the given time.
 */
 void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback ) {
 	int inwater;
+	qboolean build3D;
 
 	cg.cld = 0;         // NERVE - SMF - reset clientDamage
 
@@ -1729,8 +1730,14 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 	DEBUGTIME
 
+	// RealRTCW-VR: the headset's 2D layer (HUD) must not get any 3D rendering, the
+	// skybox portal in particular renders a full scene of its own
+	build3D = !CG_VR_2DPass();
+
 	// RF, draw the skyboxportal
-	CG_DrawSkyBoxPortal();
+	if ( build3D ) {
+		CG_DrawSkyBoxPortal();
+	}
 
 	DEBUGTIME
 
@@ -1741,14 +1748,14 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	DEBUGTIME
 
 	// first person blend blobs, done after AnglesToAxis
-	if ( !cg.renderingThirdPerson ) {
+	if ( !cg.renderingThirdPerson && build3D ) {
 		CG_DamageBlendBlob();
 	}
 
 	DEBUGTIME
 
 	// build the render lists
-	if ( !cg.hyperspace ) {
+	if ( !cg.hyperspace && build3D ) {
 		CG_AddPacketEntities();         // adter calcViewValues, so predicted player state is correct
 		CG_AddMarks();
 
@@ -1775,13 +1782,15 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	}
 
 
-	CG_AddViewWeapon( &cg.predictedPlayerState );
+	if ( build3D ) {
+		CG_AddViewWeapon( &cg.predictedPlayerState );
+	}
 
 
 	DEBUGTIME
 
 	// Ridah, trails
-	if ( !cg.hyperspace ) {
+	if ( !cg.hyperspace && build3D ) {
 		CG_AddFlameChunks();
 		CG_AddTrails();         // this must come last, so the trails dropped this frame get drawn
 	}

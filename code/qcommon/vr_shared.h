@@ -34,6 +34,9 @@ the Free Software Foundation, either version 3 of the License, or
 // projection and eye offsets from the renderer
 #define RDF_VRVIEW      ( 1 << 8 )
 
+// refEntity renderfx: don't draw hand / arm / sleeve / glove surfaces (first person weapon in VR)
+#define RF_VR_NOHANDS   ( 1 << 12 )
+
 typedef struct vrShared_s {
 	//
 	// written by the engine every frame

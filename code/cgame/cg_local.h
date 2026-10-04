@@ -1817,6 +1817,8 @@ typedef struct {
 	vec3_t      handAngles[2];
 	vec3_t      weaponAngles;       // world aim of the gun
 
+	qhandle_t   handModel[2];       // indexed by VR_HAND_*
+
 	qboolean    cutsceneBaseValid;  // head pose when the current cutscene started
 	vec3_t      cutsceneHmdBase;
 	float       cutsceneYawBase;
@@ -1833,6 +1835,8 @@ void CG_VR_SetHead( const vec3_t headOrigin, float yawOffset, vec3_t viewAngles 
 void CG_VR_CutsceneView( vec3_t origin, vec3_t angles );
 void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t angles );
 void CG_VR_AddPointer( void );
+void CG_VR_AddHands( void );
+qboolean CG_VR_DrawHands( void );
 void CG_VR_Haptic( int hand, float amplitude, int msec );
 int CG_VR_DominantHand( void );
 extern centity_t cg_entities[MAX_GENTITIES];

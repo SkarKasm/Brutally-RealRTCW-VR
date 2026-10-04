@@ -173,3 +173,16 @@ void R_VR_SetupViewParms( viewParms_t *parms, int rdflags ) {
 	parms->fovX = RAD2DEG( atan( -t[0] ) + atan( t[1] ) );
 	parms->fovY = RAD2DEG( atan( t[2] ) + atan( -t[3] ) );
 }
+
+/*
+==============
+R_VR_IsHandSurface
+
+Names the view weapon models use for the player's hands and sleeves
+(hqhand, hqarm, b3_lhand, w_hand, shotgun_sleeve, ...).
+==============
+*/
+qboolean R_VR_IsHandSurface( const char *name ) {
+	return Q_stristr( name, "hand" ) || Q_stristr( name, "arm" ) ||
+		   Q_stristr( name, "sleeve" ) || Q_stristr( name, "glove" );
+}

@@ -441,6 +441,13 @@ void R_AddMDCSurfaces( trRefEntity_t *ent ) {
 		}
 //----(SA)	end
 
+		// RealRTCW-VR: the headset draws its own hands at the controllers, so the
+		// first person weapon's built-in hands and sleeves are left out
+		if ( ( ent->e.renderfx & RF_VR_NOHANDS ) && R_VR_IsHandSurface( surface->name ) ) {
+			surface = ( mdcSurface_t * )( (byte *)surface + surface->ofsEnd );
+			continue;
+		}
+
 		if ( ent->e.customShader ) {
 			shader = R_GetShaderByHandle( ent->e.customShader );
 		} else if ( ent->e.customSkin > 0 && ent->e.customSkin < tr.numSkins ) {

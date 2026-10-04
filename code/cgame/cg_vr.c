@@ -24,6 +24,8 @@ the Free Software Foundation, either version 3 of the License, or
 
 cgVRState_t cgvr;
 
+static vmCvar_t vr_drawHands;
+
 /*
 =================
 CG_VR_Active
@@ -61,6 +63,47 @@ void CG_VR_Init( void ) {
 	// get its own line with vr_weaponAdjust_<weapon number>.
 	trap_Cvar_Register( &dummy, "vr_weaponAdjust", "14 -6 -10 0 0 0", CVAR_ARCHIVE );
 	trap_Cvar_Register( &dummy, "vr_laserPointerColor", "1 0.25 0.15", CVAR_ARCHIVE );
+	trap_Cvar_Register( &vr_drawHands, "vr_drawHands", "1", CVAR_ARCHIVE );
+
+	// built by misc/vr/make_vr_assets.py into main/z_vr_assets.pk3
+	cgvr.handModel[VR_HAND_LEFT] = trap_R_RegisterModel( "models/vr/hand_l.md3" );
+	cgvr.handModel[VR_HAND_RIGHT] = trap_R_RegisterModel( "models/vr/hand_r.md3" );
+}
+
+// tracked hand models are available and wanted
+qboolean CG_VR_DrawHands( void ) {
+	trap_Cvar_Update( &vr_drawHands );
+	return vr_drawHands.integer && cgvr.handModel[VR_HAND_LEFT] && cgvr.handModel[VR_HAND_RIGHT];
+}
+
+/*
+=================
+CG_VR_AddHands
+
+Both hands, each on its own controller.
+=================
+*/
+void CG_VR_AddHands( void ) {
+	refEntity_t ent;
+	int h;
+
+	if ( !cgvr.active || cgVR->menuPointer || cg.cameraMode || !CG_VR_DrawHands() ) {
+		return;
+	}
+
+	for ( h = 0; h < 2; h++ ) {
+		if ( !cgVR->handValid[h] || !cgvr.handModel[h] ) {
+			continue;
+		}
+		memset( &ent, 0, sizeof( ent ) );
+		ent.hModel = cgvr.handModel[h];
+		VectorCopy( cgvr.handOrigin[h], ent.origin );
+		VectorCopy( ent.origin, ent.oldorigin );
+		VectorCopy( ent.origin, ent.lightingOrigin );
+		AnglesToAxis( cgvr.handAngles[h], ent.axis );
+		ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN;
+		trap_R_AddRefEntityToScene( &ent );
+	}
 }
 
 /*

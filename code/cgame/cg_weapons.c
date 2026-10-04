@@ -3763,8 +3763,13 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 			VectorCopy( hand.origin, hand.lightingOrigin );
 			hand.hModel = weapon->handsModel;
 			hand.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;
+			// the weapon's own hands are glued to the gun; draw tracked ones instead
+			if ( CG_VR_DrawHands() ) {
+				hand.renderfx |= RF_VR_NOHANDS;
+			}
 			CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity );
 		}
+		CG_VR_AddHands();
 		cg.predictedPlayerEntity.lastWeaponClientFrame = cg.clientFrame;
 		return;
 	}
