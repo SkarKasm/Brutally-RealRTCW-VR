@@ -35,6 +35,8 @@ If you have questions concerning this license or the applicable additional terms
 
 level_locals_t level;
 
+vrShared_t *gVR;        // RealRTCW-VR: engine VR state, NULL until GAME_SET_VR_SHARED
+
 typedef struct {
 	vmCvar_t    *vmCvar;
 	char        *cvarName;
@@ -431,6 +433,9 @@ Q_EXPORT intptr_t vmMain( intptr_t command, intptr_t arg0, intptr_t arg1, intptr
 		return 0;
 	case GAME_GETMODELINFO:
 		return G_GetModelInfo( arg0, (char *)arg1, (animModelInfo_t **)arg2 );
+	case GAME_SET_VR_SHARED:
+		gVR = (vrShared_t *)arg0;
+		return 0;
 	}
 
 	return -1;

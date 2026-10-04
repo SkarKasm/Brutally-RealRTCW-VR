@@ -3072,6 +3072,10 @@ void CL_Frame( int msec ) {
 	// drop the connection
 	CL_CheckTimeout();
 
+	// RealRTCW-VR: wait for the headset and sample head/hands before building the usercmd
+	CL_VR_BeginFrame();
+	CL_VR_ProcessInput();
+
 	// send intentions now
 	CL_SendCmd();
 
@@ -3087,6 +3091,9 @@ void CL_Frame( int msec ) {
 
 	// update the screen
 	SCR_UpdateScreen();
+
+	// RealRTCW-VR: close the headset frame if nothing was rendered (e.g. minimised)
+	CL_VR_EndFrame();
 
 	// update audio
 	S_Update();
@@ -3299,6 +3306,9 @@ CL_ShutdownRef
 ============
 */
 void CL_ShutdownRef( void ) {
+	// RealRTCW-VR: the session's swapchains live in the GL context that is about to go
+	CL_VR_ShutdownSession();
+
 	if ( re.Shutdown ) {
 		re.Shutdown( qtrue );
 	}
@@ -3321,6 +3331,9 @@ CL_InitRenderer
 void CL_InitRenderer( void ) {
 	// this sets up the renderer and calls R_Init
 	re.BeginRegistration( &cls.glconfig );
+
+	// RealRTCW-VR: needs the GL context the renderer just created
+	CL_VR_InitSession();
 
 	// load character sets
 	cls.charSetShader = re.RegisterShader( "gfx/2d/bigchars" );
@@ -3933,6 +3946,10 @@ void CL_Init( void ) {
 
 	Cmd_AddCommand( "setRecommended", CL_SetRecommended_f );
 
+	// RealRTCW-VR: find the headset first, the renderer sizes itself for it
+	CL_VR_Init();
+	Cmd_AddCommand( "vr_recenter", CL_VR_Recenter_f );
+
 	CL_InitRef();
 
 	SCR_Init();
@@ -3977,6 +3994,8 @@ void CL_Shutdown( char *finalmsg, qboolean disconnect, qboolean quit ) {
 
 	CL_ClearMemory(qtrue);
 	CL_Snd_Shutdown();
+
+	CL_VR_Shutdown();       // RealRTCW-VR, after the renderer is gone
 
 	Cmd_RemoveCommand( "cmd" );
 	Cmd_RemoveCommand( "configstrings" );

@@ -1613,6 +1613,8 @@ typedef struct usercmd_s {
 	signed char wolfkick;       // RF, we should move this over to a wbutton, this is a huge waste of bandwidth
 
 	unsigned short cld;         // NERVE - SMF - send client damage in usercmd instead of as a server command
+
+	short vrMove[2];            // RealRTCW-VR: room-scale body displacement for this command (x, y), 1/8 units
 } usercmd_t;
 
 //===================================================================
@@ -1844,5 +1846,7 @@ typedef enum {
 	LANGUAGE_SPANISH,
 	MAX_LANGUAGES
 } languages_t;
+
+#include "vr_shared.h"     // RealRTCW-VR
 
 #endif  // __Q_SHARED_H

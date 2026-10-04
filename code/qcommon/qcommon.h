@@ -895,6 +895,7 @@ void        Com_SetRecommended( qboolean vid_restart );
 
 extern cvar_t  *com_developer;
 extern cvar_t  *com_dedicated;
+extern vrShared_t com_vr;   // RealRTCW-VR
 extern cvar_t  *com_speeds;
 extern cvar_t  *com_timescale;
 extern cvar_t  *com_sv_running;

@@ -185,11 +185,13 @@ FBO_Bind
 */
 void FBO_Bind( FBO_t *fbo )
 {
-	if ( currentFbo == fbo ) {
+	// the "real backbuffer" may be a headset swapchain image that changes between passes,
+	// so only trust the cache for real FBOs
+	if ( fbo && currentFbo == fbo ) {
 		return;
 	}
 
-	qglBindFramebuffer( GL_FRAMEBUFFER, fbo ? fbo->frameBuffer : 0 );
+	qglBindFramebuffer( GL_FRAMEBUFFER, fbo ? fbo->frameBuffer : vrRender.targetFbo );
 	currentFbo = fbo;
 }
 
@@ -209,7 +211,7 @@ void FBO_FastBlit( const FBO_t *src, const FBO_t *dst, GLbitfield buffers, GLenu
 	dstH = dst ? dst->height : glConfig.vidHeight;
 
 	qglBindFramebuffer( GL_READ_FRAMEBUFFER, src ? src->frameBuffer : 0 );
-	qglBindFramebuffer( GL_DRAW_FRAMEBUFFER, dst ? dst->frameBuffer : 0 );
+	qglBindFramebuffer( GL_DRAW_FRAMEBUFFER, dst ? dst->frameBuffer : vrRender.targetFbo );
 
 	// reset scissor so a stale reduced-viewport rect (cg_viewsize < 100) doesn't clip the blit
 	qglScissor( 0, 0, dstW, dstH );

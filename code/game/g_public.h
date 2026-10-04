@@ -474,7 +474,9 @@ typedef enum {
 	// done.
 
 	GAME_RETRIEVE_MOVESPEEDS_FROM_CLIENT,
-	GAME_GETMODELINFO
+	GAME_GETMODELINFO,
+
+	GAME_SET_VR_SHARED          // RealRTCW-VR: ( vrShared_t *vr );
 
 } gameExport_t;
 

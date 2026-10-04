@@ -130,6 +130,8 @@ int time_frontend;          // renderer frontend time
 int time_backend;           // renderer backend time
 
 int com_frameTime;
+
+vrShared_t com_vr;      // RealRTCW-VR: filled by cl_vr.c, read by the game/cgame modules
 int com_frameNumber;
 
 qboolean	com_errorEntered = qfalse;

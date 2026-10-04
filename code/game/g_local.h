@@ -982,6 +982,7 @@ int G_GetEnemyPosition(gentity_t *ent, gentity_t *targ);
 //
 qboolean LogAccuracyHit( gentity_t *target, gentity_t *attacker );
 void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint );
+qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out );   // RealRTCW-VR
 void SnapVectorTowards( vec3_t v, vec3_t to );
 trace_t *CheckMeleeAttack( gentity_t *ent, float dist, qboolean isTest );
 gentity_t *weapon_grenadelauncher_fire( gentity_t *ent, int grenadeWPID );
@@ -1152,6 +1153,7 @@ void Use_props_grammofon(gentity_t* ent, gentity_t* self, gentity_t* activator);
 
 
 extern level_locals_t level;
+extern vrShared_t *gVR;     // RealRTCW-VR
 extern gentity_t g_entities[MAX_GENTITIES];
 extern gentity_t       *g_camEnt;
 

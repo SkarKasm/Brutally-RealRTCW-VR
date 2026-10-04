@@ -932,6 +932,7 @@ static void SV_InitGameVM( qboolean restart ) {
 
 	// use the current msec count for a random seed
 	// init for this gamestate
+	VM_Call (gvm, GAME_SET_VR_SHARED, &com_vr );    // RealRTCW-VR: before init so spawn code can see it
 	VM_Call (gvm, GAME_INIT, sv.time, Com_Milliseconds(), restart);
 }
 

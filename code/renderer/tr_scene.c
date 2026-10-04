@@ -533,6 +533,9 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 	VectorCopy( fd->vieworg, parms.pvsOrigin );
 
+	// RealRTCW-VR: per-eye frustum and offset for headset world views
+	R_VR_SetupViewParms( &parms, fd->rdflags );
+
 	R_RenderView( &parms );
 
 	// the next scene rendered in this frame will tack on after this one

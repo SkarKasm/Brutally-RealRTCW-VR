@@ -1654,7 +1654,9 @@ const void  *RB_SwapBuffers( const void *data ) {
 #endif
 
 
-	if ( !glState.finishCalled ) {
+	// headset passes are synchronised by the OpenXR runtime when the swapchain image is
+	// released, a glFinish per eye would just stall the pipeline
+	if ( !glState.finishCalled && !vrRender.passActive ) {
 		qglFinish();
 	}
 
@@ -1665,7 +1667,11 @@ const void  *RB_SwapBuffers( const void *data ) {
 		FBO_PostProcess();
 	}
 
-	GLimp_EndFrame();
+	// RealRTCW-VR: a headset pass composites into a swapchain image, the window is
+	// presented separately by RE_VR_PresentMirror
+	if ( !vrRender.passActive ) {
+		GLimp_EndFrame();
+	}
 
 	if ( fboEnabled ) {
 		FBO_Bind( tr.mainFbo );

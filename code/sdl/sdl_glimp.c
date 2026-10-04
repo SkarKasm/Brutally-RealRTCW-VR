@@ -1277,6 +1277,20 @@ success:
 	glConfig.driverType = GLDRV_ICD;
 	glConfig.hardwareType = GLHW_GENERIC;
 
+	// RealRTCW-VR: with a headset attached the renderer works at the eye buffer resolution
+	// in its offscreen FBO, and the window only shows a mirror of it (RE_VR_PresentMirror)
+	{
+		int vrWidth = ri.Cvar_VariableIntegerValue( "vr_renderWidth" );
+		int vrHeight = ri.Cvar_VariableIntegerValue( "vr_renderHeight" );
+
+		if ( vrWidth > 0 && vrHeight > 0 ) {
+			ri.Printf( PRINT_ALL, "VR: rendering at %dx%d per eye, window is a mirror\n", vrWidth, vrHeight );
+			glConfig.vidWidth = vrWidth;
+			glConfig.vidHeight = vrHeight;
+			glConfig.windowAspect = (float)vrWidth / (float)vrHeight;
+		}
+	}
+
 	// Only using SDL_SetWindowBrightness to determine if hardware gamma is supported
 #if 0  // !!! FIXME: use a shader, sorry.
 	glConfig.deviceSupportsGamma = !r_ignorehwgamma->integer &&
@@ -1340,6 +1354,14 @@ GLimp_EndFrame
 Responsible for doing a swapbuffers
 ===============
 */
+void GLimp_GetWindowPixelSize( int *width, int *height )
+{
+	*width = *height = 0;
+	if ( SDL_window ) {
+		SDL_GetWindowSizeInPixels( SDL_window, width, height );
+	}
+}
+
 void GLimp_EndFrame( void )
 {
 	// don't flip if drawing to front buffer, and don't present while minimized

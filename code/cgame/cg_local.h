@@ -1804,6 +1804,37 @@ typedef struct {
 
 extern cgs_t cgs;
 extern cg_t cg;
+extern vrShared_t *cgVR;    // RealRTCW-VR
+
+//
+// cg_vr.c  (RealRTCW-VR)
+//
+typedef struct {
+	qboolean    active;             // rendering for a headset this frame
+	float       yawOffset;          // play space yaw -> world yaw
+	vec3_t      headOrigin;         // world, centre of the head
+	vec3_t      handOrigin[2];      // world, indexed by VR_HAND_*
+	vec3_t      handAngles[2];
+	vec3_t      weaponAngles;       // world aim of the gun
+
+	qboolean    cutsceneBaseValid;  // head pose when the current cutscene started
+	vec3_t      cutsceneHmdBase;
+	float       cutsceneYawBase;
+} cgVRState_t;
+
+extern cgVRState_t cgvr;
+
+qboolean CG_VR_Active( void );
+qboolean CG_VR_EyePass( void );
+qboolean CG_VR_2DPass( void );
+void CG_VR_Init( void );
+void CG_VR_BeginFrame( void );
+void CG_VR_SetHead( const vec3_t headOrigin, float yawOffset, vec3_t viewAngles );
+void CG_VR_CutsceneView( vec3_t origin, vec3_t angles );
+void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t angles );
+void CG_VR_AddPointer( void );
+void CG_VR_Haptic( int hand, float amplitude, int msec );
+int CG_VR_DominantHand( void );
 extern centity_t cg_entities[MAX_GENTITIES];
 extern weaponInfo_t cg_weapons[MAX_WEAPONS];
 extern itemInfo_t cg_items[MAX_ITEMS];

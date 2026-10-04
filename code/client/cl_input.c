@@ -459,6 +459,7 @@ void CL_MouseEvent( int dx, int dy, int time ) {
 
     if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
         VM_Call( uivm, UI_MOUSE_EVENT, dx, dy );
+        CL_VR_MouseMoved( dx, dy );     // RealRTCW-VR: keep the laser pointer's cursor in step
     } else if (Key_GetCatcher( ) & KEYCATCH_CGAME) {
         VM_Call( cgvm, CG_MOUSE_EVENT, dx, dy );
     } else {
@@ -1222,6 +1223,9 @@ usercmd_t CL_CreateCmd( void ) {
 	}
 	// the recoilPitch has been used, so clear it out
 	cl_recoilPitch->value = 0;
+
+	// RealRTCW-VR: controller aim, thumbstick locomotion and room-scale movement
+	CL_VR_CreateCmd( &cmd );
 
 	// store out the final values
 	CL_FinishMove( &cmd );

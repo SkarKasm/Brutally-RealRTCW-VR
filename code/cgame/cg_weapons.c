@@ -3749,6 +3749,26 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		return;
 	}
 
+	// RealRTCW-VR: the gun is held in the weapon hand, no bob, depth hack or fov offsets
+	if ( cgvr.active ) {
+		if ( cgVR->menuPointer || cg.cameraMode ) {
+			return;
+		}
+		if ( ps->weapon > WP_NONE ) {
+			memset( &hand, 0, sizeof( hand ) );
+			weapon = &cg_weapons[ ps->weapon ];
+			CG_VR_WeaponPose( ps->weapon, hand.origin, angles );
+			AnglesToAxis( angles, hand.axis );
+			CG_WeaponAnimation( ps, weapon, &hand.oldframe, &hand.frame, &hand.backlerp );
+			VectorCopy( hand.origin, hand.lightingOrigin );
+			hand.hModel = weapon->handsModel;
+			hand.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;
+			CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity );
+		}
+		cg.predictedPlayerEntity.lastWeaponClientFrame = cg.clientFrame;
+		return;
+	}
+
 	VectorClear(fovOffset);
 
 	if ( cg_fixedAspect.integer ) {

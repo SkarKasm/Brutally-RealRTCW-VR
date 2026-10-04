@@ -283,6 +283,9 @@ typedef enum {
     CG_JOYSTICK_EVENT,
 // void CG_JoystickEvent( int axis, int value );
 
+	CG_SET_VR_SHARED,
+// RealRTCW-VR: void ( vrShared_t *vr );
+
 	MAX_CGAME_EXPORT
 
 } cgameExport_t;

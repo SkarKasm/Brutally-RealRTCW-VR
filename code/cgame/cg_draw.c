@@ -4408,6 +4408,16 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 		return;
 	}
 
+	// RealRTCW-VR: the 2D layer only gets the HUD, the eyes only the world
+	if ( CG_VR_2DPass() ) {
+		CG_Draw2D( stereoView );
+		return;
+	}
+	if ( CG_VR_EyePass() ) {
+		cg.refdef.rdflags |= RDF_VRVIEW;
+		CG_VR_AddPointer();
+	}
+
 	if(stereoView != STEREO_CENTER)
 		CG_DrawCrosshair3D();
 
@@ -4419,6 +4429,10 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 	}
 
 	trap_R_RenderScene( &cg.refdef );
+
+	if ( CG_VR_EyePass() ) {
+		return;
+	}
 
 	// clear around the rendered view if sized down
 	CG_TileClear();     //----(SA)	moved to 2d section to avoid 2d/3d fog-state problems

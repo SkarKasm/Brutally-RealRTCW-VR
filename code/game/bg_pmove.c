@@ -4713,6 +4713,55 @@ void PM_Sprint( void ) {
 
 /*
 ================
+PM_VRRoomScaleMove
+
+RealRTCW-VR: carries the body along when the player physically walks around with a
+headset. cmd.vrMove is the head's displacement in the frame of the command's yaw
+(forward, left; 1/8 units). It is applied once per usercmd, identically on the server
+and in client prediction, and collides with the world so walls push the player back.
+================
+*/
+static void PM_VRRoomScaleMove( void ) {
+	vec3_t angles, fwd, right, delta, end;
+	trace_t trace;
+	float backoff;
+	int i;
+
+	if ( !pm->cmd.vrMove[0] && !pm->cmd.vrMove[1] ) {
+		return;
+	}
+
+	VectorSet( angles, 0, pm->ps->viewangles[YAW], 0 );
+	AngleVectors( angles, fwd, right, NULL );
+	VectorScale( fwd, pm->cmd.vrMove[0] * 0.125f, delta );
+	VectorMA( delta, -pm->cmd.vrMove[1] * 0.125f, right, delta );
+
+	// only once per command, Pmove may split it into several PmoveSingle calls
+	pm->cmd.vrMove[0] = pm->cmd.vrMove[1] = 0;
+
+	if ( pm->ps->pm_type != PM_NORMAL || pm->ps->stats[STAT_HEALTH] <= 0 || pm->ps->viewlocked ) {
+		return;
+	}
+
+	// move, then slide along whatever was hit
+	for ( i = 0; i < 2; i++ ) {
+		VectorAdd( pm->ps->origin, delta, end );
+		pm->trace( &trace, pm->ps->origin, pm->mins, pm->maxs, end, pm->ps->clientNum, pm->tracemask );
+		if ( trace.allsolid ) {
+			return;
+		}
+		VectorCopy( trace.endpos, pm->ps->origin );
+		if ( trace.fraction == 1.0f ) {
+			return;
+		}
+		VectorScale( delta, 1.0f - trace.fraction, delta );
+		backoff = DotProduct( delta, trace.plane.normal );
+		VectorMA( delta, -backoff, trace.plane.normal, delta );
+	}
+}
+
+/*
+================
 PmoveSingle
 
 ================
@@ -4901,6 +4950,9 @@ void PmoveSingle( pmove_t *pmove ) {
 
 	// set mins, maxs, and viewheight
 	PM_CheckDuck();
+
+	// RealRTCW-VR: follow the player's real head movement
+	PM_VRRoomScaleMove();
 
 	// set groundentity
 	PM_GroundTrace();

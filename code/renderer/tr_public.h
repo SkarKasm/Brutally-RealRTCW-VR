@@ -116,6 +116,19 @@ typedef struct {
 	qboolean ( *GetEntityToken )( char *buffer, int size );
 
 	void (*TakeVideoFrame)( int h, int w, byte* captureBuffer, byte *encodeBuffer, qboolean motionJpeg );
+
+	// RealRTCW-VR
+	// eye < 0 turns per-eye projection off. fovTangents are the OpenXR view angle tangents
+	// { left, right, up, down } (left/down negative), eyeOffset is the eye position relative
+	// to the head in game units on Quake axes (forward, left, up).
+	void ( *VR_SetEye )( int eye, const float *fovTangents, const vec3_t eyeOffset );
+	// following frames composite into targetFramebuffer instead of the window, without
+	// swapping. clearColor (may be NULL) clears the offscreen buffer before the frame.
+	void ( *VR_BeginPass )( unsigned int targetFramebuffer, const float *clearColor );
+	// back to normal window output
+	void ( *VR_EndPasses )( void );
+	// copy a framebuffer to the window (scaled to fit) and swap
+	void ( *VR_PresentMirror )( unsigned int sourceFramebuffer, int sourceWidth, int sourceHeight );
 } refexport_t;
 
 //

@@ -581,6 +581,9 @@ typedef struct {
 	float zFar;
 	stereoFrame_t	stereoFrame;
 
+	qboolean vrEye;                 // RealRTCW-VR: asymmetric headset projection from vrFovTan
+	float vrFovTan[4];              // left, right, up, down tangents (left/down negative)
+
 	int dirty;
 
 	glfog_t glFog;                  // fog parameters	//----(SA)	added
@@ -1308,6 +1311,24 @@ qboolean GL_ProgramAvailable( void );
 void     ARB_InitPrograms( void );
 void     ARB_ShutdownPrograms( void );
 void     FBO_PostProcess( void );
+
+// RealRTCW-VR headset rendering state, see tr_vr.c
+typedef struct {
+	int      eye;                   // eye being rendered, -1 when not rendering for a headset
+	float    fovTan[4];             // left, right, up, down tangents of that eye
+	vec3_t   eyeOffset;             // eye relative to the head, game units (forward, left, up)
+	unsigned int targetFbo;         // where FBO_PostProcess composites, 0 = window
+	qboolean passActive;            // compositing into targetFbo: don't swap the window
+} vrRenderState_t;
+
+extern vrRenderState_t vrRender;
+
+void     R_VR_SetupViewParms( viewParms_t *parms, int rdflags );
+void     RE_VR_SetEye( int eye, const float *fovTangents, const vec3_t eyeOffset );
+void     RE_VR_BeginPass( unsigned int targetFramebuffer, const float *clearColor );
+void     RE_VR_EndPasses( void );
+void     RE_VR_PresentMirror( unsigned int sourceFramebuffer, int sourceWidth, int sourceHeight );
+void     GLimp_GetWindowPixelSize( int *width, int *height );
 
 // These two variables should live inside glConfig but can't because of compatibility issues to the original ID vms.
 // If you release a stand-alone game and your mod uses tr_types.h from this build you can safely move them to

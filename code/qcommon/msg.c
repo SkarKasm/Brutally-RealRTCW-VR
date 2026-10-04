@@ -657,7 +657,9 @@ void MSG_WriteDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *
 		 from->weapon == to->weapon &&
 		 from->holdable == to->holdable &&
 		 from->wolfkick == to->wolfkick &&
-		 from->cld == to->cld ) {                   // NERVE - SMF
+		 from->cld == to->cld &&                    // NERVE - SMF
+		 from->vrMove[0] == to->vrMove[0] &&
+		 from->vrMove[1] == to->vrMove[1] ) {
 		MSG_WriteBits( msg, 0, 1 );                 // no change
 		oldsize += 7;
 		return;
@@ -677,6 +679,9 @@ void MSG_WriteDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *
 	MSG_WriteDeltaKey( msg, key, from->wolfkick, to->wolfkick, 8 );
 
 	MSG_WriteDeltaKey( msg, key, from->cld, to->cld, 16 );      // NERVE - SMF - for multiplayer clientDamage
+
+	MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrMove[0], (unsigned short)to->vrMove[0], 16 );
+	MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrMove[1], (unsigned short)to->vrMove[1], 16 );
 }
 
 
@@ -712,6 +717,9 @@ void MSG_ReadDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *t
 		to->wolfkick = MSG_ReadDeltaKey( msg, key, from->wolfkick, 8 );
 
 		to->cld = MSG_ReadDeltaKey( msg, key, from->cld, 16 );           // NERVE - SMF - for multiplayer clientDamage
+
+		to->vrMove[0] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrMove[0], 16 );
+		to->vrMove[1] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrMove[1], 16 );
 	} else {
 		to->angles[0] = from->angles[0];
 		to->angles[1] = from->angles[1];
@@ -726,6 +734,9 @@ void MSG_ReadDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *t
 		to->wolfkick = from->wolfkick;
 
 		to->cld = from->cld;                    // NERVE - SMF
+
+		to->vrMove[0] = from->vrMove[0];
+		to->vrMove[1] = from->vrMove[1];
 	}
 }
 

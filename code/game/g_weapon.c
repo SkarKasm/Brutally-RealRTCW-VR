@@ -1745,12 +1745,57 @@ qboolean LogAccuracyHit( gentity_t *target, gentity_t *attacker ) {
 
 /*
 ===============
+G_VR_WeaponOrigin
+
+RealRTCW-VR: world position of the player's gun hand when playing with a headset.
+The hand is tracked relative to the head, and the head sits at the eye height cgame
+used for the view. Traced from the eye so a hand pushed through a wall can't shoot
+or use things on the other side.
+===============
+*/
+qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out ) {
+	vec3_t offset, eye, end;
+	float yaw, s, c;
+	int dom;
+	trace_t tr;
+
+	if ( !gVR || !gVR->active || !ent->client || ent->aiCharacter || ent->s.number != 0 ) {
+		return qfalse;
+	}
+	dom = gVR->rightHanded ? VR_HAND_RIGHT : VR_HAND_LEFT;
+	if ( !gVR->handValid[dom] ) {
+		return qfalse;
+	}
+
+	VectorCopy( ent->r.currentOrigin, eye );
+	eye[2] += gVR->eyeHeight > 0 ? gVR->eyeHeight : ent->client->ps.viewheight;
+
+	// play space offset from the head, turned into the world by the usercmd delta yaw
+	VectorSubtract( gVR->handOrigin[dom], gVR->hmdOrigin, offset );
+	yaw = DEG2RAD( SHORT2ANGLE( ent->client->ps.delta_angles[YAW] ) );
+	s = sin( yaw );
+	c = cos( yaw );
+	end[0] = eye[0] + offset[0] * c - offset[1] * s;
+	end[1] = eye[1] + offset[0] * s + offset[1] * c;
+	end[2] = eye[2] + offset[2];
+
+	trap_Trace( &tr, eye, NULL, NULL, end, ent->s.number, MASK_SHOT );
+	VectorCopy( tr.endpos, out );
+	return qtrue;
+}
+
+/*
+===============
 CalcMuzzlePoint
 
 set muzzle location relative to pivoting eye
 ===============
 */
 void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint ) {
+	if ( G_VR_WeaponOrigin( ent, muzzlePoint ) ) {
+		return;
+	}
+
 	VectorCopy( ent->r.currentOrigin, muzzlePoint );
 	muzzlePoint[2] += ent->client->ps.viewheight;
 	// Ridah, this puts the start point outside the bounding box, isn't necessary
@@ -1803,6 +1848,11 @@ void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, 
 
 // Rafael - for activate
 void CalcMuzzlePointForActivate( gentity_t *ent, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint ) {
+
+	// RealRTCW-VR: shots and "use" both come from the gun hand
+	if ( G_VR_WeaponOrigin( ent, muzzlePoint ) ) {
+		return;
+	}
 
 	VectorCopy( ent->s.pos.trBase, muzzlePoint );
 	muzzlePoint[2] += ent->client->ps.viewheight;

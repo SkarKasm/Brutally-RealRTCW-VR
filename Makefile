@@ -1934,6 +1934,7 @@ Q3OBJ = \
   $(B)/client/cl_net_chan.o \
   $(B)/client/cl_parse.o \
   $(B)/client/cl_scrn.o \
+  $(B)/client/cl_vr.o \
   $(B)/client/cl_ui.o \
   $(B)/client/cl_avi.o \
   \
@@ -2054,6 +2055,7 @@ Q3ROBJ = \
   $(B)/renderer/tr_curve.o \
   $(B)/renderer/tr_extensions.o \
   $(B)/renderer/tr_fbo.o \
+  $(B)/renderer/tr_vr.o \
   $(B)/renderer/tr_flares.o \
   $(B)/renderer/tr_font.o \
   $(B)/renderer/tr_image.o \
@@ -2648,6 +2650,7 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_speakerscript.o \
   $(B)/$(BASEGAME)/cgame/cg_trails.o \
   $(B)/$(BASEGAME)/cgame/cg_view.o \
+  $(B)/$(BASEGAME)/cgame/cg_vr.o \
   $(B)/$(BASEGAME)/cgame/cg_weapons.o \
   $(B)/$(BASEGAME)/ui/ui_shared.o \
   \

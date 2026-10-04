@@ -529,6 +529,48 @@ static void CG_ZoomSway( void ) {
 
 /*
 ===============
+CG_VR_OffsetFirstPersonView
+
+RealRTCW-VR: the headset replaces bob, kick and lean. The view stands at the game's eye
+height (with the usual duck and step smoothing), lowered further when the player really
+crouches, and looks wherever the head looks.
+===============
+*/
+static void CG_VR_OffsetFirstPersonView( void ) {
+	playerState_t *ps = &cg.predictedPlayerState;
+	float eye, real;
+	int timeDelta;
+
+	eye = ps->viewheight;
+	if ( ps->stats[STAT_HEALTH] > 0 ) {
+		timeDelta = cg.time - cg.duckTime;
+		if ( timeDelta < 0 ) {
+			cg.duckTime = cg.time - DUCK_TIME;
+		} else if ( timeDelta < DUCK_TIME ) {
+			eye -= cg.duckChange * ( DUCK_TIME - timeDelta ) / DUCK_TIME;
+		}
+
+		// the player's real eye height above the origin: feet are at mins[2]
+		real = cgVR->hmdOrigin[2] + ps->mins[2];
+		if ( real < eye ) {
+			eye = real;
+		}
+		if ( eye < ps->mins[2] + 8 ) {
+			eye = ps->mins[2] + 8;
+		}
+	}
+
+	cg.refdef.vieworg[2] += eye;
+	cgVR->eyeHeight = eye;
+
+	CG_StepOffset();
+
+	// shots leave the gun hand, see G_VR_WeaponOrigin
+	CG_VR_SetHead( cg.refdef.vieworg, SHORT2ANGLE( ps->delta_angles[YAW] ), cg.refdefViewAngles );
+}
+
+/*
+===============
 CG_OffsetFirstPersonView
 
 ===============
@@ -1179,6 +1221,7 @@ static int CG_CalcViewValues( void ) {
 			angles[ROLL] = 0;
 			angles[PITCH] = -angles[PITCH];     // (SA) compensate for reversed pitch (this makes the game match the editor, however I'm guessing the real fix is to be done there)
 			VectorCopy( angles, cg.refdefViewAngles );
+			CG_VR_CutsceneView( cg.refdef.vieworg, cg.refdefViewAngles );   // RealRTCW-VR: free look
 			AnglesToAxis( cg.refdefViewAngles, cg.refdef.viewaxis );
 
 			if ( cg_fixedAspect.integer ) {
@@ -1265,6 +1308,9 @@ static int CG_CalcViewValues( void ) {
 	if ( cg.renderingThirdPerson ) {
 		// back away from character
 		CG_OffsetThirdPersonView();
+	} else if ( cgvr.active ) {
+		// RealRTCW-VR: the view is the player's head
+		CG_VR_OffsetFirstPersonView();
 	} else {
 		// offset for local bobbing and kicks
 		CG_OffsetFirstPersonView();
@@ -1523,6 +1569,11 @@ void CG_DrawSkyBoxPortal( void ) {
 
 	cg.refdef.time = cg.time;
 
+	// RealRTCW-VR: the sky needs the same per-eye projection as the world
+	if ( CG_VR_EyePass() ) {
+		cg.refdef.rdflags |= RDF_VRVIEW;
+	}
+
 	// draw the skybox
 	trap_R_RenderScene( &cg.refdef );
 
@@ -1585,10 +1636,15 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 #endif
 	DEBUGTIME
 
+	// RealRTCW-VR
+	CG_VR_BeginFrame();
+
 	// if we are only updating the screen as a loading
 	// pacifier, don't even try to read snapshots
 	if ( cg.infoScreenText[0] != 0 ) {
-		CG_DrawInformation();
+		if ( !CG_VR_EyePass() ) {
+			CG_DrawInformation();
+		}
 		return;
 	}
 
