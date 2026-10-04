@@ -2948,9 +2948,11 @@ void PM_AdjustAimSpreadScale( void ) {
 		decrease = ( cmdTime * AIMSPREAD_DECREASE_RATE ) / wpnScale;
 
 		viewchange = 0;
-		// take player view rotation into account
-		for ( i = 0; i < 2; i++ )
-			viewchange += fabs( SHORT2ANGLE( pm->cmd.angles[i] ) - SHORT2ANGLE( pm->oldcmd.angles[i] ) );
+		// take player view rotation into account (not hand tremor on a VR controller)
+		if ( !pm->vrAim ) {
+			for ( i = 0; i < 2; i++ )
+				viewchange += fabs( SHORT2ANGLE( pm->cmd.angles[i] ) - SHORT2ANGLE( pm->oldcmd.angles[i] ) );
+		}
 
 		// take player movement into account (even if only for the scoped weapons)
 		// TODO: also check for jump/crouch and adjust accordingly

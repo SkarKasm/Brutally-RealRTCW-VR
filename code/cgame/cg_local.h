@@ -1816,6 +1816,7 @@ typedef struct {
 	vec3_t      handOrigin[2];      // world, indexed by VR_HAND_*
 	vec3_t      handAngles[2];
 	vec3_t      weaponAngles;       // world aim of the gun
+	vec3_t      muzzle;             // world position of the gun's muzzle this frame
 
 	qhandle_t   handModel[2];       // indexed by VR_HAND_*
 
@@ -1833,7 +1834,9 @@ void CG_VR_Init( void );
 void CG_VR_BeginFrame( void );
 void CG_VR_SetHead( const vec3_t headOrigin, float yawOffset, vec3_t viewAngles );
 void CG_VR_CutsceneView( vec3_t origin, vec3_t angles );
-void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t angles );
+void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t axis[3] );
+void CG_VR_SetMuzzle( const vec3_t muzzle );
+void CG_VR_AddReticle( void );
 void CG_VR_AddPointer( void );
 void CG_VR_AddHands( void );
 qboolean CG_VR_DrawHands( void );

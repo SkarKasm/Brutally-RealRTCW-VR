@@ -3516,6 +3516,11 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 		CG_PositionRotatedEntityOnTag(&flash, &gun, "tag_flash");
 	}
 
+	// RealRTCW-VR: shots leave the barrel of the gun in the player's hand
+	if ( ps && cgvr.active ) {
+		CG_VR_SetMuzzle( flash.origin );
+	}
+
 	// store this position for other cgame elements to access
 	cent->pe.gunRefEnt = gun;
 	cent->pe.gunRefEntFrame = cg.clientFrame;
@@ -3754,11 +3759,12 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		if ( cgVR->menuPointer || cg.cameraMode ) {
 			return;
 		}
-		if ( ps->weapon > WP_NONE ) {
+		if ( ps->weapon <= WP_NONE ) {
+			cgVR->muzzleValid = qfalse;
+		} else {
 			memset( &hand, 0, sizeof( hand ) );
 			weapon = &cg_weapons[ ps->weapon ];
-			CG_VR_WeaponPose( ps->weapon, hand.origin, angles );
-			AnglesToAxis( angles, hand.axis );
+			CG_VR_WeaponPose( ps->weapon, hand.origin, hand.axis );
 			CG_WeaponAnimation( ps, weapon, &hand.oldframe, &hand.frame, &hand.backlerp );
 			VectorCopy( hand.origin, hand.lightingOrigin );
 			hand.hModel = weapon->handsModel;
@@ -3770,6 +3776,7 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 			CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity );
 		}
 		CG_VR_AddHands();
+		CG_VR_AddReticle();
 		cg.predictedPlayerEntity.lastWeaponClientFrame = cg.clientFrame;
 		return;
 	}

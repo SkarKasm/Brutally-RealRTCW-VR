@@ -25,6 +25,9 @@ the Free Software Foundation, either version 3 of the License, or
 cgVRState_t cgvr;
 
 static vmCvar_t vr_drawHands;
+static vmCvar_t vr_reticle;
+
+static qboolean CG_VR_OneHanded( int weapon );
 
 /*
 =================
@@ -136,6 +139,7 @@ void CG_VR_Init( void ) {
 	trap_Cvar_Register( &dummy, "vr_gunOffset", "0 0 0 0 0 0", CVAR_ARCHIVE );
 	trap_Cvar_Register( &dummy, "vr_laserPointerColor", "1 0.25 0.15", CVAR_ARCHIVE );
 	trap_Cvar_Register( &vr_drawHands, "vr_drawHands", "1", CVAR_ARCHIVE );
+	trap_Cvar_Register( &vr_reticle, "vr_reticle", "1", CVAR_ARCHIVE );
 
 	// built by misc/vr/make_vr_assets.py into main/z_vr_assets.pk3
 	cgvr.handModel[VR_HAND_LEFT] = trap_R_RegisterModel( "models/vr/hand_l.md3" );
@@ -192,6 +196,7 @@ void CG_VR_BeginFrame( void ) {
 	}
 
 	cgVR->cutscene = cg.cameraMode;
+	cgVR->twoHandAllowed = !CG_VR_OneHanded( cg.predictedPlayerState.weapon );
 	if ( !cg.cameraMode ) {
 		cgvr.cutsceneBaseValid = qfalse;
 	}
@@ -277,12 +282,13 @@ CG_VR_WeaponPose
 Where to draw the first person hands+gun model so its grip sits in the player's hand.
 =================
 */
-void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t angles ) {
+void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t axis[3] ) {
 	char buf[MAX_CVAR_VALUE_STRING];
 	float adj[6] = { 0, 0, 0, 0, 0, 0 };
-	vec3_t grip = { 14, -6, -10 }, fwd, right, up;
+	vec3_t grip = { 14, -6, -10 }, corr, aim[3], local[3];
 	float gripPitch = 0, gripYaw = 0;
 	int dom = CG_VR_DominantHand();
+	int i, j;
 
 	CG_VR_WeaponGrip( weapon, grip, &gripPitch, &gripYaw );
 
@@ -297,17 +303,136 @@ void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t angles ) {
 	grip[1] -= adj[1];
 	grip[2] -= adj[2];
 
-	VectorCopy( cgvr.weaponAngles, angles );
-	angles[PITCH] += adj[3] + gripPitch;
-	angles[YAW] += adj[4] + gripYaw;
-	angles[ROLL] += adj[5];
+	// The correction (melee straightening + fine tuning) is a rotation in the hand's own
+	// frame. Composing matrices instead of adding Euler angles keeps it stable when the hand
+	// points straight up or down.
+	VectorSet( corr, adj[3] + gripPitch, adj[4] + gripYaw, adj[5] );
+	AnglesToAxis( cgvr.weaponAngles, aim );
+	AnglesToAxis( corr, local );
+	for ( i = 0; i < 3; i++ ) {
+		for ( j = 0; j < 3; j++ ) {
+			axis[i][j] = local[i][0] * aim[0][j] + local[i][1] * aim[1][j] + local[i][2] * aim[2][j];
+		}
+	}
 
 	// move the model so its grip point lands on the palm
-	AngleVectors( angles, fwd, right, up );
 	VectorCopy( cgvr.handOrigin[dom], origin );
-	VectorMA( origin, -grip[0], fwd, origin );
-	VectorMA( origin, grip[1], right, origin );     // +left is -right
-	VectorMA( origin, -grip[2], up, origin );
+	VectorMA( origin, -grip[0], axis[0], origin );
+	VectorMA( origin, -grip[1], axis[1], origin );
+	VectorMA( origin, -grip[2], axis[2], origin );
+}
+
+/*
+=================
+CG_VR_SetMuzzle
+
+Called with the first person gun's muzzle (tag_flash) every frame. The server fires from
+the same spot relative to the weapon hand, so bullets leave the barrel.
+=================
+*/
+void CG_VR_SetMuzzle( const vec3_t muzzle ) {
+	vec3_t d, aim[3];
+	int dom = CG_VR_DominantHand();
+
+	VectorSubtract( muzzle, cgvr.handOrigin[dom], d );
+	if ( VectorLength( d ) > 80.0f ) {
+		cgVR->muzzleValid = qfalse;     // tag missing or the gun is mid animation somewhere odd
+		return;
+	}
+	AnglesToAxis( cgvr.weaponAngles, aim );
+	cgVR->muzzleOffset[0] = DotProduct( d, aim[0] );
+	cgVR->muzzleOffset[1] = DotProduct( d, aim[1] );
+	cgVR->muzzleOffset[2] = DotProduct( d, aim[2] );
+	cgVR->muzzleValid = qtrue;
+	VectorCopy( muzzle, cgvr.muzzle );
+}
+
+// weapons held in one hand: the off hand grip doesn't turn them into a rifle hold
+static qboolean CG_VR_OneHanded( int weapon ) {
+	switch ( weapon ) {
+	case WP_NONE:
+	case WP_KNIFE:
+	case WP_LUGER:
+	case WP_SILENCER:
+	case WP_COLT:
+	case WP_TT33:
+	case WP_REVOLVER:
+	case WP_HDM:
+	case WP_AKIMBO:
+	case WP_DUAL_TT33:
+	case WP_GRENADE_LAUNCHER:
+	case WP_GRENADE_PINEAPPLE:
+	case WP_DYNAMITE:
+	case WP_DYNAMITE_ENG:
+	case WP_AIRSTRIKE:
+	case WP_ARTY:
+	case WP_POISONGAS:
+	case WP_SMOKETRAIL:
+	case WP_SMOKE_BOMB:
+	case WP_HOLYCROSS:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
+// weapons that fire bullets or projectiles along the barrel get an aim reticle
+static qboolean CG_VR_HasReticle( int weapon ) {
+	return !CG_VR_OneHanded( weapon ) || weapon == WP_LUGER || weapon == WP_SILENCER || weapon == WP_COLT ||
+		   weapon == WP_TT33 || weapon == WP_REVOLVER || weapon == WP_HDM || weapon == WP_AKIMBO ||
+		   weapon == WP_DUAL_TT33;
+}
+
+/*
+=================
+CG_VR_AddReticle
+
+A dot where the shot would land: traced from the muzzle along the aim, like the server
+fires it. Kept at the same apparent size at any distance.
+=================
+*/
+void CG_VR_AddReticle( void ) {
+	refEntity_t ent;
+	trace_t tr;
+	vec3_t start, end, aim[3], toEye;
+	int weapon = cg.predictedPlayerState.weapon;
+	float dist;
+
+	trap_Cvar_Update( &vr_reticle );
+	if ( !cgvr.active || !vr_reticle.integer || cgVR->menuPointer || cg.cameraMode ||
+		 !CG_VR_HasReticle( weapon ) || cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 ) {
+		return;
+	}
+
+	AnglesToAxis( cgvr.weaponAngles, aim );
+	if ( cgVR->muzzleValid ) {
+		VectorCopy( cgvr.muzzle, start );
+	} else {
+		VectorCopy( cgvr.handOrigin[CG_VR_DominantHand()], start );
+	}
+	VectorMA( start, 8192, aim[0], end );
+	CG_Trace( &tr, start, NULL, NULL, end, cg.predictedPlayerState.clientNum, MASK_SHOT );
+	if ( tr.startsolid ) {
+		return;
+	}
+
+	// pull it a little towards the viewer so it doesn't sink into the surface
+	VectorSubtract( cg.refdef.vieworg, tr.endpos, toEye );
+	dist = VectorNormalize( toEye );
+	memset( &ent, 0, sizeof( ent ) );
+	ent.reType = RT_SPRITE;
+	VectorMA( tr.endpos, 2.0f, toEye, ent.origin );
+	ent.radius = dist * 0.006f;     // about 0.7 degrees across
+	if ( ent.radius < 0.4f ) {
+		ent.radius = 0.4f;
+	}
+	ent.customShader = cgs.media.crosshairShader[0];
+	ent.shaderRGBA[0] = 255;
+	ent.shaderRGBA[1] = 255;
+	ent.shaderRGBA[2] = 255;
+	ent.shaderRGBA[3] = 255;
+	ent.renderfx = RF_DEPTHHACK | RF_FIRST_PERSON;
+	trap_R_AddRefEntityToScene( &ent );
 }
 
 /*

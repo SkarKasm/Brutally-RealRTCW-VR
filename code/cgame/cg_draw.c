@@ -2671,6 +2671,12 @@ static void CG_DrawCrosshair( void ) {
 	float w, h;
 	qhandle_t hShader;
 	float f;
+
+	// RealRTCW-VR: a screen crosshair means nothing with a hand held gun, the reticle is
+	// drawn in the world where the gun points (CG_VR_AddReticle)
+	if ( cgvr.active ) {
+		return;
+	}
 	float x, y;
 	int weapnum;                // DHM - Nerve
 	vec4_t hcolor = {1, 1, 1, 1};

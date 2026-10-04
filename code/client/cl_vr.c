@@ -1290,7 +1290,7 @@ static void VR_UpdateTracking( void ) {
 		com_vr.weaponAngles[PITCH] += vr_weaponPitch->value;
 
 		com_vr.twoHanded = qfalse;
-		if ( com_vr.handValid[!dom] && xr.hands[!dom].down[VRB_SQUEEZE] ) {
+		if ( com_vr.handValid[!dom] && xr.hands[!dom].down[VRB_SQUEEZE] && com_vr.twoHandAllowed ) {
 			vec3_t dir, ang;
 			VectorSubtract( com_vr.handOrigin[!dom], com_vr.handOrigin[dom], dir );
 			// only when the off hand is actually in front of the gun hand

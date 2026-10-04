@@ -71,6 +71,10 @@ typedef struct vrShared_s {
 	int     cutscene;           // scripted camera active, head look is free
 	float   eyeHeight;          // eye height above ps->origin used for the view (game units)
 	int     zoomed;             // scope / binocular view active
+	int     twoHandAllowed;     // current weapon can be steadied with the off hand (not pistols)
+	int     muzzleValid;        // muzzleOffset is set
+	vec3_t  muzzleOffset;       // gun muzzle relative to the weapon hand, in the aim frame
+	                            // (forward, left, up; game units), so shots leave the barrel
 
 	//
 	// haptics: cgame/game request a pulse, the engine plays and clears it

@@ -311,6 +311,10 @@ typedef struct {
 
 	float xyspeed;
 
+	// RealRTCW-VR: aim comes from a tracked controller, whose constant small motion must not
+	// count as the player swinging the view around
+	int vrAim;
+
 	// for fixed msec Pmove
 	int pmove_fixed;
 	int pmove_msec;

@@ -1866,6 +1866,22 @@ qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out ) {
 
 	trap_Trace( &tr, eye, NULL, NULL, end, ent->s.number, MASK_SHOT );
 	VectorCopy( tr.endpos, out );
+
+	// from the hand out to the gun's muzzle, as drawn by cgame (not for the knife, its
+	// blade is handled from the hand by G_VR_KnifeStab)
+	if ( gVR->muzzleValid && ent->client->ps.weapon != WP_KNIFE && tr.fraction == 1.0f ) {
+		vec3_t angles, axis[3], muzzle;
+
+		// the aim in world space: pitch/roll from the hand, yaw from the usercmd
+		VectorSet( angles, gVR->weaponAngles[PITCH], ent->client->ps.viewangles[YAW], gVR->weaponAngles[ROLL] );
+		AnglesToAxis( angles, axis );
+		VectorCopy( out, muzzle );
+		VectorMA( muzzle, gVR->muzzleOffset[0], axis[0], muzzle );
+		VectorMA( muzzle, gVR->muzzleOffset[1], axis[1], muzzle );
+		VectorMA( muzzle, gVR->muzzleOffset[2], axis[2], muzzle );
+		trap_Trace( &tr, out, NULL, NULL, muzzle, ent->s.number, MASK_SHOT );
+		VectorCopy( tr.endpos, out );
+	}
 	return qtrue;
 }
 
