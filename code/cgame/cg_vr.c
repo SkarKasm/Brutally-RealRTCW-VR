@@ -118,6 +118,74 @@ void CG_VR_AddHands( void ) {
 
 /*
 =================
+CG_VR_ReloadSounds
+
+The weapon's own reload recording, cut into its clicks by make_vr_assets.py, played as
+the player does each step by hand.
+=================
+*/
+#define VR_SND_OUT  0
+#define VR_SND_IN   1
+#define VR_SND_RACK 2
+
+static void CG_VR_ReloadSound( int weapon, int which ) {
+	static sfxHandle_t sounds[WP_NUM_WEAPONS][3];
+	static qboolean registered[WP_NUM_WEAPONS];
+	static const char *names[3] = { "out", "in", "rack" };
+	char base[MAX_QPATH];
+	fileHandle_t f;
+	int i;
+
+	if ( weapon <= WP_NONE || weapon >= WP_NUM_WEAPONS ) {
+		return;
+	}
+	if ( !registered[weapon] ) {
+		registered[weapon] = qtrue;
+		COM_StripExtension( BG_GetWeaponFilename( weapon ), base, sizeof( base ) );
+		for ( i = 0; i < 3; i++ ) {
+			const char *path = va( "vr/sound/%s_%s.wav", base, names[i] );
+			if ( trap_FS_FOpenFile( path, &f, FS_READ ) > 0 ) {
+				trap_FS_FCloseFile( f );
+				sounds[weapon][i] = trap_S_RegisterSound( path );
+			}
+		}
+	}
+	if ( sounds[weapon][which] ) {
+		trap_S_StartLocalSound( sounds[weapon][which], CHAN_ITEM );
+	}
+}
+
+static void CG_VR_ReloadSounds( void ) {
+	static int lastWeapon = -1, lastClip, lastMagOut, lastChambered;
+	static qboolean rackPlayed;
+	int weapon = cg.predictedPlayerState.weapon;
+	int clip = cg.predictedPlayerState.ammoclip[BG_FindClipForWeapon( weapon )];
+
+	if ( weapon == lastWeapon && cgVR->manualReload ) {
+		if ( cgVR->magOut && !lastMagOut ) {
+			CG_VR_ReloadSound( weapon, VR_SND_OUT );
+		} else if ( ( !cgVR->magOut && lastMagOut ) || ( clip > lastClip && !cgVR->magOut ) ) {
+			CG_VR_ReloadSound( weapon, VR_SND_IN );
+		}
+		// the action was worked: once per pull, whether or not it chambered a round
+		if ( cgVR->chargeHeld && cgVR->chargePull >= 0.6f && !rackPlayed ) {
+			CG_VR_ReloadSound( weapon, VR_SND_RACK );
+			rackPlayed = qtrue;
+		} else if ( cgVR->chambered && !lastChambered && !rackPlayed ) {
+			CG_VR_ReloadSound( weapon, VR_SND_RACK );   // e.g. the Garand's bolt closing on a clip
+		}
+	}
+	if ( !cgVR->chargeHeld ) {
+		rackPlayed = qfalse;
+	}
+	lastWeapon = weapon;
+	lastClip = clip;
+	lastMagOut = cgVR->magOut;
+	lastChambered = cgVR->chambered;
+}
+
+/*
+=================
 CG_VR_BeginFrame
 =================
 */
@@ -127,6 +195,8 @@ void CG_VR_BeginFrame( void ) {
 	if ( !cgvr.active ) {
 		return;
 	}
+
+	CG_VR_ReloadSounds();
 
 	cgVR->cutscene = cg.cameraMode;
 	cgVR->twoHandAllowed = !CG_VR_OneHanded( cg.predictedPlayerState.weapon );
@@ -392,6 +462,19 @@ qboolean CG_VR_Inspect( playerState_t *ps ) {
 	CG_VR_Geom( ps->weapon, &geom );
 	AxisCopy( hand.axis, axis );
 	CG_VR_Marker( cgvr.handOrigin[dom], 255, 255, 0 );
+	// ruler along the gun from the grip: a tick every 5 units, brighter every 10
+	{
+		int k;
+		for ( k = -6; k <= 10; k++ ) {
+			byte c = ( k % 2 ) ? 110 : 255;
+			if ( k == 0 ) {
+				continue;
+			}
+			VectorMA( cgvr.handOrigin[dom], k * 5.0f, axis[0], p );
+			VectorMA( p, -6.0f, axis[2], p );
+			CG_VR_Marker( p, c, c, c );
+		}
+	}
 	BG_VR_ModelPoint( hand.origin, axis, geom.mag, p );
 	CG_VR_Marker( p, 255, 40, 40 );
 	BG_VR_ModelPoint( hand.origin, axis, geom.charge, p );

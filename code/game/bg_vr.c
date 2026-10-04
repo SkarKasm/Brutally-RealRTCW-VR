@@ -191,6 +191,10 @@ void BG_VR_WeaponGeom( int weapon, qboolean vanillaGuns, vrWeaponGeom_t *out ) {
 		// stripper clips load from the top of the receiver, in front of the bolt
 		VectorSet( out->mag, out->charge[0] + 3, out->charge[1], out->charge[2] + 3 );
 		VectorSet( out->magDir, 0, 0, 1 );
+	} else if ( cls == VRR_REVOLVER ) {
+		// the cylinder sits above and in front of the grip
+		VectorSet( out->mag, out->grip[0] + 6, out->grip[1], out->grip[2] + 4 );
+		VectorSet( out->magDir, 0, 1, 0 );
 	} else if ( out->magPart < 0 ) {
 		VectorSet( out->mag, out->grip[0] + 6, out->grip[1], out->grip[2] - 4 );
 		VectorSet( out->magDir, 0, 0, -1 );

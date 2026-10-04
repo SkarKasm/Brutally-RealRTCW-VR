@@ -290,54 +290,95 @@ def reload_geometry(paks, info):
     slide / bolt piece (travels backwards along the gun), as
     (magPart, magPoint, magLocal, magDir, chargePart, chargePoint, chargeDir, travel)."""
     anims = weapon_anims(paks, info["config"])
-    reloads = [a for a in anims if "RELOAD" in a[2]]
-    if not anims or not reloads:
+    actions = [a for a in anims if "RELOAD" in a[2] or "ATTACK" in a[2]]
+    if not anims or not actions:
         return None
     idle = piece_centroids(paks, info, anims[0][0])
-    first, length, _ = reloads[0]
-    moves = {}
-    for f in range(first, first + length, max(1, length // 16)):
-        cur = piece_centroids(paks, info, f)
-        for owner, (c, _l) in cur.items():
-            if owner == "gun" or owner not in idle:
+    idle_gun = gun_frame(paks, info, anims[0][0])
+    if not idle_gun:
+        return None
+
+    # Motion of every piece relative to the gun body: during a reload the whole gun also
+    # moves and tilts, which would otherwise read as the bolt moving into the gun. Reloads
+    # show magazines coming out; the bolt / pump cycling is often in the fire animation.
+    moves = {}      # owner -> {"reload"/"attack": (dist, d in gun space)}
+    for first, length, name in actions:
+        kind = "reload" if "RELOAD" in name else "attack"
+        for f in range(first, first + length, max(1, length // 16)):
+            cur = piece_centroids(paks, info, f)
+            gun = gun_frame(paks, info, f)
+            if not gun:
                 continue
-            d = [c[k] - idle[owner][0][k] for k in range(3)]
-            dist = math.sqrt(sum(x * x for x in d))
-            if dist > moves.get(owner, (0.0, None))[0]:
-                moves[owner] = (dist, d)
+            for owner, (c, _l) in cur.items():
+                if owner == "gun" or owner not in idle:
+                    continue
+                a = to_local(gun, c)
+                b = to_local(idle_gun, idle[owner][0])
+                d = [a[k] - b[k] for k in range(3)]
+                dist = math.sqrt(sum(x * x for x in d))
+                best = moves.setdefault(owner, {})
+                if dist > best.get(kind, (0.0, None))[0]:
+                    best[kind] = (dist, d)
 
     def on_screen(p):
         return 0.0 < p[0] < 60.0
-
-    mag = None
-    for owner, (dist, d) in moves.items():
-        if dist > 8.0 and d[2] < -4.0 and on_screen(idle[owner][0]):
-            if mag is None or dist > moves[mag][0]:
-                mag = owner
-    charge = None
-    for owner, (dist, d) in moves.items():
-        if owner == mag or not on_screen(idle[owner][0]):
-            continue
-        if 2.0 < dist < 20.0 and d[0] < -2.0 and -d[0] > 0.5 * dist:
-            if charge is None or -d[0] > -moves[charge][1][0]:
-                charge = owner
 
     def unit(v):
         n = math.sqrt(sum(x * x for x in v)) or 1.0
         return [x / n for x in v]
 
-    # a "magazine" that mostly travels backwards is a bolt (bolt action rifles)
-    if mag is not None and charge is None:
-        d = unit(moves[mag][1])
-        if d[0] < -0.6:
-            charge, mag = mag, None
+    mag = None
+    for owner, m in moves.items():
+        if "reload" not in m or not on_screen(idle[owner][0]):
+            continue
+        dist, d = m["reload"]
+        # the biggest mover that isn't sliding straight back (side magazines, shells and
+        # revolver rounds move every which way)
+        if dist > 8.0 and -d[0] < 0.85 * dist:
+            if mag is None or dist > moves[mag]["reload"][0]:
+                mag = owner
+
+    # slide / bolt / pump: slides back along the gun (straight back, a little either way)
+    charge, charge_back = None, 0.0
+    for owner, m in moves.items():
+        if owner == mag or not on_screen(idle[owner][0]):
+            continue
+        for kind in ("attack", "reload"):
+            if kind not in m:
+                continue
+            dist, d = m[kind]
+            if 2.0 < dist < 20.0 and -d[0] > 0.6 * dist and -d[0] > charge_back:
+                charge, charge_back = owner, -d[0]
 
     out = [-1, [0, 0, 0], [0, 0, 0], [0, 0, -1], -1, [0, 0, 0], [-1, 0, 0], 0.0]
     if mag is not None:
-        out[0:4] = [int(mag), idle[mag][0], idle[mag][1], unit(moves[mag][1])]
+        # direction back out of gun space into camera space at the idle frame
+        out[0:4] = [int(mag), idle[mag][0], idle[mag][1], unit(dir_to_camera(idle_gun, moves[mag]["reload"][1]))]
     if charge is not None:
-        out[4:8] = [int(charge), idle[charge][0], unit(moves[charge][1]), min(moves[charge][0], 10.0)]
+        # always straight back along the gun body
+        out[4:8] = [int(charge), idle[charge][0], unit(dir_to_camera(idle_gun, [-1.0, 0.0, 0.0])),
+                    min(max(charge_back, 4.0), 10.0)]
     return out
+
+
+def gun_frame(paks, info, frame):
+    """(origin, axis) of the gun body (tag_weapon of the hands model) at a frame."""
+    data = paks.read(info["hands"]) if info["hands"] else None
+    if not data:
+        return None
+    tags = Model(data, frame).tags
+    return tags.get("tag_weapon")
+
+
+def to_local(frame, p):
+    o, a = frame
+    d = [p[k] - o[k] for k in range(3)]
+    return [sum(d[k] * a[i][k] for k in range(3)) for i in range(3)]
+
+
+def dir_to_camera(frame, v):
+    _o, a = frame
+    return [v[0] * a[0][k] + v[1] * a[1][k] + v[2] * a[2][k] for k in range(3)]
 
 
 def barrel_correction(pieces):
@@ -362,6 +403,19 @@ def barrel_correction(pieces):
         return 0.0, 0.0     # not a long gun body, leave it
     return -pitch, -yaw
 
+
+# Grips moved along the gun (game units, + forward) where the automatic estimate is off,
+# measured with the in-game inspector (vr_inspect 1, ruler ticks every 5 units).
+GRIP_SHIFT = {
+    "weapons/mp34.weap": -6.0,
+    "weapons/ppsh.weap": 7.0,
+    "weapons/mauser.weap": -7.0,
+    "weapons/sniperrifle.weap": -7.0,
+    "weapons/mosin.weap": -13.0,
+    "weapons/g43.weap": -13.0,
+    "weapons/garand.weap": -12.0,
+    "weapons/snooper.weap": -12.0,
+}
 
 # on guns where both hands are on screen (MP40, Thompson) the trigger hand sits about this
 # far behind the support hand
@@ -464,6 +518,118 @@ def hand_model(pieces, owner):
 
 # ---------------------------------------------------------------- main
 
+# ---------------------------------------------------------------- sounds
+
+def read_wav(data):
+    """(params, mono-ish sample list for analysis, raw frames) of a 16 bit wav, or None."""
+    import io
+    import wave
+    try:
+        w = wave.open(io.BytesIO(data))
+    except (wave.Error, EOFError):
+        return None
+    if w.getsampwidth() != 2:
+        return None
+    params = w.getparams()
+    frames = w.readframes(w.getnframes())
+    samples = struct.unpack("<%dh" % (len(frames) // 2), frames)[::params.nchannels]
+    return params, samples, frames
+
+
+def sound_events(params, samples):
+    """Times (s) of the sharp mechanical clicks in a recording."""
+    rate = params.framerate
+    win = max(1, int(rate * 0.01))
+    env = [max(abs(x) for x in samples[i:i + win]) for i in range(0, len(samples) - win, win)]
+    if not env:
+        return []
+    peak = max(env) or 1
+    events, last = [], -100
+    for i, e in enumerate(env):
+        prev = max(env[max(0, i - 5):i] or [0])
+        if e > 0.25 * peak and e > 2.5 * prev + 200 and i - last > 8:
+            events.append(i * 0.01)
+            last = i
+    return events
+
+
+def cut_wav(params, frames, start, end):
+    """A slice of a recording as a new wav, with a short fade at the end."""
+    import io
+    import wave
+    bpf = params.nchannels * 2
+    total = len(frames) // bpf
+    a = max(0, int(start * params.framerate))
+    b = min(total, int(end * params.framerate))
+    if b <= a:
+        return None
+    chunk = list(struct.unpack("<%dh" % ((b - a) * params.nchannels), frames[a * bpf:b * bpf]))
+    fade = min(len(chunk) // params.nchannels, int(0.02 * params.framerate))
+    for i in range(fade):
+        f = i / float(fade)
+        for c in range(params.nchannels):
+            k = len(chunk) - (i + 1) * params.nchannels + c
+            chunk[k] = int(chunk[k] * f)
+    out = io.BytesIO()
+    w = wave.open(out, "wb")
+    w.setnchannels(params.nchannels)
+    w.setsampwidth(2)
+    w.setframerate(params.framerate)
+    w.writeframes(struct.pack("<%dh" % len(chunk), *chunk))
+    w.close()
+    return out.getvalue()
+
+
+# shotguns have separate recordings for the pump and for a shell going in
+SHOTGUN_SOUNDS = {
+    "ithaca.weap": ("sound/weapons/ithaca/ithaca_reload.wav", "sound/weapons/ithaca/ithaca_pump_reload_fast.wav"),
+}
+
+
+def reload_sounds(paks, weap_name, weap_text):
+    """{"out"/"in"/"rack": wav bytes} cut from the weapon's own reload recording."""
+    base = os.path.basename(weap_name)
+    out = {}
+    if base in SHOTGUN_SOUNDS:
+        shell_path, pump_path = SHOTGUN_SOUNDS[base]
+        for key, path in (("in", shell_path), ("rack", pump_path)):
+            data = paks.read(path)
+            wav = read_wav(data) if data else None
+            if wav:
+                params, samples, frames = wav
+                ev = sound_events(params, samples)
+                start = max(0.0, (ev[-1] if key == "rack" and ev else 0.0) - 0.08)
+                clip = cut_wav(params, frames, start, start + 0.9)
+                if clip:
+                    out[key] = clip
+        return out
+
+    m = re.search(r'^\s*reloadSound\s+"([^"]+)"', weap_text, re.M)
+    data = paks.read(m.group(1)) if m else None
+    wav = read_wav(data) if data else None
+    if not wav:
+        return out
+    params, samples, frames = wav
+    length = len(samples) / float(params.framerate)
+    ev = sound_events(params, samples)
+    if not ev:
+        return out
+
+    # first click: the magazine coming out; middle: going in; last pair: slide / bolt
+    rack_at = ev[-2] if len(ev) >= 3 and ev[-1] - ev[-2] < 0.3 else ev[-1]
+    in_at = ev[len(ev) // 2] if len(ev) >= 3 else ev[-1]
+    picks = {
+        "out": (ev[0], min(ev[1] if len(ev) > 1 else length, ev[0] + 0.5)),
+        "in": (in_at, min(in_at + 0.45, rack_at if rack_at > in_at else length)),
+        "rack": (rack_at, min(length, rack_at + 0.8)),
+    }
+    for key, (a, b) in picks.items():
+        clip = cut_wav(params, frames, max(0.0, a - 0.03), b)
+        if clip:
+            out[key] = clip
+    return out
+
+
 WEAPONS_CFG_HEADER = """// RealRTCW-VR weapon geometry, generated by misc/vr/make_vr_assets.py, read by bg_vr.c.
 // Points are in first person model space (forward left up, game units) at the idle frame.
 //
@@ -486,8 +652,14 @@ def main():
     paks = Paks(main_dir)
 
     grips = []
+    sounds = {}
     for name in sorted(n for n in paks.names() if n.startswith("weapons/") and n.endswith(".weap")):
-        info = parse_weap(paks.read(name).decode(errors="replace"))
+        text = paks.read(name).decode(errors="replace")
+        info = parse_weap(text)
+        if not name.startswith("weapons/vanilla/"):
+            base = os.path.splitext(os.path.basename(name))[0]
+            for key, wav in reload_sounds(paks, name, re.sub(r"//[^\n]*", "", text)).items():
+                sounds["vr/sound/%s_%s.wav" % (base, key)] = wav
         try:
             pieces = pose_weapon(paks, info)
         except (ValueError, struct.error, IndexError) as e:
@@ -496,6 +668,7 @@ def main():
         palm = find_grip(pieces)
         if not palm:
             continue
+        palm = [palm[0] + GRIP_SHIFT.get(name, 0.0), palm[1], palm[2]]
         if os.path.basename(name) in MELEE:
             pitch, yaw = blade_correction(pieces, palm)
         else:
@@ -517,6 +690,9 @@ def main():
         out.writestr("models/vr/hand_r.md3", write_md3("models/vr/hand_r.md3", right, right_centre))
         out.writestr("models/vr/hand_l.md3", write_md3("models/vr/hand_l.md3", left, left_centre))
         out.writestr("vr/weapons.cfg", WEAPONS_CFG_HEADER + "\n".join(grips) + "\n")
+        for path, wav in sorted(sounds.items()):
+            out.writestr(path, wav)
+    print("cut %d reload sounds" % len(sounds))
     print("wrote %s: %d weapon grips" % (out_pk3, len(grips)))
 
 
