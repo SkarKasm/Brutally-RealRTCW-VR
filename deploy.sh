@@ -1,0 +1,11 @@
+#!/bin/bash
+# Copy build outputs into ./run (the runtime folder used by run_vr.bat).
+cd "$(dirname "$0")"
+B=build/release-mingw64-x86_64-nosteam
+mkdir -p run/main
+cp -u $B/RealRTCW.x64.exe $B/renderer_sp_opengl1_x64.dll $B/SDL3.dll $B/OpenAL64.dll run/
+cp -u $B/main/*.dll run/main/
+for f in openxr_loader.dll libopenxr_loader.dll; do
+  [ -f "$B/$f" ] && cp -u "$B/$f" run/
+done
+echo "deployed to $(pwd)/run"

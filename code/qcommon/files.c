@@ -283,6 +283,9 @@ static  cvar_t          *fs_apppath;
 #ifdef STEAM
 static	cvar_t		*fs_steampath;
 static	cvar_t		*fs_workshop;
+#elif defined(_WIN32)
+// RealRTCW-VR: non-Steam builds locate the vanilla RTCW paks (pak0, sp_pak*) through the Steam libraries
+static	cvar_t		*fs_rtcwpath;
 #endif
 
 static cvar_t      *fs_basepath;
@@ -4321,6 +4324,8 @@ static void FS_Startup( const char *gameName )
 #ifdef STEAM
 	fs_steampath = Cvar_Get ("fs_steampath", Sys_SteamPath(), CVAR_INIT|CVAR_PROTECTED );
 	fs_workshop = Cvar_Get("fs_workshop", Sys_SteamWorkshopPath(), CVAR_INIT|CVAR_PROTECTED );
+#elif defined(_WIN32)
+	fs_rtcwpath = Cvar_Get ("fs_rtcwpath", Sys_SteamPath(), CVAR_INIT|CVAR_PROTECTED );
 #endif
 #ifdef __APPLE__
 	fs_apppath = Cvar_Get ("fs_apppath", Sys_DefaultAppPath(), CVAR_INIT|CVAR_PROTECTED );
@@ -4341,6 +4346,10 @@ static void FS_Startup( const char *gameName )
 		FS_AddGameDirectory( fs_workshop->string, gameName );
 	}
 	FS_AddModDirectories();
+#elif defined(_WIN32)
+	if (fs_rtcwpath->string[0] && Q_stricmp(fs_rtcwpath->string, fs_basepath->string)) {
+		FS_AddGameDirectory( fs_rtcwpath->string, gameName );
+	}
 #endif
 
 
