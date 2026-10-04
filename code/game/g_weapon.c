@@ -96,7 +96,7 @@ something fast enough. Every usercmd the blade is swept from where its tip was o
 previous command to where it is now, plus along its length.
 ==============
 */
-#define VR_KNIFE_BLADE      12.0f   // hand to tip, game units
+#define VR_KNIFE_BLADE      18.0f   // hand to tip, game units (matches the first person knife)
 #define VR_KNIFE_SPEED      1.2f    // metres per second needed to cut
 #define VR_KNIFE_COOLDOWN   350     // msec between hits
 

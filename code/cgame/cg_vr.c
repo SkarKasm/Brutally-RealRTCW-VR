@@ -52,22 +52,95 @@ int CG_VR_DominantHand( void ) {
 CG_VR_Init
 =================
 */
+/*
+=================
+CG_VR_LoadGrips
+
+vr/weapon_grips.cfg (built by misc/vr/make_vr_assets.py): for each .weap file, the point
+of the first person model where the trigger hand holds it, "forward left up".
+=================
+*/
+#define VR_MAX_GRIPS 128
+
+static struct {
+	char    weap[MAX_QPATH];
+	vec3_t  grip;
+	float   pitch, yaw;     // straightens melee weapons that are held at an angle
+} vrGrips[VR_MAX_GRIPS];
+static int numVRGrips;
+
+static void CG_VR_LoadGrips( void ) {
+	static char buf[16384];
+	fileHandle_t f;
+	int len;
+	char *p, *tok;
+
+	numVRGrips = 0;
+	len = trap_FS_FOpenFile( "vr/weapon_grips.cfg", &f, FS_READ );
+	if ( len <= 0 ) {
+		CG_Printf( S_COLOR_YELLOW "VR: vr/weapon_grips.cfg missing, guns use a default grip\n" );
+		return;
+	}
+	if ( len >= (int)sizeof( buf ) ) {
+		len = sizeof( buf ) - 1;
+	}
+	trap_FS_Read( buf, len, f );
+	buf[len] = 0;
+	trap_FS_FCloseFile( f );
+
+	p = buf;
+	while ( numVRGrips < VR_MAX_GRIPS ) {
+		tok = COM_Parse( &p );
+		if ( !tok[0] ) {
+			break;
+		}
+		Q_strncpyz( vrGrips[numVRGrips].weap, tok, sizeof( vrGrips[0].weap ) );
+		vrGrips[numVRGrips].grip[0] = atof( COM_Parse( &p ) );
+		vrGrips[numVRGrips].grip[1] = atof( COM_Parse( &p ) );
+		vrGrips[numVRGrips].grip[2] = atof( COM_Parse( &p ) );
+		vrGrips[numVRGrips].pitch = atof( COM_ParseExt( &p, qfalse ) );
+		vrGrips[numVRGrips].yaw = atof( COM_ParseExt( &p, qfalse ) );
+		numVRGrips++;
+	}
+}
+
+// grip point for the first person model of a weapon, qfalse if unknown
+static qboolean CG_VR_WeaponGrip( int weapon, vec3_t grip, float *pitch, float *yaw ) {
+	const char *file = BG_GetWeaponFilename( weapon );
+	const char *weap;
+	int i;
+
+	if ( !file || !*file ) {
+		return qfalse;
+	}
+	// the same choice CG_RegisterWeapon makes
+	weap = cg_vanilla_guns.integer ? va( "weapons/vanilla/%s", file ) : va( "weapons/%s", file );
+	for ( i = 0; i < numVRGrips; i++ ) {
+		if ( !Q_stricmp( vrGrips[i].weap, weap ) ) {
+			VectorCopy( vrGrips[i].grip, grip );
+			*pitch = vrGrips[i].pitch;
+			*yaw = vrGrips[i].yaw;
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
 void CG_VR_Init( void ) {
 	vmCvar_t dummy;
 
 	memset( &cgvr, 0, sizeof( cgvr ) );
 
-	// Grip offset of the first person hand+gun models, model units:
-	// "forward left up pitch yaw roll". The view models are built around the camera, so this
-	// is roughly where the gun hand sits relative to the eye in the flat game. A weapon can
-	// get its own line with vr_weaponAdjust_<weapon number>.
-	trap_Cvar_Register( &dummy, "vr_weaponAdjust", "14 -6 -10 0 0 0", CVAR_ARCHIVE );
+	// Fine tuning on top of the measured grip, "forward left up pitch yaw roll" in model
+	// units/degrees. vr_gunOffset_<weapon number> applies to a single weapon.
+	trap_Cvar_Register( &dummy, "vr_gunOffset", "0 0 0 0 0 0", CVAR_ARCHIVE );
 	trap_Cvar_Register( &dummy, "vr_laserPointerColor", "1 0.25 0.15", CVAR_ARCHIVE );
 	trap_Cvar_Register( &vr_drawHands, "vr_drawHands", "1", CVAR_ARCHIVE );
 
 	// built by misc/vr/make_vr_assets.py into main/z_vr_assets.pk3
 	cgvr.handModel[VR_HAND_LEFT] = trap_R_RegisterModel( "models/vr/hand_l.md3" );
 	cgvr.handModel[VR_HAND_RIGHT] = trap_R_RegisterModel( "models/vr/hand_r.md3" );
+	CG_VR_LoadGrips();
 }
 
 // tracked hand models are available and wanted
@@ -206,29 +279,35 @@ Where to draw the first person hands+gun model so its grip sits in the player's 
 */
 void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t angles ) {
 	char buf[MAX_CVAR_VALUE_STRING];
-	float adj[6] = { 14, -6, -10, 0, 0, 0 };
-	vec3_t fwd, right, up;
+	float adj[6] = { 0, 0, 0, 0, 0, 0 };
+	vec3_t grip = { 14, -6, -10 }, fwd, right, up;
+	float gripPitch = 0, gripYaw = 0;
 	int dom = CG_VR_DominantHand();
 
-	trap_Cvar_VariableStringBuffer( va( "vr_weaponAdjust_%d", weapon ), buf, sizeof( buf ) );
+	CG_VR_WeaponGrip( weapon, grip, &gripPitch, &gripYaw );
+
+	trap_Cvar_VariableStringBuffer( va( "vr_gunOffset_%d", weapon ), buf, sizeof( buf ) );
 	if ( !buf[0] ) {
-		trap_Cvar_VariableStringBuffer( "vr_weaponAdjust", buf, sizeof( buf ) );
+		trap_Cvar_VariableStringBuffer( "vr_gunOffset", buf, sizeof( buf ) );
 	}
 	if ( buf[0] ) {
 		sscanf( buf, "%f %f %f %f %f %f", &adj[0], &adj[1], &adj[2], &adj[3], &adj[4], &adj[5] );
 	}
+	grip[0] -= adj[0];
+	grip[1] -= adj[1];
+	grip[2] -= adj[2];
 
 	VectorCopy( cgvr.weaponAngles, angles );
-	angles[PITCH] += adj[3];
-	angles[YAW] += adj[4];
+	angles[PITCH] += adj[3] + gripPitch;
+	angles[YAW] += adj[4] + gripYaw;
 	angles[ROLL] += adj[5];
 
-	// move the model back so its grip point lands on the hand
+	// move the model so its grip point lands on the palm
 	AngleVectors( angles, fwd, right, up );
 	VectorCopy( cgvr.handOrigin[dom], origin );
-	VectorMA( origin, -adj[0], fwd, origin );
-	VectorMA( origin, adj[1], right, origin );      // +left in the cvar is -right
-	VectorMA( origin, -adj[2], up, origin );
+	VectorMA( origin, -grip[0], fwd, origin );
+	VectorMA( origin, grip[1], right, origin );     // +left is -right
+	VectorMA( origin, -grip[2], up, origin );
 }
 
 /*

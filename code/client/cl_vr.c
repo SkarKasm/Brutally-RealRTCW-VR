@@ -1271,10 +1271,16 @@ static void VR_UpdateTracking( void ) {
 
 	VR_PoseToPlay( &xr.head, com_vr.hmdOrigin, com_vr.hmdAngles );
 
+	// hands sit at the grip pose (the palm), but point along the aim pose: the grip pose's
+	// forward axis runs up the controller handle, the aim pose points like a gun barrel
 	for ( h = 0; h < 2; h++ ) {
 		com_vr.handValid[h] = xr.hands[h].gripValid;
 		if ( xr.hands[h].gripValid ) {
 			VR_PoseToPlay( &xr.hands[h].grip, com_vr.handOrigin[h], com_vr.handAngles[h] );
+			if ( xr.hands[h].aimValid ) {
+				vec3_t unused;
+				VR_PoseToPlay( &xr.hands[h].aim, unused, com_vr.handAngles[h] );
+			}
 		}
 	}
 
@@ -1706,6 +1712,25 @@ void CL_VR_ProcessInput( void ) {
 	}
 
 	off = vr_rightHanded->integer ? VR_HAND_LEFT : VR_HAND_RIGHT;
+
+	// cutscenes and videos: any face button or trigger skips them (the engine treats
+	// Escape as "skip" while they play)
+	if ( ( cl.cameraMode || SCR_LevelCinematicActive() || clc.state == CA_CINEMATIC ) &&
+		 !( Key_GetCatcher() & ( KEYCATCH_UI | KEYCATCH_CONSOLE ) ) ) {
+		int h;
+		qboolean skip = qfalse;
+
+		for ( h = 0; h < 2; h++ ) {
+			skip |= VR_Pressed( h, VRB_TRIGGER ) || VR_Pressed( h, VRB_LOWER ) ||
+					VR_Pressed( h, VRB_UPPER ) || VR_Pressed( h, VRB_MENU );
+		}
+		if ( skip ) {
+			CL_KeyEvent( K_ESCAPE, qtrue, Sys_Milliseconds() );
+			CL_KeyEvent( K_ESCAPE, qfalse, Sys_Milliseconds() );
+		}
+		VR_ReleaseAllCommands();
+		return;
+	}
 
 	// left menu button toggles the game menu, whatever is going on
 	if ( VR_Pressed( VR_HAND_LEFT, VRB_MENU ) ) {
