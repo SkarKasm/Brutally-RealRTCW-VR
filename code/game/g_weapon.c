@@ -2023,6 +2023,9 @@ void FireWeapon( gentity_t *ent ) {
 	// Ridah, need to call this for AI prediction also
 	CalcMuzzlePoints( ent, ent->s.weapon );
 
+	// RealRTCW-VR: bolts / pumps need working after the shot, empty guns lock back
+	G_VR_OnFire( ent );
+
 	if ( g_userAim.integer ) {
 		aimSpreadScale = ent->client->currentAimSpreadScale;
 		// Ridah, add accuracy factor for AI

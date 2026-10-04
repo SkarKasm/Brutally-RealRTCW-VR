@@ -248,6 +248,121 @@ def pose_weapon(paks, info):
     return out
 
 
+def weapon_anims(paks, config):
+    """[(first, length, name)] from a weapon.cfg"""
+    data = paks.read(config) if config else None
+    out = []
+    if not data:
+        return out
+    for line in data.decode(errors="replace").splitlines():
+        code, _, comment = line.partition("//")
+        nums = code.split()
+        if len(nums) >= 4 and nums[0].isdigit() and nums[1].isdigit():
+            out.append((int(nums[0]), int(nums[1]), comment.strip().upper()))
+    return out
+
+
+def piece_centroids(paks, info, frame):
+    """{owner: (camera space centroid, model local centroid)} of each piece's non-hand
+    geometry, with the hands model at the given frame."""
+    hands_data = paks.read(info["hands"]) if info["hands"] else None
+    if not hands_data:
+        return {}
+    hands = Model(hands_data, frame)
+    out = {}
+    pieces = [("gun", "tag_weapon", info["model"])] + [(str(i), t, p) for i, t, p in info["parts"]]
+    for owner, tag, path in pieces:
+        data = paks.read(path) if path else None
+        if not data or tag not in hands.tags:
+            continue
+        o, a = hands.tags[tag]
+        local = [p for s in Model(data, 0).surfaces
+                 if not any(w in s.name.lower() for w in SKIN_WORDS) for p, _n in s.verts]
+        if not local:
+            continue
+        lc = [sum(p[k] for p in local) / len(local) for k in range(3)]
+        out[owner] = (to_parent(o, a, lc), lc)
+    return out
+
+
+def reload_geometry(paks, info):
+    """From the reload animation: the magazine piece (drops down out of the gun) and the
+    slide / bolt piece (travels backwards along the gun), as
+    (magPart, magPoint, magLocal, magDir, chargePart, chargePoint, chargeDir, travel)."""
+    anims = weapon_anims(paks, info["config"])
+    reloads = [a for a in anims if "RELOAD" in a[2]]
+    if not anims or not reloads:
+        return None
+    idle = piece_centroids(paks, info, anims[0][0])
+    first, length, _ = reloads[0]
+    moves = {}
+    for f in range(first, first + length, max(1, length // 16)):
+        cur = piece_centroids(paks, info, f)
+        for owner, (c, _l) in cur.items():
+            if owner == "gun" or owner not in idle:
+                continue
+            d = [c[k] - idle[owner][0][k] for k in range(3)]
+            dist = math.sqrt(sum(x * x for x in d))
+            if dist > moves.get(owner, (0.0, None))[0]:
+                moves[owner] = (dist, d)
+
+    def on_screen(p):
+        return 0.0 < p[0] < 60.0
+
+    mag = None
+    for owner, (dist, d) in moves.items():
+        if dist > 8.0 and d[2] < -4.0 and on_screen(idle[owner][0]):
+            if mag is None or dist > moves[mag][0]:
+                mag = owner
+    charge = None
+    for owner, (dist, d) in moves.items():
+        if owner == mag or not on_screen(idle[owner][0]):
+            continue
+        if 2.0 < dist < 20.0 and d[0] < -2.0 and -d[0] > 0.5 * dist:
+            if charge is None or -d[0] > -moves[charge][1][0]:
+                charge = owner
+
+    def unit(v):
+        n = math.sqrt(sum(x * x for x in v)) or 1.0
+        return [x / n for x in v]
+
+    # a "magazine" that mostly travels backwards is a bolt (bolt action rifles)
+    if mag is not None and charge is None:
+        d = unit(moves[mag][1])
+        if d[0] < -0.6:
+            charge, mag = mag, None
+
+    out = [-1, [0, 0, 0], [0, 0, 0], [0, 0, -1], -1, [0, 0, 0], [-1, 0, 0], 0.0]
+    if mag is not None:
+        out[0:4] = [int(mag), idle[mag][0], idle[mag][1], unit(moves[mag][1])]
+    if charge is not None:
+        out[4:8] = [int(charge), idle[charge][0], unit(moves[charge][1]), min(moves[charge][0], 10.0)]
+    return out
+
+
+def barrel_correction(pieces):
+    """First person guns are angled a little towards the middle of a flat screen. Returns
+    the (pitch, yaw) that turns the gun body's long axis to point straight ahead."""
+    pts = [p for owner, s in pieces if owner == "gun" and not any(w in s.name.lower() for w in SKIN_WORDS)
+           for p, _n in s.verts]
+    if len(pts) < 10:
+        return 0.0, 0.0
+    c = [sum(p[k] for p in pts) / len(pts) for k in range(3)]
+    cov = [[sum((p[i] - c[i]) * (p[j] - c[j]) for p in pts) / len(pts) for j in range(3)] for i in range(3)]
+    v = [1.0, 0.0, 0.0]
+    for _ in range(50):     # power iteration: principal axis
+        w = [sum(cov[i][j] * v[j] for j in range(3)) for i in range(3)]
+        n = math.sqrt(sum(x * x for x in w)) or 1.0
+        v = [x / n for x in w]
+    if v[0] < 0:
+        v = [-x for x in v]
+    yaw = math.degrees(math.atan2(v[1], v[0]))
+    pitch = -math.degrees(math.atan2(v[2], math.hypot(v[0], v[1])))
+    if abs(yaw) > 8.0 or abs(pitch) > 8.0:
+        return 0.0, 0.0     # not a long gun body, leave it
+    return -pitch, -yaw
+
+
 # on guns where both hands are on screen (MP40, Thompson) the trigger hand sits about this
 # far behind the support hand
 SUPPORT_TO_GRIP = (-18.0, -1.0, 0.0)
@@ -349,6 +464,23 @@ def hand_model(pieces, owner):
 
 # ---------------------------------------------------------------- main
 
+WEAPONS_CFG_HEADER = """// RealRTCW-VR weapon geometry, generated by misc/vr/make_vr_assets.py, read by bg_vr.c.
+// Points are in first person model space (forward left up, game units) at the idle frame.
+//
+// weap file
+//   grip x y z            where the trigger hand holds the gun
+//   pitch yaw             rotation that straightens the gun body / blade
+//   magPart               linked part that is the magazine / clip / shell (-1: none)
+//   mag x y z             where it sits in the gun
+//   magLocal x y z        its centre in its own model
+//   magDir x y z          the way it comes out
+//   chargePart            linked part that is the slide / bolt / pump (-1: none)
+//   charge x y z          where it sits
+//   chargeDir x y z       the way it is pulled
+//   travel                how far it is pulled
+"""
+
+
 def main():
     main_dir, out_pk3 = sys.argv[1], sys.argv[2]
     paks = Paks(main_dir)
@@ -362,9 +494,19 @@ def main():
             print("skipping", name, e)
             continue
         palm = find_grip(pieces)
-        if palm:
-            pitch, yaw = blade_correction(pieces, palm) if os.path.basename(name) in MELEE else (0.0, 0.0)
-            grips.append("%s %.2f %.2f %.2f %.1f %.1f" % (name, palm[0], palm[1], palm[2], pitch, yaw))
+        if not palm:
+            continue
+        if os.path.basename(name) in MELEE:
+            pitch, yaw = blade_correction(pieces, palm)
+        else:
+            pitch, yaw = barrel_correction(pieces)
+        geo = reload_geometry(paks, info) or [-1, [0, 0, 0], [0, 0, 0], [0, 0, -1], -1, [0, 0, 0], [-1, 0, 0], 0.0]
+        mag, mpt, mloc, mdir, chg, cpt, cdir, travel = geo
+
+        def v(x):
+            return "%.2f %.2f %.2f" % tuple(x)
+        grips.append("%s  %s %.1f %.1f  %d %s %s %s  %d %s %s %.1f" % (
+            name, v(palm), pitch, yaw, mag, v(mpt), v(mloc), v(mdir), chg, v(cpt), v(cdir), travel))
 
     # free hands come from the MP40: right grip hand on the gun, left hand on the magazine
     mp40 = pose_weapon(paks, parse_weap(paks.read("weapons/mp40.weap").decode(errors="replace")))
@@ -374,9 +516,7 @@ def main():
     with zipfile.ZipFile(out_pk3, "w", zipfile.ZIP_DEFLATED) as out:
         out.writestr("models/vr/hand_r.md3", write_md3("models/vr/hand_r.md3", right, right_centre))
         out.writestr("models/vr/hand_l.md3", write_md3("models/vr/hand_l.md3", left, left_centre))
-        out.writestr("vr/weapon_grips.cfg",
-                     "// weap file, trigger hand grip point in first person model space (forward left up), pitch/yaw correction\n"
-                     + "\n".join(grips) + "\n")
+        out.writestr("vr/weapons.cfg", WEAPONS_CFG_HEADER + "\n".join(grips) + "\n")
     print("wrote %s: %d weapon grips" % (out_pk3, len(grips)))
 
 

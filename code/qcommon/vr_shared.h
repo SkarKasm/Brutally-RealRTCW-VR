@@ -77,6 +77,25 @@ typedef struct vrShared_s {
 	                            // (forward, left, up; game units), so shots leave the barrel
 
 	//
+	// manual reloading and grabbing: game runs it, cgame draws it, pmove (both sides)
+	// reads manualReload/chambered so prediction matches the server
+	//
+	int     manualReload;       // current weapon is reloaded by hand: no automatic reload
+	int     chambered;          // slide/bolt/pump worked: the gun can fire
+	int     magOut;             // magazine / clip / cylinder out of the gun
+	int     heldItem;           // off hand holds: 0 nothing, 1 magazine / clip, 2 shell
+	int     chargeHeld;         // off hand is on the slide / bolt / pump
+	float   chargePull;         // 0..1, how far it is pulled
+	int     magDropCount;       // bumped whenever a magazine falls out (cgame drops one)
+	int     grabbedEntity;      // body held by the off hand, -1 none
+
+	//
+	// controller buttons, written by the engine
+	//
+	int     ejectCount;         // bumped by the "drop magazine" gesture
+	int     gripDown[2];        // grip buttons held, indexed by VR_HAND_*
+
+	//
 	// haptics: cgame/game request a pulse, the engine plays and clears it
 	//
 	float   hapticAmplitude[2]; // 0..1, indexed by VR_HAND_*

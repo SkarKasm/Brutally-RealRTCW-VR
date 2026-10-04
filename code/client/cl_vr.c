@@ -1173,6 +1173,8 @@ void CL_VR_Init( void ) {
 
 	Com_Memset( &xr, 0, sizeof( xr ) );
 	Com_Memset( &com_vr, 0, sizeof( com_vr ) );
+	com_vr.grabbedEntity = -1;
+	com_vr.chambered = qtrue;
 	com_vr.worldScale = vr_worldScale->value;
 	com_vr.rightHanded = 1;
 
@@ -1290,7 +1292,9 @@ static void VR_UpdateTracking( void ) {
 		com_vr.weaponAngles[PITCH] += vr_weaponPitch->value;
 
 		com_vr.twoHanded = qfalse;
-		if ( com_vr.handValid[!dom] && xr.hands[!dom].down[VRB_SQUEEZE] && com_vr.twoHandAllowed ) {
+		// (not while the off hand is busy reloading or carrying a body)
+		if ( com_vr.handValid[!dom] && xr.hands[!dom].down[VRB_SQUEEZE] && com_vr.twoHandAllowed &&
+			 !com_vr.heldItem && !com_vr.chargeHeld && com_vr.grabbedEntity < 0 ) {
 			vec3_t dir, ang;
 			VectorSubtract( com_vr.handOrigin[!dom], com_vr.handOrigin[dom], dir );
 			// only when the off hand is actually in front of the gun hand
@@ -1421,7 +1425,10 @@ static void VR_GameControls( void ) {
 	}
 	if ( VR_Released( dom, VRB_SQUEEZE ) && !xr.rightGripCombo &&
 		 cls.realtime - d->downTime[VRB_SQUEEZE] < 400 ) {
-		Cbuf_AddText( "+reload\nwait\n-reload\n" ); // tap grip: reload
+		// tap grip: drop the magazine for weapons reloaded by hand (the game decides),
+		// a normal reload for the rest
+		com_vr.ejectCount++;
+		Cbuf_AddText( "+reload\nwait\n-reload\n" );
 	}
 
 	VR_Hold( "movedown", dom, VRB_LOWER );          // A: crouch
@@ -1739,6 +1746,10 @@ void CL_VR_ProcessInput( void ) {
 	}
 
 	menu = ( Key_GetCatcher() & ( KEYCATCH_UI | KEYCATCH_CONSOLE ) ) || clc.state != CA_ACTIVE;
+
+	// grip buttons for the game's hand interactions (reloading, grabbing)
+	com_vr.gripDown[VR_HAND_LEFT] = !menu && xr.hands[VR_HAND_LEFT].down[VRB_SQUEEZE];
+	com_vr.gripDown[VR_HAND_RIGHT] = !menu && xr.hands[VR_HAND_RIGHT].down[VRB_SQUEEZE];
 	if ( menu != xr.menuMode ) {
 		xr.menuMode = menu;
 		VR_ReleaseAllCommands();

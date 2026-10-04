@@ -1402,6 +1402,9 @@ G_InitGame
 extern void trap_Cvar_Reset( const char *var_name );
 
 void G_InitGame( int levelTime, int randomSeed, int restart ) {
+	// RealRTCW-VR: hand reloading / grabbing start over with the level (and saves)
+	G_VR_Reset();
+
 	int i;
 
 	steamInit();

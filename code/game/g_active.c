@@ -1226,6 +1226,11 @@ void ClientThink_real( gentity_t *ent ) {
 
 	pm.pmove_fixed = pmove_fixed.integer | client->pers.pmoveFixed;
 	pm.vrAim = gVR && gVR->active && ent->s.number == 0 && !ent->aiCharacter;   // RealRTCW-VR
+	if ( pm.vrAim ) {
+		G_VR_UpdateWeaponState( ent );
+		pm.vrManualReload = gVR->manualReload;
+		pm.vrChambered = gVR->chambered;
+	}
 	pm.pmove_msec = pmove_msec.integer;
 	pm.pmext = &client->pmext;
 
@@ -1273,8 +1278,9 @@ void ClientThink_real( gentity_t *ent ) {
 
 	monsterslick = Pmove( &pm );
 
-	// RealRTCW-VR: the knife hurts by physically stabbing with it
+	// RealRTCW-VR: the knife hurts by physically stabbing with it; hand reloading, grabbing
 	G_VR_KnifeStab( ent );
+	G_VR_PlayerThink( ent );
 
 	if ( g_gametype.integer == GT_SURVIVAL || g_aiCollision.integer == 0 ) {
 		for ( i = 0; i < level.num_entities; ++i ) {

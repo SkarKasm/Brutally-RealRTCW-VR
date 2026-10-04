@@ -55,80 +55,6 @@ int CG_VR_DominantHand( void ) {
 CG_VR_Init
 =================
 */
-/*
-=================
-CG_VR_LoadGrips
-
-vr/weapon_grips.cfg (built by misc/vr/make_vr_assets.py): for each .weap file, the point
-of the first person model where the trigger hand holds it, "forward left up".
-=================
-*/
-#define VR_MAX_GRIPS 128
-
-static struct {
-	char    weap[MAX_QPATH];
-	vec3_t  grip;
-	float   pitch, yaw;     // straightens melee weapons that are held at an angle
-} vrGrips[VR_MAX_GRIPS];
-static int numVRGrips;
-
-static void CG_VR_LoadGrips( void ) {
-	static char buf[16384];
-	fileHandle_t f;
-	int len;
-	char *p, *tok;
-
-	numVRGrips = 0;
-	len = trap_FS_FOpenFile( "vr/weapon_grips.cfg", &f, FS_READ );
-	if ( len <= 0 ) {
-		CG_Printf( S_COLOR_YELLOW "VR: vr/weapon_grips.cfg missing, guns use a default grip\n" );
-		return;
-	}
-	if ( len >= (int)sizeof( buf ) ) {
-		len = sizeof( buf ) - 1;
-	}
-	trap_FS_Read( buf, len, f );
-	buf[len] = 0;
-	trap_FS_FCloseFile( f );
-
-	p = buf;
-	while ( numVRGrips < VR_MAX_GRIPS ) {
-		tok = COM_Parse( &p );
-		if ( !tok[0] ) {
-			break;
-		}
-		Q_strncpyz( vrGrips[numVRGrips].weap, tok, sizeof( vrGrips[0].weap ) );
-		vrGrips[numVRGrips].grip[0] = atof( COM_Parse( &p ) );
-		vrGrips[numVRGrips].grip[1] = atof( COM_Parse( &p ) );
-		vrGrips[numVRGrips].grip[2] = atof( COM_Parse( &p ) );
-		vrGrips[numVRGrips].pitch = atof( COM_ParseExt( &p, qfalse ) );
-		vrGrips[numVRGrips].yaw = atof( COM_ParseExt( &p, qfalse ) );
-		numVRGrips++;
-	}
-}
-
-// grip point for the first person model of a weapon, qfalse if unknown
-static qboolean CG_VR_WeaponGrip( int weapon, vec3_t grip, float *pitch, float *yaw ) {
-	const char *file = BG_GetWeaponFilename( weapon );
-	const char *weap;
-	int i;
-
-	if ( !file || !*file ) {
-		return qfalse;
-	}
-	// the same choice CG_RegisterWeapon makes
-	weap = cg_vanilla_guns.integer ? va( "weapons/vanilla/%s", file ) : va( "weapons/%s", file );
-	for ( i = 0; i < numVRGrips; i++ ) {
-		if ( !Q_stricmp( vrGrips[i].weap, weap ) ) {
-			VectorCopy( vrGrips[i].grip, grip );
-			*pitch = vrGrips[i].pitch;
-			*yaw = vrGrips[i].yaw;
-			return qtrue;
-		}
-	}
-	return qfalse;
-}
-
 void CG_VR_Init( void ) {
 	vmCvar_t dummy;
 
@@ -144,7 +70,12 @@ void CG_VR_Init( void ) {
 	// built by misc/vr/make_vr_assets.py into main/z_vr_assets.pk3
 	cgvr.handModel[VR_HAND_LEFT] = trap_R_RegisterModel( "models/vr/hand_l.md3" );
 	cgvr.handModel[VR_HAND_RIGHT] = trap_R_RegisterModel( "models/vr/hand_r.md3" );
-	CG_VR_LoadGrips();
+	cgvr.lastMagDrop = cgVR ? cgVR->magDropCount : 0;
+}
+
+// the current weapon's measured geometry (see bg_vr.c)
+static void CG_VR_Geom( int weapon, vrWeaponGeom_t *g ) {
+	BG_VR_WeaponGeom( weapon, cg_vanilla_guns.integer, g );
 }
 
 // tracked hand models are available and wanted
@@ -285,12 +216,7 @@ Where to draw the first person hands+gun model so its grip sits in the player's 
 void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t axis[3] ) {
 	char buf[MAX_CVAR_VALUE_STRING];
 	float adj[6] = { 0, 0, 0, 0, 0, 0 };
-	vec3_t grip = { 14, -6, -10 }, corr, aim[3], local[3];
-	float gripPitch = 0, gripYaw = 0;
-	int dom = CG_VR_DominantHand();
-	int i, j;
-
-	CG_VR_WeaponGrip( weapon, grip, &gripPitch, &gripYaw );
+	vrWeaponGeom_t geom;
 
 	trap_Cvar_VariableStringBuffer( va( "vr_gunOffset_%d", weapon ), buf, sizeof( buf ) );
 	if ( !buf[0] ) {
@@ -299,27 +225,124 @@ void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t axis[3] ) {
 	if ( buf[0] ) {
 		sscanf( buf, "%f %f %f %f %f %f", &adj[0], &adj[1], &adj[2], &adj[3], &adj[4], &adj[5] );
 	}
-	grip[0] -= adj[0];
-	grip[1] -= adj[1];
-	grip[2] -= adj[2];
 
-	// The correction (melee straightening + fine tuning) is a rotation in the hand's own
-	// frame. Composing matrices instead of adding Euler angles keeps it stable when the hand
-	// points straight up or down.
-	VectorSet( corr, adj[3] + gripPitch, adj[4] + gripYaw, adj[5] );
-	AnglesToAxis( cgvr.weaponAngles, aim );
-	AnglesToAxis( corr, local );
-	for ( i = 0; i < 3; i++ ) {
-		for ( j = 0; j < 3; j++ ) {
-			axis[i][j] = local[i][0] * aim[0][j] + local[i][1] * aim[1][j] + local[i][2] * aim[2][j];
+	CG_VR_Geom( weapon, &geom );
+	BG_VR_WeaponFrame( &geom, cgvr.handOrigin[CG_VR_DominantHand()], cgvr.weaponAngles, adj, origin, axis );
+
+	// remembered for the reload visuals
+	cgvr.gunWeapon = weapon;
+	VectorCopy( origin, cgvr.gunOrigin );
+	AxisCopy( axis, cgvr.gunAxis );
+}
+
+/*
+=================
+CG_VR_WeaponPart
+
+Hand reloading on the first person weapon's linked parts: the magazine is hidden while
+it's out of the gun, the slide / bolt / pump slides back while pulled or locked open.
+Returns qfalse if the part shouldn't be drawn.
+=================
+*/
+qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_t *ent ) {
+	vrWeaponGeom_t geom;
+	vec3_t dir;
+	float amount = 0;
+	int cls;
+
+	if ( !cgvr.active || !cgVR->manualReload ) {
+		return qtrue;
+	}
+	CG_VR_Geom( weapon, &geom );
+	cls = BG_VR_ReloadClass( weapon );
+
+	if ( part == geom.magPart && cgVR->magOut ) {
+		return qfalse;
+	}
+
+	if ( part == geom.chargePart ) {
+		if ( cgVR->chargeHeld ) {
+			amount = cgVR->chargePull;
+		} else if ( !cgVR->chambered && ( cls == VRR_MAG || cls == VRR_BOLT ) ) {
+			amount = 1.0f;      // slide locked back / bolt open
+		}
+		if ( amount > 0 ) {
+			BG_VR_ModelDir( parent->axis, geom.chargeDir, dir );
+			VectorMA( ent->origin, amount * geom.travel, dir, ent->origin );
+		}
+	}
+	return qtrue;
+}
+
+/*
+=================
+CG_VR_AddReloadItems
+
+The magazine / clip / shell in the off hand, and magazines falling out of the gun.
+=================
+*/
+void CG_VR_AddReloadItems( void ) {
+	weaponInfo_t *weapon;
+	vrWeaponGeom_t geom;
+	refEntity_t ent;
+	vec3_t magPoint;
+	qhandle_t model = 0;
+	int off = !CG_VR_DominantHand();
+
+	if ( !cgvr.active || cgvr.gunWeapon <= WP_NONE ) {
+		return;
+	}
+	weapon = &cg_weapons[cgvr.gunWeapon];
+	CG_VR_Geom( cgvr.gunWeapon, &geom );
+	if ( geom.magPart >= 0 && geom.magPart < W_MAX_PARTS ) {
+		model = weapon->partModels[W_FP_MODEL][geom.magPart].model;
+	}
+
+	// a magazine fell out: let it drop
+	if ( cgVR->magDropCount != cgvr.lastMagDrop ) {
+		cgvr.lastMagDrop = cgVR->magDropCount;
+		if ( model ) {
+			localEntity_t *le = CG_AllocLocalEntity();
+			refEntity_t *re = &le->refEntity;
+
+			BG_VR_ModelPoint( cgvr.gunOrigin, cgvr.gunAxis, geom.mag, magPoint );
+			BG_VR_ModelDir( cgvr.gunAxis, geom.magLocal, re->origin );
+			VectorSubtract( magPoint, re->origin, re->origin );
+			AxisCopy( cgvr.gunAxis, re->axis );
+			re->hModel = model;
+			re->renderfx = RF_MINLIGHT;
+
+			le->leType = LE_FRAGMENT;
+			le->startTime = cg.time;
+			le->endTime = cg.time + 10000;
+			le->pos.trType = TR_GRAVITY;
+			le->pos.trTime = cg.time;
+			VectorCopy( re->origin, le->pos.trBase );
+			BG_VR_ModelDir( cgvr.gunAxis, geom.magDir, le->pos.trDelta );
+			VectorScale( le->pos.trDelta, 60, le->pos.trDelta );
+			le->bounceFactor = 0.25f;
+			le->angles.trType = TR_STATIONARY;
+			le->leBounceSoundType = LEBS_BRASS;
+			le->leMarkType = LEMT_NONE;
 		}
 	}
 
-	// move the model so its grip point lands on the palm
-	VectorCopy( cgvr.handOrigin[dom], origin );
-	VectorMA( origin, -grip[0], axis[0], origin );
-	VectorMA( origin, -grip[1], axis[1], origin );
-	VectorMA( origin, -grip[2], axis[2], origin );
+	// held in the off hand, lined up with the gun so it goes straight in
+	if ( cgVR->heldItem && cgVR->handValid[off] ) {
+		memset( &ent, 0, sizeof( ent ) );
+		ent.hModel = model ? model : cgs.media.smallgunBrassModel;
+		AxisCopy( cgvr.gunAxis, ent.axis );
+		if ( model ) {
+			BG_VR_ModelDir( ent.axis, geom.magLocal, ent.origin );
+			VectorSubtract( cgvr.handOrigin[off], ent.origin, ent.origin );
+		} else {
+			VectorCopy( cgvr.handOrigin[off], ent.origin );
+		}
+		VectorCopy( ent.origin, ent.oldorigin );
+		VectorCopy( ent.origin, ent.lightingOrigin );
+		ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN;
+		trap_R_AddRefEntityToScene( &ent );
+	}
 }
 
 /*

@@ -2685,6 +2685,11 @@ void PM_CheckForReload(int weapon) {
 		return;
 	}
 
+	// RealRTCW-VR: the player reloads this weapon by hand
+	if ( pm->vrManualReload ) {
+		return;
+	}
+
 	switch (weapon) {
 		case WP_M7:
 		case WP_FLAMETHROWER:
@@ -3763,6 +3768,11 @@ static void PM_Weapon( void ) {
 
 		ammoAvailable = PM_WeaponAmmoAvailable( pm->ps->weapon );
 
+		// RealRTCW-VR: nothing chambered (slide locked back, bolt not worked): click
+		if ( pm->vrManualReload && !pm->vrChambered ) {
+			ammoAvailable = 0;
+		}
+
 		// jaquboss drain ammo if throwing
 		// make sure we have one to hold
 		if( ( pm->ps->weapon == WP_KNIFE ) && pm->ps->weaponstate == WEAPON_FIRINGALT  ) {
@@ -3788,6 +3798,10 @@ static void PM_Weapon( void ) {
 
 			if ( pm->ps->weapon == WP_SNOOPERSCOPE ) {
 				reloadingW = qfalse;
+			}
+
+			if ( pm->vrManualReload ) {
+				reloadingW = qfalse;    // RealRTCW-VR: reloads are done by hand
 			}
 
 			switch ( pm->ps->weapon ) {

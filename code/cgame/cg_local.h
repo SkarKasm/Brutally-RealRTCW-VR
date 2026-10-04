@@ -1820,6 +1820,11 @@ typedef struct {
 
 	qhandle_t   handModel[2];       // indexed by VR_HAND_*
 
+	int         gunWeapon;          // first person gun drawn this frame, and its pose
+	vec3_t      gunOrigin;
+	vec3_t      gunAxis[3];
+	int         lastMagDrop;        // cgVR->magDropCount already handled
+
 	qboolean    cutsceneBaseValid;  // head pose when the current cutscene started
 	vec3_t      cutsceneHmdBase;
 	float       cutsceneYawBase;
@@ -1839,6 +1844,8 @@ void CG_VR_SetMuzzle( const vec3_t muzzle );
 void CG_VR_AddReticle( void );
 void CG_VR_AddPointer( void );
 void CG_VR_AddHands( void );
+qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_t *ent );
+void CG_VR_AddReloadItems( void );
 qboolean CG_VR_DrawHands( void );
 void CG_VR_Haptic( int hand, float amplitude, int msec );
 int CG_VR_DominantHand( void );

@@ -3386,6 +3386,11 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 				drawpart = CG_GetPartFramesFromWeap( cent, &barrel, parent, i, weapon );
 
+				// RealRTCW-VR: magazine out / slide pulled back during hand reloading
+				if ( isPlayer && !CG_VR_WeaponPart( weaponNum, i, parent, &barrel ) ) {
+					drawpart = qfalse;
+				}
+
 				if ( drawpart && drawrealweap ) {
 					CG_AddWeaponWithPowerups( &barrel, cent->currentState.powerups, ps, cent );
 				}
@@ -3777,6 +3782,7 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		}
 		CG_VR_AddHands();
 		CG_VR_AddReticle();
+		CG_VR_AddReloadItems();
 		cg.predictedPlayerEntity.lastWeaponClientFrame = cg.clientFrame;
 		return;
 	}

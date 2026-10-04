@@ -314,6 +314,8 @@ typedef struct {
 	// RealRTCW-VR: aim comes from a tracked controller, whose constant small motion must not
 	// count as the player swinging the view around
 	int vrAim;
+	int vrManualReload;     // reloads happen by hand: never start one automatically
+	int vrChambered;        // with vrManualReload: qfalse makes the trigger click
 
 	// for fixed msec Pmove
 	int pmove_fixed;
@@ -1863,6 +1865,40 @@ qboolean PC_Float_Parse( int handle, float *f );
 qboolean PC_Color_Parse( int handle, vec4_t *c );
 
 char *BG_GetWeaponFilename( weapon_t weaponNum );
+
+//
+// bg_vr.c  (RealRTCW-VR)
+//
+typedef enum {
+	VRR_NONE,           // automatic reload (button)
+	VRR_MAG,            // detachable magazine, rack the slide/bolt when it ran dry
+	VRR_BOLT,           // bolt action: work the bolt after every shot, stripper clips
+	VRR_ENBLOC,         // M1 Garand: clip pings out when empty, bolt closes itself
+	VRR_PUMP,           // pump shotgun: shells one by one, pump after every shot
+	VRR_SHELLS,         // semi-auto shotgun: shells one by one
+	VRR_REVOLVER        // open, speedloader, done
+} vrReloadClass_t;
+
+typedef struct {
+	qboolean    valid;          // measured from the model (otherwise stand-ins)
+	vec3_t      grip;           // trigger hand, first person model space
+	float       pitch, yaw;     // straightens the gun body / blade
+	int         magPart;        // linked part that is the magazine (-1 none)
+	vec3_t      mag;            // where magazines go in
+	vec3_t      magLocal;       // magazine centre in its own model
+	vec3_t      magDir;         // way out of the gun
+	int         chargePart;     // linked part that is the slide / bolt / pump (-1 none)
+	vec3_t      charge;         // where to grab it
+	vec3_t      chargeDir;      // way it is pulled
+	float       travel;         // how far
+} vrWeaponGeom_t;
+
+int  BG_VR_ReloadClass( int weapon );
+void BG_VR_WeaponGeom( int weapon, qboolean vanillaGuns, vrWeaponGeom_t *out );
+void BG_VR_WeaponFrame( const vrWeaponGeom_t *g, const vec3_t hand, const vec3_t aimAngles, const float *adj,
+						vec3_t origin, vec3_t axis[3] );
+void BG_VR_ModelPoint( const vec3_t origin, vec3_t axis[3], const vec3_t local, vec3_t out );
+void BG_VR_ModelDir( vec3_t axis[3], const vec3_t local, vec3_t out );
 qboolean BG_ParseAmmoTable( int handle, weapon_t weaponNum );
 void BG_SetWeaponForSkill( weapon_t weaponNum, gameskill_t skill );
 int BG_GetMaxClip(const playerState_t *ps, int weapon);
