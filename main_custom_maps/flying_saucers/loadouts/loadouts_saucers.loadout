@@ -1,0 +1,320 @@
+loadout fstmis
+{
+		setarmor 100
+		giveinventory key_binocs
+
+		giveweapon weapon_knife
+		giveweapon weapon_tt33
+		giveweapon weapon_tt33
+
+		setammo ammo_ttammo full
+		setammo ammo_grenades_american 5
+
+		setclip weapon_tt33 full
+		setclip weapon_dualtt33 full
+
+		selectweapon weapon_tt33
+		
+		#if g_dlc1 == 1
+		giveweapon weapon_auto5
+		setammo ammo_m97ammo 40
+		setclip weapon_auto5 full
+		#endif
+}
+
+loadout secmis
+{
+		setarmor 100
+		giveinventory key_binocs
+		
+		giveweapon weapon_knife
+		giveweapon weapon_tt33
+		giveweapon weapon_tt33
+
+		setammo ammo_ttammo full
+		setammo ammo_grenades_american 5
+
+		setclip weapon_tt33 full
+		setclip weapon_dualtt33 full
+
+		selectweapon weapon_tt33
+		
+		#if g_dlc1 == 1
+		giveweapon weapon_auto5
+		setammo ammo_m97ammo 40
+		setclip weapon_auto5 full
+		#endif
+
+		giveweapon weapon_mp40
+		setammo ammo_9mm 150
+		setclip weapon_mp40 full
+
+		selectweapon weapon_mp40
+}
+
+loadout thirdmis
+{
+		setarmor 100
+		giveinventory key_binocs
+		
+		giveweapon weapon_knife
+		giveweapon weapon_tt33
+		giveweapon weapon_tt33
+
+		setammo ammo_ttammo full
+		setammo ammo_grenades_american 5
+
+		setclip weapon_tt33 full
+		setclip weapon_dualtt33 full
+
+		selectweapon weapon_tt33
+		
+		#if g_dlc1 == 1
+		giveweapon weapon_auto5
+		setammo ammo_m97ammo 40
+		setclip weapon_auto5 full
+		#endif
+
+		giveweapon weapon_mp40
+		setammo ammo_9mm 150
+		setclip weapon_mp40 full
+
+		selectweapon weapon_mp40
+}
+
+loadout fourmis
+{
+		setarmor 100
+		giveinventory key_binocs
+		
+		giveweapon weapon_knife
+		giveweapon weapon_tt33
+		giveweapon weapon_tt33
+
+		setammo ammo_ttammo full
+		setammo ammo_grenades_american 5
+
+		setclip weapon_tt33 full
+		setclip weapon_dualtt33 full
+
+		selectweapon weapon_tt33
+		
+		#if g_dlc1 == 1
+		giveweapon weapon_auto5
+		setammo ammo_m97ammo 40
+		setclip weapon_auto5 full
+		#endif
+
+		giveweapon weapon_mp40
+		setammo ammo_9mm 150
+		setclip weapon_mp40 full
+
+		selectweapon weapon_mp40
+}
+
+loadout dep_castle
+{
+		setarmor 100
+		giveinventory key_binocs
+
+		giveweapon weapon_knife
+		giveweapon weapon_tt33
+		giveweapon weapon_tt33
+
+		setammo ammo_ttammo full
+		setammo ammo_9mm 220
+		setammo ammo_grenades_american 5
+
+		setclip weapon_tt33 full
+		setclip weapon_dualtt33 full
+
+		giveweapon weapon_mp40
+		setclip weapon_mp40 full
+		giveweapon weapon_mauserrifle
+		giveweapon weapon_sniperscope
+		setammo ammo_792mm 60
+		setclip weapon_mauserrifle full
+		setclip weapon_sniperscope full
+
+		#if g_dlc1 == 1
+		giveweapon weapon_auto5
+		setammo ammo_m97ammo 40
+		setclip weapon_auto5 full
+		#endif
+
+		selectweapon weapon_mp40
+}
+
+// ===== Mission 2: Flying Saucers =====
+
+loadout darkles
+{
+		setarmor 75
+		giveinventory key_binocs
+
+		giveweapon weapon_knife
+		giveweapon weapon_ppsh
+		giveweapon weapon_mosin
+		giveweapon weapon_mg42m
+
+		setammo ammo_ttammo full
+		setammo ammo_mosina full
+		setammo ammo_127mm 400
+		setammo ammo_grenades_american 5
+
+		setclip weapon_ppsh full
+		setclip weapon_mosin full
+		setclip weapon_mg42m full
+		
+		#if g_dlc1 == 1
+		giveweapon weapon_auto5
+		setammo ammo_m97ammo 40
+		setclip weapon_auto5 full
+		#endif
+
+		selectweapon weapon_mg42m
+}
+
+loadout les
+{
+		setarmor 85
+		giveinventory key_binocs
+
+		giveweapon weapon_knife
+		giveweapon weapon_luger
+		giveweapon weapon_ppsh
+		giveweapon weapon_mosin
+
+		setammo ammo_9mm 250
+		setammo ammo_ttammo full
+		setammo ammo_mosina 70
+		setammo ammo_grenades_american 4
+
+		setclip weapon_luger full
+		setclip weapon_ppsh full
+		setclip weapon_mosin full
+
+		giveweapon weapon_mp40
+		setclip weapon_mp40 full
+		giveweapon weapon_mauserrifle
+		giveweapon weapon_sniperscope
+		setammo ammo_792mm 60
+		setclip weapon_mauserrifle full
+		setclip weapon_sniperscope full
+
+		#if g_dlc1 == 1
+		giveweapon weapon_auto5
+		setammo ammo_m97ammo 40
+		setclip weapon_auto5 full
+		#endif
+
+		selectweapon weapon_ppsh
+}
+
+loadout railhead
+{
+		setarmor 90
+		giveinventory key_binocs
+
+		giveweapon weapon_knife
+		giveweapon weapon_luger
+		giveweapon weapon_ppsh
+		giveweapon weapon_mosin
+
+		setammo ammo_9mm 250
+		setammo ammo_ttammo full
+		setammo ammo_mosina 70
+		setammo ammo_grenades_american 5
+
+		setclip weapon_luger full
+		setclip weapon_ppsh full
+		setclip weapon_mosin full
+
+		giveweapon weapon_mp40
+		setclip weapon_mp40 full
+		giveweapon weapon_mg42m
+		setammo ammo_127mm 300
+		setclip weapon_mg42m full
+
+		#if g_dlc1 == 1
+		giveweapon weapon_auto5
+		setammo ammo_m97ammo 40
+		setclip weapon_auto5 full
+		#endif
+
+		selectweapon weapon_mp40
+}
+
+loadout dep_lab
+{
+		setarmor 100
+		giveinventory key_binocs
+
+		giveweapon weapon_knife
+		giveweapon weapon_luger
+		giveweapon weapon_ppsh
+		giveweapon weapon_mosin
+
+		setammo ammo_9mm 250
+		setammo ammo_ttammo full
+		setammo ammo_mosina 70
+		setammo ammo_grenades_american 5
+
+		setclip weapon_luger full
+		setclip weapon_ppsh full
+		setclip weapon_mosin full
+
+		giveweapon weapon_mp44
+		setammo ammo_44ammo 180
+		setclip weapon_mp44 full
+		giveweapon weapon_fg42
+		setammo ammo_792mm 90
+		setclip weapon_fg42 full
+
+		#if g_dlc1 == 1
+		giveweapon weapon_auto5
+		setammo ammo_m97ammo 40
+		setclip weapon_auto5 full
+		#endif
+
+		selectweapon weapon_mp44
+}
+
+loadout karyer
+{
+		setarmor 100
+		giveinventory key_binocs
+
+		giveweapon weapon_knife
+		giveweapon weapon_luger
+		giveweapon weapon_ppsh
+		giveweapon weapon_mosin
+
+		setammo ammo_9mm 250
+		setammo ammo_ttammo full
+		setammo ammo_mosina 70
+		setammo ammo_grenades_american 6
+
+		setclip weapon_luger full
+		setclip weapon_ppsh full
+		setclip weapon_mosin full
+
+		giveweapon weapon_mp44
+		setammo ammo_44ammo 180
+		setclip weapon_mp44 full
+		giveweapon weapon_fg42
+		setammo ammo_792mm 90
+		setclip weapon_fg42 full
+		giveweapon weapon_mg42m
+		setammo ammo_127mm 300
+		setclip weapon_mg42m full
+
+		#if g_dlc1 == 1
+		giveweapon weapon_auto5
+		setammo ammo_m97ammo 40
+		setclip weapon_auto5 full
+		#endif
+
+		selectweapon weapon_mp44
+}
+
