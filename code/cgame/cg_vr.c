@@ -26,6 +26,7 @@ cgVRState_t cgvr;
 
 static vmCvar_t vr_drawHands;
 static vmCvar_t vr_reticle;
+static vmCvar_t vr_inspect;
 
 static qboolean CG_VR_OneHanded( int weapon );
 
@@ -66,6 +67,7 @@ void CG_VR_Init( void ) {
 	trap_Cvar_Register( &dummy, "vr_laserPointerColor", "1 0.25 0.15", CVAR_ARCHIVE );
 	trap_Cvar_Register( &vr_drawHands, "vr_drawHands", "1", CVAR_ARCHIVE );
 	trap_Cvar_Register( &vr_reticle, "vr_reticle", "1", CVAR_ARCHIVE );
+	trap_Cvar_Register( &vr_inspect, "vr_inspect", "0", 0 );
 
 	// built by misc/vr/make_vr_assets.py into main/z_vr_assets.pk3
 	cgvr.handModel[VR_HAND_LEFT] = trap_R_RegisterModel( "models/vr/hand_l.md3" );
@@ -253,8 +255,22 @@ qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_
 	float amount = 0;
 	int cls;
 
-	if ( !cgvr.active || !cgVR->manualReload ) {
+	qboolean magOut, chargeHeld, chambered;
+	float pull;
+
+	if ( cgvr.inspect ) {
+		// vr_inspect: cycle the action and the magazine so they can be checked
+		pull = 0.5f + 0.5f * sin( cg.time * 0.003f );
+		chargeHeld = qtrue;
+		magOut = ( cg.time / 1500 ) & 1;
+		chambered = qtrue;
+	} else if ( !cgvr.active || !cgVR->manualReload ) {
 		return qtrue;
+	} else {
+		pull = cgVR->chargePull;
+		chargeHeld = cgVR->chargeHeld;
+		magOut = cgVR->magOut;
+		chambered = cgVR->chambered;
 	}
 	CG_VR_Geom( weapon, &geom );
 	cls = BG_VR_ReloadClass( weapon );
@@ -268,15 +284,15 @@ qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_
 			}
 		}
 		cgvr.magAxisValid = qtrue;
-		if ( cgVR->magOut ) {
+		if ( magOut ) {
 			return qfalse;
 		}
 	}
 
 	if ( part == geom.chargePart ) {
-		if ( cgVR->chargeHeld ) {
-			amount = cgVR->chargePull;
-		} else if ( !cgVR->chambered && ( cls == VRR_MAG || cls == VRR_BOLT ) ) {
+		if ( chargeHeld ) {
+			amount = pull;
+		} else if ( !chambered && ( cls == VRR_MAG || cls == VRR_BOLT ) ) {
 			amount = 1.0f;      // slide locked back / bolt open
 		}
 		if ( amount > 0 ) {
@@ -301,6 +317,97 @@ static void CG_VR_MagAxis( vec3_t gunAxis[3], vec3_t out[3] ) {
 						cgvr.magAxis[i][2] * gunAxis[2][j];
 		}
 	}
+}
+
+/*
+=================
+CG_VR_Inspect
+
+vr_inspect 1 (monitor only): the current weapon posed exactly as in VR, seen from the
+side in front of the camera, with the hand models and markers on the measured spots:
+yellow = grip, red = magazine well, green = slide / bolt, blue = where it's pulled to.
+The action cycles and the magazine pops in and out. For checking weapon geometry
+without a headset.
+=================
+*/
+static void CG_VR_Marker( const vec3_t p, byte r, byte g, byte b ) {
+	refEntity_t ent;
+
+	memset( &ent, 0, sizeof( ent ) );
+	ent.reType = RT_SPRITE;
+	VectorCopy( p, ent.origin );
+	ent.radius = 0.8f;
+	ent.customShader = cgs.media.crosshairShader[0];
+	ent.shaderRGBA[0] = r;
+	ent.shaderRGBA[1] = g;
+	ent.shaderRGBA[2] = b;
+	ent.shaderRGBA[3] = 255;
+	ent.renderfx = RF_DEPTHHACK | RF_FIRST_PERSON;
+	trap_R_AddRefEntityToScene( &ent );
+}
+
+qboolean CG_VR_Inspect( playerState_t *ps ) {
+	vrWeaponGeom_t geom;
+	refEntity_t hand;
+	vec3_t fwd, right, up, p, axis[3];
+	weaponInfo_t *weapon;
+	int dom = CG_VR_DominantHand();
+
+	trap_Cvar_Update( &vr_inspect );
+	cgvr.inspect = vr_inspect.integer && !cgvr.active;
+	if ( !cgvr.inspect || ps->weapon <= WP_NONE ) {
+		return qfalse;
+	}
+
+	// gun hand in front of the eyes, gun pointing to the right: a side view
+	AngleVectors( cg.refdefViewAngles, fwd, right, up );
+	VectorMA( cg.refdef.vieworg, 34, fwd, cgvr.handOrigin[dom] );
+	VectorMA( cgvr.handOrigin[dom], -10, right, cgvr.handOrigin[dom] );
+	VectorMA( cgvr.handOrigin[dom], -3, up, cgvr.handOrigin[dom] );
+	VectorSet( cgvr.weaponAngles, 0, cg.refdefViewAngles[YAW] - 90, 0 );
+	VectorCopy( cgvr.weaponAngles, cgvr.handAngles[dom] );
+	VectorMA( cgvr.handOrigin[dom], -8, up, cgvr.handOrigin[!dom] );
+	VectorCopy( cgvr.weaponAngles, cgvr.handAngles[!dom] );
+
+	weapon = &cg_weapons[ps->weapon];
+	memset( &hand, 0, sizeof( hand ) );
+	CG_VR_WeaponPose( ps->weapon, hand.origin, hand.axis );
+	CG_WeaponAnimation( ps, weapon, &hand.oldframe, &hand.frame, &hand.backlerp );
+	VectorCopy( hand.origin, hand.lightingOrigin );
+	hand.hModel = weapon->handsModel;
+	hand.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_VR_NOHANDS;
+	CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity );
+
+	// our hand on the grip
+	if ( cgvr.handModel[dom] ) {
+		refEntity_t h;
+		memset( &h, 0, sizeof( h ) );
+		h.hModel = cgvr.handModel[dom];
+		VectorCopy( cgvr.handOrigin[dom], h.origin );
+		AnglesToAxis( cgvr.handAngles[dom], h.axis );
+		h.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;
+		trap_R_AddRefEntityToScene( &h );
+	}
+
+	CG_VR_Geom( ps->weapon, &geom );
+	AxisCopy( hand.axis, axis );
+	CG_VR_Marker( cgvr.handOrigin[dom], 255, 255, 0 );
+	BG_VR_ModelPoint( hand.origin, axis, geom.mag, p );
+	CG_VR_Marker( p, 255, 40, 40 );
+	BG_VR_ModelPoint( hand.origin, axis, geom.charge, p );
+	CG_VR_Marker( p, 40, 255, 40 );
+	{
+		vec3_t d, q;
+		BG_VR_ModelDir( axis, geom.chargeDir, d );
+		VectorMA( p, geom.travel, d, q );
+		CG_VR_Marker( q, 60, 120, 255 );
+	}
+
+	CG_CenterPrint( va( "%s  class %d  mag part %d  charge part %d  travel %.1f",
+						BG_GetWeaponFilename( ps->weapon ), BG_VR_ReloadClass( ps->weapon ),
+						geom.magPart, geom.chargePart, geom.travel ), SCREEN_HEIGHT * 0.85, SMALLCHAR_WIDTH );
+	cg.predictedPlayerEntity.lastWeaponClientFrame = cg.clientFrame;
+	return qtrue;
 }
 
 /*

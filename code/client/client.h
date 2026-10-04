@@ -769,6 +769,7 @@ void CL_VR_MouseMoved( int dx, int dy );
 qboolean CL_VR_RenderFrame( void );
 qboolean CL_VR_Active( void );
 void CL_VR_Recenter_f( void );
+void CL_VR_Key_f( void );
 void CL_FirstSnapshot( void );
 void CL_ShaderStateChanged( void );
 void CL_UpdateLevelHunkUsage( void );

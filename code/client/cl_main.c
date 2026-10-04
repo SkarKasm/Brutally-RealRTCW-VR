@@ -3949,6 +3949,7 @@ void CL_Init( void ) {
 	// RealRTCW-VR: find the headset first, the renderer sizes itself for it
 	CL_VR_Init();
 	Cmd_AddCommand( "vr_recenter", CL_VR_Recenter_f );
+	Cmd_AddCommand( "vr_key", CL_VR_Key_f );
 
 	CL_InitRef();
 

@@ -2142,7 +2142,7 @@ CG_WeaponAnimation
 */
 
 //----(SA)	modified.  this is now client-side only (server does not dictate weapon animation info)
-static void CG_WeaponAnimation( playerState_t *ps, weaponInfo_t *weapon, int *weapOld, int *weap, float *weapBackLerp ) {
+void CG_WeaponAnimation( playerState_t *ps, weaponInfo_t *weapon, int *weapOld, int *weap, float *weapBackLerp ) {
 
 	centity_t *cent = &cg.predictedPlayerEntity;
 	clientInfo_t *ci = &cgs.clientinfo[ ps->clientNum ];
@@ -3756,6 +3756,11 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 	}
 
 	if ( ps->eFlags & EF_MG42_ACTIVE ) {
+		return;
+	}
+
+	// RealRTCW-VR: weapon geometry debug view on the monitor
+	if ( CG_VR_Inspect( ps ) ) {
 		return;
 	}
 

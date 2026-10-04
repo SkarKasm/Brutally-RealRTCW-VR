@@ -2046,6 +2046,30 @@ void CL_VR_Recenter_f( void ) {
 	xr.menuPlaced = qfalse;
 }
 
+/*
+=================
+CL_VR_Key_f
+
+vr_key <key>: press and release a key, for scripted testing (e.g. getting past the
+mission briefing from a config file).
+=================
+*/
+void CL_VR_Key_f( void ) {
+	int key;
+
+	if ( Cmd_Argc() != 2 ) {
+		Com_Printf( "usage: vr_key <key>\n" );
+		return;
+	}
+	key = Key_StringToKeynum( Cmd_Argv( 1 ) );
+	if ( key < 0 ) {
+		Com_Printf( "vr_key: unknown key %s\n", Cmd_Argv( 1 ) );
+		return;
+	}
+	CL_KeyEvent( key, qtrue, Sys_Milliseconds() );
+	CL_KeyEvent( key, qfalse, Sys_Milliseconds() );
+}
+
 #else // !_WIN32
 
 void CL_VR_Init( void ) { Com_Memset( &com_vr, 0, sizeof( com_vr ) ); }
@@ -2060,5 +2084,6 @@ void CL_VR_MouseMoved( int dx, int dy ) {}
 qboolean CL_VR_RenderFrame( void ) { return qfalse; }
 qboolean CL_VR_Active( void ) { return qfalse; }
 void CL_VR_Recenter_f( void ) {}
+void CL_VR_Key_f( void ) {}
 
 #endif

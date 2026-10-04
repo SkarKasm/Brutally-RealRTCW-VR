@@ -1826,6 +1826,7 @@ typedef struct {
 	int         lastMagDrop;        // cgVR->magDropCount already handled
 	vec3_t      magAxis[3];         // magazine part's orientation relative to the gun
 	qboolean    magAxisValid;
+	qboolean    inspect;            // vr_inspect debug view is drawing the weapon
 
 	qboolean    cutsceneBaseValid;  // head pose when the current cutscene started
 	vec3_t      cutsceneHmdBase;
@@ -1848,6 +1849,8 @@ void CG_VR_AddPointer( void );
 void CG_VR_AddHands( void );
 qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_t *ent );
 void CG_VR_AddReloadItems( void );
+qboolean CG_VR_Inspect( playerState_t *ps );
+void CG_WeaponAnimation( playerState_t *ps, weaponInfo_t *weapon, int *weapOld, int *weap, float *weapBackLerp );
 qboolean CG_VR_DrawHands( void );
 void CG_VR_Haptic( int hand, float amplitude, int msec );
 int CG_VR_DominantHand( void );
