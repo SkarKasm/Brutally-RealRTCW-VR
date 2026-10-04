@@ -69,13 +69,12 @@ Weapon_Knife
 */
 void Weapon_Knife( gentity_t *ent ) {
 	trace_t tr;
-	gentity_t   *traceEnt, *tent;
-	int damage, mod;
-//	vec3_t		pforward, eforward;
+	vec3_t end, hand;
 
-	vec3_t end;
-
-	mod = MOD_KNIFE;
+	// RealRTCW-VR: with a headset the trigger doesn't stab, G_VR_KnifeStab does
+	if ( G_VR_WeaponOrigin( ent, hand ) ) {
+		return;
+	}
 
 	AngleVectors( ent->client->ps.viewangles, forward, right, up );
 	CalcMuzzlePoint( ent, ent->s.weapon, forward, right, up, muzzleTrace );
@@ -84,6 +83,23 @@ void Weapon_Knife( gentity_t *ent ) {
 	// et sdk antilag
 	//trap_Trace( &tr, muzzleTrace, NULL, NULL, end, ent->s.number, MASK_SHOT );
 	G_HistoricalTrace( ent, &tr, muzzleTrace, NULL, NULL, end, ent->s.number, MASK_SHOT_NOCORPSE );
+
+	G_KnifeHit( ent, &tr );
+}
+
+/*
+==============
+G_KnifeHit
+
+Impact effect and damage for a knife trace that touched something.
+==============
+*/
+void G_KnifeHit( gentity_t *ent, trace_t *trp ) {
+	trace_t tr = *trp;
+	gentity_t   *traceEnt, *tent;
+	int damage, mod;
+
+	mod = MOD_KNIFE;
 
 	if ( tr.surfaceFlags & SURF_NOIMPACT ) {
 		return;
@@ -1708,6 +1724,11 @@ set muzzle location relative to pivoting eye
 ===============
 */
 void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint ) {
+	// RealRTCW-VR: a headset player's shots leave their gun's muzzle
+	if ( G_VR_WeaponOrigin( ent, muzzlePoint ) ) {
+		return;
+	}
+
 	VectorCopy( ent->r.currentOrigin, muzzlePoint );
 	muzzlePoint[2] += ent->client->ps.viewheight;
 	// Ridah, this puts the start point outside the bounding box, isn't necessary
@@ -1753,6 +1774,11 @@ void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, 
 
 // Rafael - for activate
 void CalcMuzzlePointForActivate( gentity_t *ent, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint ) {
+
+	// RealRTCW-VR: shots and "use" both come from the gun hand
+	if ( G_VR_WeaponOrigin( ent, muzzlePoint ) ) {
+		return;
+	}
 
 	VectorCopy( ent->s.pos.trBase, muzzlePoint );
 	muzzlePoint[2] += ent->client->ps.viewheight;
@@ -1830,6 +1856,9 @@ void FireWeapon( gentity_t *ent ) {
 	// Ridah, need to call this for AI prediction also
 	CalcMuzzlePoints( ent, ent->s.weapon );
 
+	// RealRTCW-VR: bolts need working after the shot, empty guns lock back
+	G_VR_OnFire( ent );
+
 	if ( g_userAim.integer ) {
 		aimSpreadScale = ent->client->currentAimSpreadScale;
 		// Ridah, add accuracy factor for AI
@@ -1866,6 +1895,10 @@ void FireWeapon( gentity_t *ent ) {
 	} else {
 		aimSpreadScale = 1.0;
 	}
+
+	// RealRTCW-VR: a tracked gun is aimed precisely, the flat game's built-in inaccuracy is
+	// scaled by the player's "shooting accuracy" VR option
+	aimSpreadScale *= G_VR_SpreadScale( ent );
 
 	// fire the specific weapon
 	switch ( ent->s.weapon ) {

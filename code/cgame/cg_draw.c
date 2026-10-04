@@ -2349,6 +2349,12 @@ static void CG_DrawCrosshair( void ) {
 	float x, y;
 	int weapnum;                // DHM - Nerve
 	vec4_t hcolor = {1, 1, 1, 1};
+
+	// RealRTCW-VR: a screen crosshair means nothing with a hand held gun, the reticle is
+	// drawn in the world where the gun points (CG_VR_AddReticle)
+	if ( cgvr.active ) {
+		return;
+	}
 	qboolean friendInSights = qfalse;
 
 	if ( cg.renderingThirdPerson ) {
@@ -4171,6 +4177,16 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 	// clear around the rendered view if sized down
 	//CG_TileClear();	// (SA) moved down
 
+	// RealRTCW-VR: the 2D layer only gets the HUD, the eyes only the world
+	if ( CG_VR_2DPass() ) {
+		CG_Draw2D( stereoView );
+		return;
+	}
+	if ( CG_VR_EyePass() ) {
+		cg.refdef.rdflags |= RDF_VRVIEW;
+		CG_VR_AddPointer();
+	}
+
 	if(stereoView != STEREO_CENTER)
 		CG_DrawCrosshair3D();
 
@@ -4202,6 +4218,10 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 	}
 
 	trap_R_RenderScene( &cg.refdef );
+
+	if ( CG_VR_EyePass() ) {
+		return;
+	}
 
 	if ( ( cg.snap->ps.pm_flags & PMF_LIMBO || cg.snap->ps.stats[STAT_HEALTH] <= 0 || cg.snap->ps.eFlags & EF_FROZEN ) && cg_fancyfx.integer ) {
 		static int texid = 0;

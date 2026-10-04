@@ -1637,7 +1637,7 @@ CG_WeaponAnimation
 */
 
 //----(SA)	modified.  this is now client-side only (server does not dictate weapon animation info)
-static void CG_WeaponAnimation( playerState_t *ps, weaponInfo_t *weapon, int *weapOld, int *weap, float *weapBackLerp ) {
+void CG_WeaponAnimation( playerState_t *ps, weaponInfo_t *weapon, int *weapOld, int *weap, float *weapBackLerp ) {
 
 	centity_t *cent = &cg.predictedPlayerEntity;
 	clientInfo_t *ci = &cgs.clientinfo[ ps->clientNum ];
@@ -2596,6 +2596,11 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 				drawpart = CG_GetPartFramesFromWeap( cent, &barrel, parent, i, weapon );
 
+				// RealRTCW-VR: magazine out / slide pulled back during hand reloading
+				if ( isPlayer && !CG_VR_WeaponPart( weaponNum, i, parent, &barrel ) ) {
+					drawpart = qfalse;
+				}
+
 				if ( drawpart && drawrealweap ) {
 					CG_AddWeaponWithPowerups( &barrel, cent->currentState.powerups, ps, cent );
 				}
@@ -2687,6 +2692,11 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	else
 	{
 		CG_PositionRotatedEntityOnTag(&flash, &gun, "tag_flash");
+	}
+
+	// RealRTCW-VR: shots leave the barrel of the gun in the player's hand
+	if ( ps && cgvr.active ) {
+		CG_VR_SetMuzzle( flash.origin );
 	}
 
 	// store this position for other cgame elements to access
@@ -2911,6 +2921,40 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 	}
 
 	if ( ps->eFlags & EF_MG42_ACTIVE ) {
+		return;
+	}
+
+	// RealRTCW-VR: weapon geometry debug view on the monitor
+	if ( CG_VR_Inspect( ps ) ) {
+		return;
+	}
+
+	// RealRTCW-VR: the gun is held in the weapon hand, no bob, depth hack or fov offsets
+	if ( cgvr.active ) {
+		if ( cgVR->menuPointer || cg.cameraMode ) {
+			return;
+		}
+		if ( ps->weapon <= WP_NONE ) {
+			cgVR->muzzleValid = qfalse;
+		} else {
+			CG_RegisterWeapon( ps->weapon );
+			memset( &hand, 0, sizeof( hand ) );
+			weapon = &cg_weapons[ ps->weapon ];
+			CG_VR_WeaponPose( ps->weapon, hand.origin, hand.axis );
+			CG_WeaponAnimation( ps, weapon, &hand.oldframe, &hand.frame, &hand.backlerp );
+			VectorCopy( hand.origin, hand.lightingOrigin );
+			hand.hModel = weapon->handsModel;
+			hand.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;
+			// the weapon's own hands are glued to the gun; draw tracked ones instead
+			if ( CG_VR_DrawHands() ) {
+				hand.renderfx |= RF_VR_NOHANDS;
+			}
+			CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity );
+		}
+		CG_VR_AddHands();
+		CG_VR_AddReticle();
+		CG_VR_AddReloadItems();
+		cg.predictedPlayerEntity.lastWeaponClientFrame = cg.clientFrame;
 		return;
 	}
 
@@ -4548,6 +4592,11 @@ void CG_FireWeapon( centity_t *cent ) {
 	sfxHandle_t     *fireEchosound;
 
 	ent = &cent->currentState;
+
+	// RealRTCW-VR: recoil is felt in the hand instead of kicking the aim
+	if ( cg.snap && ent->number == cg.snap->ps.clientNum && ent->weapon != WP_KNIFE ) {
+		CG_VR_Haptic( CG_VR_DominantHand(), 0.8f, 60 );
+	}
 
 	// Rafael - mg42
 	if ( ( cent->currentState.clientNum == cg.snap->ps.clientNum && cg.snap->ps.persistant[PERS_HWEAPON_USE] ) ||

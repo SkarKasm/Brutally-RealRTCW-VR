@@ -2266,6 +2266,11 @@ void PM_CheckForReload( int weapon ) {
 		return;
 	}
 
+	// RealRTCW-VR: the player reloads this weapon by hand
+	if ( pm->vrManualReload ) {
+		return;
+	}
+
 	// user is forcing a reload (manual reload)
 	reloadRequested = (qboolean)( pm->cmd.wbuttons & WBUTTON_RELOAD );
 
@@ -2592,9 +2597,11 @@ void PM_AdjustAimSpreadScale( void ) {
 		decrease = ( cmdTime * AIMSPREAD_DECREASE_RATE ) / wpnScale;
 
 		viewchange = 0;
-		// take player view rotation into account
-		for ( i = 0; i < 2; i++ )
-			viewchange += fabs( SHORT2ANGLE( pm->cmd.angles[i] ) - SHORT2ANGLE( pm->oldcmd.angles[i] ) );
+		// take player view rotation into account (not hand tremor on a VR controller)
+		if ( !pm->vrAim ) {
+			for ( i = 0; i < 2; i++ )
+				viewchange += fabs( SHORT2ANGLE( pm->cmd.angles[i] ) - SHORT2ANGLE( pm->oldcmd.angles[i] ) );
+		}
 
 		// take player movement into account (even if only for the scoped weapons)
 		// TODO: also check for jump/crouch and adjust accordingly
@@ -3045,6 +3052,11 @@ static void PM_Weapon( void ) {
 		qboolean reloadingW, playswitchsound = qtrue;
 	
 		ammoAvailable = PM_WeaponAmmoAvailable( pm->ps->weapon );
+
+		// RealRTCW-VR: nothing chambered (slide locked back, bolt not worked): click
+		if ( pm->vrManualReload && !pm->vrChambered ) {
+			ammoAvailable = 0;
+		}
 	
 		if ( ammoNeeded > ammoAvailable ) {
 	
@@ -3056,6 +3068,10 @@ static void PM_Weapon( void ) {
 	
 			if ( pm->ps->weapon == WP_SNOOPERSCOPE ) {
 				reloadingW = qfalse;
+			}
+
+			if ( pm->vrManualReload ) {
+				reloadingW = qfalse;    // RealRTCW-VR: reloads are done by hand
 			}
 
 			switch ( pm->ps->weapon ) {
@@ -3831,6 +3847,55 @@ void PM_Sprint( void ) {
 
 /*
 ================
+PM_VRRoomScaleMove
+
+RealRTCW-VR: carries the body along when the player physically walks around with a
+headset. cmd.vrMove is the head's displacement in the frame of the command's yaw
+(forward, left; 1/8 units). It is applied once per usercmd, identically on the server
+and in client prediction, and collides with the world so walls push the player back.
+================
+*/
+static void PM_VRRoomScaleMove( void ) {
+	vec3_t angles, fwd, right, delta, end;
+	trace_t trace;
+	float backoff;
+	int i;
+
+	if ( !pm->cmd.vrMove[0] && !pm->cmd.vrMove[1] ) {
+		return;
+	}
+
+	VectorSet( angles, 0, pm->ps->viewangles[YAW], 0 );
+	AngleVectors( angles, fwd, right, NULL );
+	VectorScale( fwd, pm->cmd.vrMove[0] * 0.125f, delta );
+	VectorMA( delta, -pm->cmd.vrMove[1] * 0.125f, right, delta );
+
+	// only once per command, Pmove may split it into several PmoveSingle calls
+	pm->cmd.vrMove[0] = pm->cmd.vrMove[1] = 0;
+
+	if ( pm->ps->pm_type != PM_NORMAL || pm->ps->stats[STAT_HEALTH] <= 0 || pm->ps->viewlocked ) {
+		return;
+	}
+
+	// move, then slide along whatever was hit
+	for ( i = 0; i < 2; i++ ) {
+		VectorAdd( pm->ps->origin, delta, end );
+		pm->trace( &trace, pm->ps->origin, pm->mins, pm->maxs, end, pm->ps->clientNum, pm->tracemask );
+		if ( trace.allsolid ) {
+			return;
+		}
+		VectorCopy( trace.endpos, pm->ps->origin );
+		if ( trace.fraction == 1.0f ) {
+			return;
+		}
+		VectorScale( delta, 1.0f - trace.fraction, delta );
+		backoff = DotProduct( delta, trace.plane.normal );
+		VectorMA( delta, -backoff, trace.plane.normal, delta );
+	}
+}
+
+/*
+================
 PmoveSingle
 
 ================
@@ -3961,6 +4026,12 @@ void PmoveSingle( pmove_t *pmove ) {
 	if ( !isDummy ) {
 		// done.
 		if ( !( pm->ps->pm_flags & PMF_LIMBO ) ) { // JPW NERVE
+			// RealRTCW-VR: the controller's pitch is the aim, nothing may offset it (spawn
+			// angles, recoil kick); yaw keeps its offset, which carries the artificial turn
+			if ( pm->vrAim ) {
+				pm->ps->delta_angles[PITCH] = 0;
+				pm->ps->delta_angles[ROLL] = 0;
+			}
 			PM_UpdateViewAngles( pm->ps, &pm->cmd, pm->trace ); //----(SA)	modified
 
 		}
@@ -4012,6 +4083,9 @@ void PmoveSingle( pmove_t *pmove ) {
 
 	// set mins, maxs, and viewheight
 	PM_CheckDuck();
+
+	// RealRTCW-VR: follow the player's real head movement
+	PM_VRRoomScaleMove();
 
 	// set groundentity
 	PM_GroundTrace();
@@ -4100,6 +4174,12 @@ Can be called by either the server or the client
 */
 int Pmove( pmove_t *pmove ) {
 	int finalTime;
+
+	// RealRTCW-VR: a headset player's aim and hand reloading state, the same on the server
+	// and in client prediction (the server keeps vrState up to date before every Pmove)
+	pmove->vrAim = ( pmove->cmd.vrFlags & VRF_ACTIVE ) != 0;
+	pmove->vrManualReload = pmove->vrAim && ( pmove->ps->vrState & VRS_MANUAL );
+	pmove->vrChambered = !pmove->vrManualReload || ( pmove->ps->vrState & VRS_CHAMBERED );
 
 	// Ridah
 	if ( pmove->ps->eFlags & EF_DUMMY_PMOVE ) {

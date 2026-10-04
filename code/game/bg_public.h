@@ -305,6 +305,12 @@ typedef struct {
 
 	float xyspeed;
 
+	// RealRTCW-VR: set by Pmove from the usercmd and playerState. Aim comes from a tracked
+	// controller, whose constant small motion must not count as swinging the view around
+	int vrAim;
+	int vrManualReload;     // reloads happen by hand: never start one automatically
+	int vrChambered;        // with vrManualReload: qfalse makes the trigger click
+
 	// for fixed msec Pmove
 	int pmove_fixed;
 	int pmove_msec;
@@ -318,6 +324,41 @@ typedef struct {
 // if a full pmove isn't done on the client, you can just update the angles
 void PM_UpdateViewAngles( playerState_t * ps, usercmd_t * cmd, void( trace ) ( trace_t * results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask ) );
 int Pmove( pmove_t *pmove );
+
+//
+// bg_vr.c  (RealRTCW-VR)
+//
+typedef enum {
+	VRR_NONE,           // automatic reload (button)
+	VRR_MAG,            // detachable magazine, rack the slide/bolt when it ran dry
+	VRR_BOLT,           // bolt action: work the bolt after every shot, stripper clips
+	VRR_ENBLOC,         // M1 Garand: clip pings out when empty, bolt closes itself
+	VRR_PUMP,           // pump shotgun: shells one by one, pump after every shot
+	VRR_SHELLS,         // semi-auto shotgun: shells one by one
+	VRR_REVOLVER        // open, speedloader, done
+} vrReloadClass_t;
+
+typedef struct {
+	qboolean    valid;          // measured from the model (otherwise stand-ins)
+	vec3_t      grip;           // trigger hand, first person model space
+	float       pitch, yaw;     // straightens the gun body / blade
+	int         magPart;        // linked part that is the magazine (-1 none)
+	vec3_t      mag;            // where magazines go in
+	vec3_t      magLocal;       // magazine centre in its own model
+	vec3_t      magDir;         // way out of the gun
+	int         chargePart;     // linked part that is the slide / bolt / pump (-1 none)
+	vec3_t      charge;         // where to grab it
+	vec3_t      chargeDir;      // way it is pulled
+	float       travel;         // how far
+} vrWeaponGeom_t;
+
+int  BG_VR_ReloadClass( int weapon );
+void BG_VR_WeaponGeom( int weapon, qboolean vanillaGuns, vrWeaponGeom_t *out );
+void BG_VR_WeaponFrame( const vrWeaponGeom_t *g, const vec3_t hand, const vec3_t aimAngles, const float *adj,
+						vec3_t origin, vec3_t axis[3] );
+void BG_VR_ModelPoint( const vec3_t origin, vec3_t axis[3], const vec3_t local, vec3_t out );
+void BG_VR_ModelDir( vec3_t axis[3], const vec3_t local, vec3_t out );
+float BG_VR_SpreadScale( int vrFlags );
 
 //===================================================================================
 

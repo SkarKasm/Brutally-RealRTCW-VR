@@ -1009,6 +1009,15 @@ void TeleportPlayer( gentity_t *player, vec3_t origin, vec3_t angles );
 //
 qboolean LogAccuracyHit( gentity_t *target, gentity_t *attacker );
 void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint );
+void G_KnifeHit( gentity_t *ent, trace_t *trp );            // RealRTCW-VR
+// g_vr.c
+qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out );
+void G_VR_KnifeStab( gentity_t *ent );
+void G_VR_UpdateWeaponState( gentity_t *ent );
+void G_VR_PlayerThink( gentity_t *ent );
+void G_VR_OnFire( gentity_t *ent );
+void G_VR_Reset( void );
+float G_VR_SpreadScale( gentity_t *ent );
 void SnapVectorTowards( vec3_t v, vec3_t to );
 trace_t *CheckMeleeAttack( gentity_t *ent, float dist, qboolean isTest );
 gentity_t *weapon_grenadelauncher_fire( gentity_t *ent, int grenadeWPID );

@@ -1091,8 +1091,15 @@ void ClientThink_real( gentity_t *ent ) {
 
 	VectorCopy( client->ps.origin, client->oldOrigin );
 
+	// RealRTCW-VR: hand reloading state for pmove (and the player's cgame)
+	G_VR_UpdateWeaponState( ent );
+
 	// perform a pmove
 	monsterslick = Pmove( &pm );
+
+	// RealRTCW-VR: the knife hurts by physically stabbing with it; hand reloading, grabbing
+	G_VR_KnifeStab( ent );
+	G_VR_PlayerThink( ent );
 
 	if ( monsterslick && !( ent->flags & FL_NO_MONSTERSLICK ) ) {
 		{

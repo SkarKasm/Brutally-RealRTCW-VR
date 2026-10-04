@@ -88,6 +88,9 @@ Q_EXPORT intptr_t vmMain( intptr_t command, intptr_t arg0, intptr_t arg1, intptr
 		cgDC.cursory = cgs.cursorY;
 		CG_MouseEvent( arg0, arg1 );
 		return 0;
+	case CG_SET_VR_SHARED:
+		cgVR = (vrShared_t *)arg0;
+		return 0;
 	default:
 		CG_Error( "vmMain: unknown command %li", (long)command );
 		break;
@@ -97,6 +100,8 @@ Q_EXPORT intptr_t vmMain( intptr_t command, intptr_t arg0, intptr_t arg1, intptr
 
 
 cg_t cg;
+
+vrShared_t *cgVR;       // RealRTCW-VR: engine VR state, NULL until CG_SET_VR_SHARED
 cgs_t cgs;
 centity_t cg_entities[MAX_GENTITIES];
 weaponInfo_t cg_weapons[MAX_WEAPONS];
@@ -2264,6 +2269,7 @@ void CG_Init( int serverMessageNum, int serverCommandSequence ) {
 	cgs.media.menucharsetShader = trap_R_RegisterShader( "gfx/2d/hudchars" );
 	// END JOSEPH
 	cgs.media.whiteShader       = trap_R_RegisterShader( "white" );
+	CG_VR_Init();   // RealRTCW-VR
 	cgs.media.charsetProp       = trap_R_RegisterShaderNoMip( "menu/art/font1_prop.tga" );
 	cgs.media.charsetPropGlow   = trap_R_RegisterShaderNoMip( "menu/art/font1_prop_glo.tga" );
 	cgs.media.charsetPropB      = trap_R_RegisterShaderNoMip( "menu/art/font2_prop.tga" );

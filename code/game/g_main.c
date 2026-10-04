@@ -1314,6 +1314,9 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	int fps;
 	int r;
 
+	// RealRTCW-VR: hand reloading / grabbing start over with the level
+	G_VR_Reset();
+
 	//if ( trap_Cvar_VariableIntegerValue( "g_gametype" ) != GT_SINGLE_PLAYER ) {
 	G_Printf( "------- Game Initialization -------\n" );
 	G_Printf( "gamename: %s\n", GAMEVERSION );
