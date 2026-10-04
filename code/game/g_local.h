@@ -989,6 +989,7 @@ void G_VR_UpdateWeaponState( gentity_t *ent );
 void G_VR_PlayerThink( gentity_t *ent );
 void G_VR_OnFire( gentity_t *ent );
 void G_VR_Reset( void );
+float G_VR_SpreadScale( gentity_t *ent );
 void SnapVectorTowards( vec3_t v, vec3_t to );
 trace_t *CheckMeleeAttack( gentity_t *ent, float dist, qboolean isTest );
 gentity_t *weapon_grenadelauncher_fire( gentity_t *ent, int grenadeWPID );

@@ -1836,6 +1836,7 @@ typedef struct {
 extern cgVRState_t cgvr;
 
 qboolean CG_VR_Active( void );
+qboolean CG_VR_EmptySwitch( void );
 qboolean CG_VR_EyePass( void );
 qboolean CG_VR_2DPass( void );
 void CG_VR_Init( void );

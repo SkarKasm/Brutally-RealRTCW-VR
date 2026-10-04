@@ -27,6 +27,7 @@ cgVRState_t cgvr;
 static vmCvar_t vr_drawHands;
 static vmCvar_t vr_reticle;
 static vmCvar_t vr_inspect;
+static vmCvar_t vr_emptySwitch;
 
 static qboolean CG_VR_OneHanded( int weapon );
 
@@ -45,6 +46,15 @@ qboolean CG_VR_EyePass( void ) {
 
 qboolean CG_VR_2DPass( void ) {
 	return cgVR && cgVR->active && cgVR->pass == VR_PASS_2D;
+}
+
+// switch to another weapon when the current one runs dry (always outside VR)
+qboolean CG_VR_EmptySwitch( void ) {
+	if ( !CG_VR_Active() ) {
+		return qtrue;
+	}
+	trap_Cvar_Update( &vr_emptySwitch );
+	return vr_emptySwitch.integer != 0;
 }
 
 int CG_VR_DominantHand( void ) {
@@ -68,6 +78,7 @@ void CG_VR_Init( void ) {
 	trap_Cvar_Register( &vr_drawHands, "vr_drawHands", "1", CVAR_ARCHIVE );
 	trap_Cvar_Register( &vr_reticle, "vr_reticle", "1", CVAR_ARCHIVE );
 	trap_Cvar_Register( &vr_inspect, "vr_inspect", "0", 0 );
+	trap_Cvar_Register( &vr_emptySwitch, "vr_emptySwitch", "0", CVAR_ARCHIVE );
 
 	// built by misc/vr/make_vr_assets.py into main/z_vr_assets.pk3
 	cgvr.handModel[VR_HAND_LEFT] = trap_R_RegisterModel( "models/vr/hand_l.md3" );

@@ -3950,6 +3950,7 @@ void CL_Init( void ) {
 	CL_VR_Init();
 	Cmd_AddCommand( "vr_recenter", CL_VR_Recenter_f );
 	Cmd_AddCommand( "vr_key", CL_VR_Key_f );
+	Cmd_AddCommand( "vr_cursor", CL_VR_Cursor_f );
 
 	CL_InitRef();
 

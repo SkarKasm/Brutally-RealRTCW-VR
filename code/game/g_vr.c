@@ -69,7 +69,27 @@ typedef struct {
 
 static vrPlayer_t vrp;
 static vmCvar_t vr_manualReload;
+static vmCvar_t vr_aimSpread;
+
+static qboolean G_VR_IsPlayer( gentity_t *ent );
+static void G_VR_Init( void );
 static qboolean vrCvarsRegistered;
+
+/*
+=================
+G_VR_SpreadScale
+
+Multiplier for the player's bullet spread when aiming with a tracked controller.
+=================
+*/
+float G_VR_SpreadScale( gentity_t *ent ) {
+	if ( !G_VR_IsPlayer( ent ) ) {
+		return 1.0f;
+	}
+	G_VR_Init();
+	trap_Cvar_Update( &vr_aimSpread );
+	return vr_aimSpread.value < 0 ? 0 : ( vr_aimSpread.value > 1 ? 1 : vr_aimSpread.value );
+}
 
 void G_VR_Reset( void ) {
 	vrp.initialised = qfalse;
@@ -84,6 +104,7 @@ static void G_VR_Init( void ) {
 
 	if ( !vrCvarsRegistered ) {
 		trap_Cvar_Register( &vr_manualReload, "vr_manualReload", "1", CVAR_ARCHIVE );
+		trap_Cvar_Register( &vr_aimSpread, "vr_aimSpread", "0.25", CVAR_ARCHIVE );
 		vrCvarsRegistered = qtrue;
 	}
 	if ( vrp.initialised ) {

@@ -2064,6 +2064,10 @@ void FireWeapon( gentity_t *ent ) {
 		aimSpreadScale = 1.0;
 	}
 
+	// RealRTCW-VR: a tracked gun is aimed precisely, the flat game's built-in inaccuracy is
+	// scaled by the "accuracy" VR option
+	aimSpreadScale *= G_VR_SpreadScale( ent );
+
 
 	if ( g_gametype.integer == GT_SURVIVAL) {
 		if ( ( ent->client->ps.eFlags & EF_ZOOMING ) && ( ent->client->ps.stats[STAT_KEYS] & ( 1 << INV_BINOCS ) ) &&

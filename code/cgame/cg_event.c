@@ -1886,7 +1886,8 @@ case EV_FILL_CLIP_FULL:
 		if ( ( es->weapon != WP_GRENADE_LAUNCHER ) && ( es->weapon != WP_GRENADE_PINEAPPLE ) && ( es->weapon != WP_SMOKE_BOMB ) && ( es->weapon != WP_DYNAMITE )  && ( es->weapon != WP_DYNAMITE_ENG ) && ( es->weapon != WP_AIRSTRIKE ) && ( es->weapon != WP_POISONGAS )  ) {
 			trap_S_StartSound( NULL, es->number, CHAN_AUTO, cgs.media.noAmmoSound );
 		}
-		if ( es->number == cg.snap->ps.clientNum && cg_autoReload.integer == 1 ) {
+		// RealRTCW-VR: optional, an empty click is part of reloading by hand
+		if ( es->number == cg.snap->ps.clientNum && cg_autoReload.integer == 1 && CG_VR_EmptySwitch() ) {
             if (cg_newinventory.integer <= 0 && cg_gameType.integer != GT_SURVIVAL) {
 				CG_OutOfAmmoChange();
 			}

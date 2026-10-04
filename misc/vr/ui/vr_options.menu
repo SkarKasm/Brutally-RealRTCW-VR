@@ -1,0 +1,327 @@
+// RealRTCW-VR options, opened from the main menu ("VR OPTIONS").
+// Packed into main/z_vr_assets.pk3 by misc/vr/make_vr_assets.py.
+//
+// Two columns, a row every 20 units; there is room under both columns for more settings.
+
+#include "ui/menudef.h"
+
+{
+	menuDef {
+		name "vr_options"
+		rect 0 0 640 480
+		fullScreen MENU_TRUE
+		visible MENU_FALSE
+		focusColor 1 .75 0 1
+		style WINDOW_STYLE_FILLED
+		backcolor 0 0 0 .85
+
+		onOpen { setitemcolor vr_options_back forecolor 1 1 1 1 }
+		onESC { close vr_options; open main }
+
+		// ------------------------------------------------------------------ titles
+
+		itemDef {
+			name vr_title
+			text "VR OPTIONS"
+			rect 0 28 640 30
+			textalign ITEM_ALIGN_CENTER
+			textalignx 320
+			textaligny 24
+			textscale .4
+			textfont UI_FONT_BIG
+			forecolor 1 .85 .5 1
+			visible 1
+			decoration
+		}
+
+		itemDef {
+			name vr_weapons_title
+			text "WEAPONS"
+			rect 20 78 290 16
+			textalign ITEM_ALIGN_LEFT
+			textalignx 4
+			textaligny 13
+			textscale .27
+			textfont UI_FONT_BIG
+			forecolor 1 .75 0 1
+			visible 1
+			decoration
+		}
+
+		itemDef {
+			name vr_comfort_title
+			text "MOVEMENT & COMFORT"
+			rect 330 78 290 16
+			textalign ITEM_ALIGN_LEFT
+			textalignx 4
+			textaligny 13
+			textscale .27
+			textfont UI_FONT_BIG
+			forecolor 1 .75 0 1
+			visible 1
+			decoration
+		}
+
+		// ------------------------------------------------------------------ weapons
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_YESNO
+			text "Manual reloading:"
+			cvar "vr_manualReload"
+			rect 20 104 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_YESNO
+			text "Switch weapon when empty:"
+			cvar "vr_emptySwitch"
+			rect 20 124 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_MULTI
+			text "Shooting accuracy:"
+			cvar "vr_aimSpread"
+			cvarFloatList { "Precise" 0.125 "Steady" 0.25 "Realistic" 0.5 "Flat game" 1 }
+			rect 20 144 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_YESNO
+			text "Aim reticle:"
+			cvar "vr_reticle"
+			rect 20 164 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_YESNO
+			text "Show VR hands:"
+			cvar "vr_drawHands"
+			rect 20 184 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_SLIDER
+			text "Controller vibration:"
+			cvarfloat "vr_hapticScale" 1 0 1
+			rect 20 204 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		// ------------------------------------------------------------------ movement & comfort
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_MULTI
+			text "Turning:"
+			cvar "vr_snapTurn"
+			cvarFloatList { "Smooth" 0 "Snap 30" 30 "Snap 45" 45 "Snap 90" 90 }
+			rect 330 104 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_SLIDER
+			text "Smooth turn speed:"
+			cvarfloat "vr_turnSpeed" 180 60 360
+			rect 330 124 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_MULTI
+			text "Walk direction:"
+			cvar "vr_walkDirection"
+			cvarFloatList { "Head" 0 "Off hand" 1 }
+			rect 330 144 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_YESNO
+			text "Room-scale movement:"
+			cvar "vr_roomScale"
+			rect 330 164 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_MULTI
+			text "Weapon hand:"
+			cvar "vr_rightHanded"
+			cvarFloatList { "Right" 1 "Left" 0 }
+			rect 330 184 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_SLIDER
+			text "HUD distance:"
+			cvarfloat "vr_hudDistance" 1.3 0.6 3
+			rect 330 204 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_SLIDER
+			text "Menu distance:"
+			cvarfloat "vr_menuDistance" 2 1 4
+			rect 330 224 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		// ------------------------------------------------------------------ footer
+
+		itemDef {
+			name vr_note
+			text "Settings apply immediately. More VR options will appear here as they are added."
+			rect 0 400 640 14
+			textalign ITEM_ALIGN_CENTER
+			textalignx 320
+			textaligny 11
+			textscale .18
+			textfont UI_FONT_BIG
+			forecolor .8 .8 .8 1
+			visible 1
+			decoration
+		}
+
+		itemDef {
+			name vr_options_back
+			type ITEM_TYPE_BUTTON
+			text "BACK"
+			rect 270 425 100 24
+			textalign ITEM_ALIGN_CENTER
+			textalignx 50
+			textaligny 19
+			textscale .3
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+			action { close vr_options; open main }
+		}
+	}
+}

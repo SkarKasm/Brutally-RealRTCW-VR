@@ -1175,6 +1175,14 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_renderWidth", "0", CVAR_ROM );
 	Cvar_Get( "vr_renderHeight", "0", CVAR_ROM );
 
+	// settings owned by the game modules, created here so the VR options menu works before
+	// a level is loaded (same defaults as where they are used)
+	Cvar_Get( "vr_manualReload", "1", CVAR_ARCHIVE );   // g_vr.c
+	Cvar_Get( "vr_emptySwitch", "0", CVAR_ARCHIVE );    // cg_event.c
+	Cvar_Get( "vr_aimSpread", "0.25", CVAR_ARCHIVE );   // g_weapon.c
+	Cvar_Get( "vr_reticle", "1", CVAR_ARCHIVE );        // cg_vr.c
+	Cvar_Get( "vr_drawHands", "1", CVAR_ARCHIVE );      // cg_vr.c
+
 	Com_Memset( &xr, 0, sizeof( xr ) );
 	Com_Memset( &com_vr, 0, sizeof( com_vr ) );
 	com_vr.grabbedEntity = -1;
@@ -2073,6 +2081,25 @@ void CL_VR_Key_f( void ) {
 	CL_KeyEvent( key, qfalse, Sys_Milliseconds() );
 }
 
+/*
+=================
+CL_VR_Cursor_f
+
+vr_cursor <x> <y>: put the menu cursor on a 640x480 position, the way the laser pointer
+does, for scripted menu tests.
+=================
+*/
+void CL_VR_Cursor_f( void ) {
+	if ( Cmd_Argc() != 3 || !uivm || !( Key_GetCatcher() & KEYCATCH_UI ) ) {
+		Com_Printf( "usage: vr_cursor <x> <y> (with a menu open)\n" );
+		return;
+	}
+	VM_Call( uivm, UI_MOUSE_EVENT, -SCREEN_WIDTH * 2, -SCREEN_HEIGHT * 2 );     // to the corner...
+	VM_Call( uivm, UI_MOUSE_EVENT, atoi( Cmd_Argv( 1 ) ), atoi( Cmd_Argv( 2 ) ) );  // ...then out
+	xr.uiCursorX = atoi( Cmd_Argv( 1 ) );
+	xr.uiCursorY = atoi( Cmd_Argv( 2 ) );
+}
+
 #else // !_WIN32
 
 void CL_VR_Init( void ) { Com_Memset( &com_vr, 0, sizeof( com_vr ) ); }
@@ -2088,5 +2115,6 @@ qboolean CL_VR_RenderFrame( void ) { return qfalse; }
 qboolean CL_VR_Active( void ) { return qfalse; }
 void CL_VR_Recenter_f( void ) {}
 void CL_VR_Key_f( void ) {}
+void CL_VR_Cursor_f( void ) {}
 
 #endif

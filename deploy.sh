@@ -12,6 +12,6 @@ echo "deployed to $(pwd)/run"
 
 # VR hand models, built from the RealRTCW install (not redistributable, so generated locally)
 RRTCW_MAIN="/c/Program Files (x86)/Steam/steamapps/common/RealRTCW/Main"
-if [ ! -f run/main/z_vr_assets.pk3 ] || [ misc/vr/make_vr_assets.py -nt run/main/z_vr_assets.pk3 ]; then
+if [ ! -f run/main/z_vr_assets.pk3 ] || [ misc/vr/make_vr_assets.py -nt run/main/z_vr_assets.pk3 ] || [ misc/vr/ui/vr_options.menu -nt run/main/z_vr_assets.pk3 ]; then
   python misc/vr/make_vr_assets.py "$RRTCW_MAIN" run/main/z_vr_assets.pk3
 fi
