@@ -66,9 +66,10 @@
 
 		itemDef {
 			name vr_opt
-			type ITEM_TYPE_YESNO
+			type ITEM_TYPE_MULTI
 			text "Manual reloading:"
 			cvar "vr_manualReload"
+			cvarFloatList { "No" 0 "Yes" 1 }
 			rect 20 104 290 14
 			textalign ITEM_ALIGN_RIGHT
 			textalignx 150
@@ -83,9 +84,10 @@
 
 		itemDef {
 			name vr_opt
-			type ITEM_TYPE_YESNO
+			type ITEM_TYPE_MULTI
 			text "Switch weapon when empty:"
 			cvar "vr_emptySwitch"
+			cvarFloatList { "No" 0 "Yes" 1 }
 			rect 20 124 290 14
 			textalign ITEM_ALIGN_RIGHT
 			textalignx 150
@@ -118,9 +120,10 @@
 
 		itemDef {
 			name vr_opt
-			type ITEM_TYPE_YESNO
+			type ITEM_TYPE_MULTI
 			text "Aim reticle:"
 			cvar "vr_reticle"
+			cvarFloatList { "No" 0 "Yes" 1 }
 			rect 20 164 290 14
 			textalign ITEM_ALIGN_RIGHT
 			textalignx 150
@@ -135,9 +138,10 @@
 
 		itemDef {
 			name vr_opt
-			type ITEM_TYPE_YESNO
+			type ITEM_TYPE_MULTI
 			text "Show VR hands:"
 			cvar "vr_drawHands"
+			cvarFloatList { "No" 0 "Yes" 1 }
 			rect 20 184 290 14
 			textalign ITEM_ALIGN_RIGHT
 			textalignx 150
@@ -224,9 +228,10 @@
 
 		itemDef {
 			name vr_opt
-			type ITEM_TYPE_YESNO
+			type ITEM_TYPE_MULTI
 			text "Room-scale movement:"
 			cvar "vr_roomScale"
+			cvarFloatList { "No" 0 "Yes" 1 }
 			rect 330 164 290 14
 			textalign ITEM_ALIGN_RIGHT
 			textalignx 150

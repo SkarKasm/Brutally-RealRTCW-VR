@@ -28,7 +28,7 @@ GRIP_SHIFT = {
     "models/weapons2/mauser/v_mauser": -7.0,
     "models/weapons2/garand/v_garand": -10.0,
 }
-MELEE = ("models/weapons2/knife/v_knife",)
+MELEE = ("models/weapons2/knife/v_knife", "models/multiplayer/knife/v_knife")
 
 # reload recordings of the weapons reloaded by hand, keyed like cg_vr.c looks them up
 # (vr/sound/w<weapon number>_<out|in|rack>.wav); weapon numbers from bg_public.h
@@ -68,12 +68,23 @@ class Paks(V.Paks):
                 for n in z.namelist():
                     self.index[n.lower()] = (z, n)
 
+    def read(self, path):
+        # the renderer loads a model's .mdc before its .md3 (tr_model.c), whichever pak
+        base, ext = os.path.splitext(path.lower().replace("\\", "/"))
+        if ext in (".md3", ".mdc"):
+            for alt in (".mdc", ".md3"):
+                hit = self.index.get(base + alt)
+                if hit:
+                    return hit[0].read(hit[1])
+            return None
+        return V.Paks.read(self, path)
+
 
 def weapon_infos(paks):
     """{model key: info} for every first person weapon (key: v_ model path, no extension)."""
     out = {}
     for name in sorted(paks.names()):
-        m = re.match(r"^(models/weapons2/[^/]+)/v_([^/]+)_hand\.(md3|mdc)$", name)
+        m = re.match(r"^(models/(?:weapons2|multiplayer)/[^/]+)/v_([^/]+)_hand\.(md3|mdc)$", name)
         if not m:
             continue
         folder, base = m.group(1), m.group(2)

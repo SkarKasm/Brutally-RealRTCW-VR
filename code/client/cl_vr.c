@@ -96,6 +96,12 @@ static PFNGLDELETERENDERBUFFERS qglDeleteRenderbuffers;
 static PFNGLBINDRENDERBUFFER qglBindRenderbuffer;
 static PFNGLRENDERBUFFERSTORAGE qglRenderbufferStorage;
 static PFNGLFRAMEBUFFERRENDERBUFFER qglFramebufferRenderbuffer;
+
+typedef void ( APIENTRY *PFNGLGENTEXTURES )( GLsizei n, GLuint *ids );
+typedef void ( APIENTRY *PFNGLBINDTEXTURE )( GLenum target, GLuint tex );
+typedef void ( APIENTRY *PFNGLTEXIMAGE2D )( GLenum target, GLint level, GLint internal, GLsizei w, GLsizei h,
+										   GLint border, GLenum format, GLenum type, const void *pixels );
+typedef void ( APIENTRY *PFNGLDELETETEXTURES )( GLsizei n, const GLuint *ids );
 static PFNWGLGETCURRENTCONTEXT qwglGetCurrentContext;
 static PFNWGLGETCURRENTDC qwglGetCurrentDC;
 
@@ -252,6 +258,7 @@ typedef struct {
 } vrHand_t;
 
 static struct {
+	qboolean        sim;                // vr_simulate: a pretend headset, drawn on the monitor
 	HMODULE         loader;
 	XrInstance      instance;
 	XrSystemId      systemId;
@@ -836,7 +843,7 @@ static void VR_Haptic( int hand, float amplitude, int msec ) {
 	XrHapticActionInfo hai = { XR_TYPE_HAPTIC_ACTION_INFO };
 	XrHapticVibration vib = { XR_TYPE_HAPTIC_VIBRATION };
 
-	if ( !xr.sessionRunning || xr.state != XR_SESSION_STATE_FOCUSED ) {
+	if ( !xr.sessionRunning || xr.state != XR_SESSION_STATE_FOCUSED || xr.sim ) {
 		return;
 	}
 	amplitude *= vr_hapticScale->value;
@@ -924,7 +931,14 @@ static void VR_DestroySwapchain( vrSwapchain_t *sc ) {
 	if ( sc->depth && qglDeleteRenderbuffers ) {
 		qglDeleteRenderbuffers( 1, &sc->depth );
 	}
-	if ( sc->handle != XR_NULL_HANDLE ) {
+	if ( xr.sim && sc->imageCount ) {
+		PFNGLDELETETEXTURES del = (PFNGLDELETETEXTURES)VR_GetGLProc( "glDeleteTextures" );
+		GLuint tex = sc->images[0].image;
+		if ( del ) {
+			del( 1, &tex );
+		}
+	}
+	if ( sc->handle != XR_NULL_HANDLE && !xr.sim ) {
 		qxrDestroySwapchain( sc->handle );
 	}
 	Com_Memset( sc, 0, sizeof( *sc ) );
@@ -934,6 +948,10 @@ static GLuint VR_AcquireSwapchain( vrSwapchain_t *sc ) {
 	XrSwapchainImageAcquireInfo ai = { XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO };
 	XrSwapchainImageWaitInfo wi = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
 
+	if ( xr.sim ) {
+		sc->current = 0;
+		return sc->fbos[0];
+	}
 	if ( XR_FAILED( qxrAcquireSwapchainImage( sc->handle, &ai, &sc->current ) ) ) {
 		return 0;
 	}
@@ -948,7 +966,7 @@ static GLuint VR_AcquireSwapchain( vrSwapchain_t *sc ) {
 static void VR_ReleaseSwapchain( vrSwapchain_t *sc ) {
 	XrSwapchainImageReleaseInfo ri = { XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
 
-	if ( sc->acquired ) {
+	if ( sc->acquired && !xr.sim ) {
 		qxrReleaseSwapchainImage( sc->handle, &ri );
 		sc->acquired = qfalse;
 	}
@@ -1016,6 +1034,126 @@ static qboolean VR_CreatePlaySpace( void ) {
 }
 
 /*
+==============================================================================
+
+vr_simulate: a pretend headset for testing the headset rendering path on the monitor.
+Swapchains are plain textures, the head stands still (vr_simHead "pitch yaw" turns it),
+the hands are held out in front, and the left eye is mirrored to the window.
+
+==============================================================================
+*/
+
+static void VR_SimSwapchain( vrSwapchain_t *sc, int width, int height ) {
+	PFNGLGENTEXTURES genTextures = (PFNGLGENTEXTURES)VR_GetGLProc( "glGenTextures" );
+	PFNGLBINDTEXTURE bindTexture = (PFNGLBINDTEXTURE)VR_GetGLProc( "glBindTexture" );
+	PFNGLTEXIMAGE2D texImage2D = (PFNGLTEXIMAGE2D)VR_GetGLProc( "glTexImage2D" );
+	GLuint tex;
+
+	Com_Memset( sc, 0, sizeof( *sc ) );
+	sc->width = width;
+	sc->height = height;
+	if ( !genTextures || !bindTexture || !texImage2D ) {
+		return;
+	}
+	genTextures( 1, &tex );
+	bindTexture( GL_TEXTURE_2D, tex );
+	texImage2D( GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, width, height, 0, 0x1908 /* GL_RGBA */, 0x1401 /* GL_UNSIGNED_BYTE */, NULL );
+	bindTexture( GL_TEXTURE_2D, 0 );
+
+	sc->imageCount = 1;
+	sc->images[0].image = tex;
+	qglGenRenderbuffers( 1, &sc->depth );
+	qglBindRenderbuffer( GL_RENDERBUFFER, sc->depth );
+	qglRenderbufferStorage( GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height );
+	qglBindRenderbuffer( GL_RENDERBUFFER, 0 );
+	qglGenFramebuffers( 1, sc->fbos );
+	qglBindFramebuffer( GL_FRAMEBUFFER, sc->fbos[0] );
+	qglFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0 );
+	qglFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, sc->depth );
+	if ( qglCheckFramebufferStatus( GL_FRAMEBUFFER ) != GL_FRAMEBUFFER_COMPLETE ) {
+		Com_Printf( S_COLOR_YELLOW "VR: simulated framebuffer incomplete\n" );
+	}
+	qglBindFramebuffer( GL_FRAMEBUFFER, 0 );
+}
+
+static void VR_SimInitSession( void ) {
+	VR_SimSwapchain( &xr.eyes[0], xr.width, xr.height );
+	VR_SimSwapchain( &xr.eyes[1], xr.width, xr.height );
+	VR_SimSwapchain( &xr.ui, xr.width, xr.height );
+	xr.session = (XrSession)(uintptr_t)1;
+	xr.sessionRunning = qtrue;
+	xr.state = XR_SESSION_STATE_FOCUSED;
+	xr.menuPlaced = qfalse;
+	xr.lastRawHeadValid = qfalse;
+	Cvar_Set( "com_maxfps", "90" );
+	Com_Printf( "VR: simulated session created\n" );
+}
+
+// a rotation by yaw (about up) then pitch (about right), radians
+static XrQuaternionf VR_SimQuat( float pitch, float yaw ) {
+	XrQuaternionf q;
+	float sp = sin( pitch * 0.5f ), cp = cos( pitch * 0.5f );
+	float sy = sin( yaw * 0.5f ), cy = cos( yaw * 0.5f );
+
+	q.w = cy * cp;
+	q.x = cy * sp;
+	q.y = sy * cp;
+	q.z = -sy * sp;
+	return q;
+}
+
+static void VR_SimPoses( void ) {
+	static const float handOffset[2][3] = { { -0.12f, -0.38f, -0.50f }, { 0.17f, -0.32f, -0.30f } };
+	float pitch = 0, yaw = 0, v[3], out[3];
+	XrQuaternionf headQ, yawQ;
+	char buf[64];
+	int eye, h;
+
+	Cvar_VariableStringBuffer( "vr_simHead", buf, sizeof( buf ) );
+	sscanf( buf, "%f %f", &pitch, &yaw );
+	headQ = VR_SimQuat( DEG2RAD( -pitch ), DEG2RAD( yaw ) );     // Quake pitch: + is down
+	yawQ = VR_SimQuat( 0, DEG2RAD( yaw ) );
+
+	xr.head.orientation = headQ;
+	xr.head.position.x = 0;
+	xr.head.position.y = 1.6f;
+	xr.head.position.z = 0;
+	xr.headValid = qtrue;
+
+	for ( eye = 0; eye < 2; eye++ ) {
+		float side = eye == 0 ? -1.0f : 1.0f;
+
+		Com_Memset( &xr.headViews[eye].pose, 0, sizeof( XrPosef ) );
+		xr.headViews[eye].pose.orientation.w = 1;
+		xr.headViews[eye].pose.position.x = side * 0.032f;
+
+		v[0] = side * 0.032f;
+		v[1] = v[2] = 0;
+		VR_QuatRotate( &headQ, v, out );
+		xr.views[eye].pose.orientation = headQ;
+		xr.views[eye].pose.position.x = xr.head.position.x + out[0];
+		xr.views[eye].pose.position.y = xr.head.position.y + out[1];
+		xr.views[eye].pose.position.z = xr.head.position.z + out[2];
+		// Quest 3 like: wider towards the outside of each eye
+		xr.views[eye].fov.angleLeft = eye == 0 ? -0.95f : -0.80f;
+		xr.views[eye].fov.angleRight = eye == 0 ? 0.80f : 0.95f;
+		xr.views[eye].fov.angleUp = 0.85f;
+		xr.views[eye].fov.angleDown = -0.90f;
+		xr.headViews[eye].fov = xr.views[eye].fov;
+	}
+
+	for ( h = 0; h < 2; h++ ) {
+		VR_QuatRotate( &yawQ, handOffset[h], out );
+		xr.hands[h].grip.orientation = yawQ;
+		xr.hands[h].grip.position.x = xr.head.position.x + out[0];
+		xr.hands[h].grip.position.y = xr.head.position.y + out[1];
+		xr.hands[h].grip.position.z = xr.head.position.z + out[2];
+		xr.hands[h].aim = xr.hands[h].grip;
+		xr.hands[h].gripValid = xr.hands[h].aimValid = qtrue;
+	}
+}
+
+/*
 =================
 CL_VR_InitSession
 
@@ -1033,6 +1171,11 @@ void CL_VR_InitSession( void ) {
 
 	if ( !VR_LoadGL() ) {
 		Com_Printf( S_COLOR_YELLOW "VR: required OpenGL framebuffer functions are missing\n" );
+		return;
+	}
+
+	if ( xr.sim ) {
+		VR_SimInitSession();
 		return;
 	}
 
@@ -1089,6 +1232,13 @@ void CL_VR_ShutdownSession( void ) {
 	VR_DestroySwapchain( &xr.eyes[0] );
 	VR_DestroySwapchain( &xr.eyes[1] );
 	VR_DestroySwapchain( &xr.ui );
+
+	if ( xr.sim ) {
+		xr.session = XR_NULL_HANDLE;
+		xr.sessionRunning = qfalse;
+		com_vr.active = qfalse;
+		return;
+	}
 
 	for ( h = 0; h < 2; h++ ) {
 		if ( xr.gripSpace[h] ) {
@@ -1226,7 +1376,13 @@ void CL_VR_Init( void ) {
 		return;
 	}
 
-	if ( !VR_LoadLoader() || !VR_CreateInstance() ) {
+	if ( Cvar_VariableIntegerValue( "vr_simulate" ) ) {
+		// development: a pretend headset standing still, its left eye on the monitor
+		Com_Printf( "VR: simulating a headset (vr_simulate)\n" );
+		xr.sim = qtrue;
+		xr.width = 1088;
+		xr.height = 1200;
+	} else if ( !VR_LoadLoader() || !VR_CreateInstance() ) {
 		if ( xr.instance ) {
 			qxrDestroyInstance( xr.instance );
 			xr.instance = XR_NULL_HANDLE;
@@ -1283,19 +1439,23 @@ static void VR_UpdateTracking( void ) {
 	xr.views[0].type = xr.views[1].type = XR_TYPE_VIEW;
 	xr.headViews[0].type = xr.headViews[1].type = XR_TYPE_VIEW;
 
-	vli.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-	vli.displayTime = xr.frameState.predictedDisplayTime;
-	vli.space = xr.playSpace;
-	qxrLocateViews( xr.session, &vli, &vs, 2, &count, xr.views );
-	vli.space = xr.viewSpace;
-	qxrLocateViews( xr.session, &vli, &vs, 2, &count, xr.headViews );
+	if ( xr.sim ) {
+		VR_SimPoses();
+	} else {
+		vli.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+		vli.displayTime = xr.frameState.predictedDisplayTime;
+		vli.space = xr.playSpace;
+		qxrLocateViews( xr.session, &vli, &vs, 2, &count, xr.views );
+		vli.space = xr.viewSpace;
+		qxrLocateViews( xr.session, &vli, &vs, 2, &count, xr.headViews );
 
-	xr.headValid = VR_LocatePose( xr.viewSpace, xr.playSpace, &xr.head );
-	if ( !xr.headValid ) {
-		return;
+		xr.headValid = VR_LocatePose( xr.viewSpace, xr.playSpace, &xr.head );
+		if ( !xr.headValid ) {
+			return;
+		}
+
+		VR_ReadInput();
 	}
-
-	VR_ReadInput();
 
 	// artificial turning before poses are converted, so everything agrees this frame
 	dom = vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT;
@@ -1383,6 +1543,16 @@ void CL_VR_BeginFrame( void ) {
 	XrFrameBeginInfo fbi = { XR_TYPE_FRAME_BEGIN_INFO };
 
 	if ( xr.session == XR_NULL_HANDLE ) {
+		return;
+	}
+
+	if ( xr.sim ) {
+		if ( !xr.frameBegun ) {
+			xr.frameBegun = qtrue;
+			xr.frameState.shouldRender = XR_TRUE;
+			com_vr.active = qtrue;
+			VR_UpdateTracking();
+		}
 		return;
 	}
 
@@ -1988,6 +2158,11 @@ static void VR_SubmitFrame( qboolean eyes, qboolean ui, qboolean uiInWorld ) {
 	XrFrameEndInfo fei = { XR_TYPE_FRAME_END_INFO };
 	const XrCompositionLayerBaseHeader *layers[2];
 	int n = 0, eye;
+
+	if ( xr.sim ) {
+		xr.frameBegun = qfalse;
+		return;
+	}
 
 	if ( eyes ) {
 		Com_Memset( &projLayer, 0, sizeof( projLayer ) );
