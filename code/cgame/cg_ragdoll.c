@@ -143,6 +143,8 @@ typedef struct {
 } ragdoll_t;
 
 static ragdoll_t rdPool[RD_MAX_RAGDOLLS];
+static ragdoll_t *RD_Find( int entityNum );
+static void RD_ApplyPending( ragdoll_t *rd );
 static vmCvar_t vr_ragdolls;
 
 void CG_Ragdoll_Init( void ) {
@@ -473,6 +475,7 @@ static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 	rd->model = body->hModel;
 	rd->simTime = cg.time;
 	rd->inUse = qtrue;
+	RD_ApplyPending( rd );
 	return qtrue;
 }
 
@@ -739,6 +742,158 @@ static ragdoll_t *RD_Alloc( void ) {
 		}
 	}
 	return oldest;      // the body seen longest ago goes back to its death animation
+}
+
+/*
+==============================================================================
+
+Hits: bullets push the part of a body they hit, explosions throw bodies. A body killed
+by the hit isn't a ragdoll yet when the hit arrives, so recent ones are kept a moment and
+given to it when it becomes one.
+
+==============================================================================
+*/
+
+#define RD_MAX_PENDING      16
+#define RD_PENDING_MS       500
+#define RD_HIT_RADIUS       24.0f       // a bullet moves the points this close to where it hit
+
+typedef struct {
+	int     time;
+	int     entityNum;      // a bullet hit on this body, -1 for an explosion
+	vec3_t  point;          // where it hit, or the explosion
+	vec3_t  vel;            // the bullet's push
+	float   radius, strength;   // the explosion's
+} rdPending_t;
+
+static rdPending_t rdPending[RD_MAX_PENDING];
+
+static void RD_Wake( ragdoll_t *rd ) {
+	rd->asleep = qfalse;
+	rd->stillSteps = 0;
+}
+
+static void RD_PushPoints( ragdoll_t *rd, const vec3_t point, const vec3_t vel ) {
+	float w;
+	int k;
+
+	for ( k = 0; k < P_COUNT; k++ ) {
+		if ( !rd->hasPoint[k] ) {
+			continue;
+		}
+		w = 1.0f - Distance( rd->p[k], point ) / RD_HIT_RADIUS;
+		if ( w > 0 ) {
+			VectorMA( rd->old[k], -RD_STEP * w, vel, rd->old[k] );     // verlet: velocity is p - old
+		}
+	}
+	RD_Wake( rd );
+}
+
+static void RD_Blast( ragdoll_t *rd, const vec3_t origin, float radius, float strength ) {
+	vec3_t dir;
+	float dist, w;
+	int k;
+
+	if ( Distance( rd->p[P_PELVIS], origin ) > radius ) {
+		return;
+	}
+	for ( k = 0; k < P_COUNT; k++ ) {
+		if ( !rd->hasPoint[k] ) {
+			continue;
+		}
+		VectorSubtract( rd->p[k], origin, dir );
+		dist = VectorNormalize( dir );
+		w = 1.0f - dist / radius;
+		if ( w <= 0 ) {
+			continue;
+		}
+		dir[2] += 0.6f;         // thrown up and away
+		VectorNormalize( dir );
+		VectorMA( rd->old[k], -RD_STEP * w * strength, dir, rd->old[k] );
+	}
+	RD_Wake( rd );
+}
+
+static rdPending_t *RD_PendingSlot( void ) {
+	rdPending_t *oldest = &rdPending[0];
+	int i;
+
+	for ( i = 0; i < RD_MAX_PENDING; i++ ) {
+		if ( rdPending[i].time < oldest->time ) {
+			oldest = &rdPending[i];
+		}
+	}
+	return oldest;
+}
+
+// a new ragdoll gets whatever hit it just before it became one
+static void RD_ApplyPending( ragdoll_t *rd ) {
+	int i;
+
+	for ( i = 0; i < RD_MAX_PENDING; i++ ) {
+		rdPending_t *pd = &rdPending[i];
+		if ( !pd->time || cg.time - pd->time > RD_PENDING_MS || cg.time < pd->time ) {
+			continue;
+		}
+		if ( pd->entityNum == rd->entityNum ) {
+			RD_PushPoints( rd, pd->point, pd->vel );
+			pd->time = 0;
+		} else if ( pd->entityNum < 0 ) {
+			RD_Blast( rd, pd->point, pd->radius, pd->strength );
+		}
+	}
+}
+
+/*
+=================
+CG_Ragdoll_Hit
+
+A bullet hit this body at point, travelling along dir.
+=================
+*/
+void CG_Ragdoll_Hit( int entityNum, const vec3_t point, const vec3_t dir, float speed ) {
+	ragdoll_t *rd;
+	rdPending_t *pd;
+	vec3_t vel;
+
+	if ( entityNum < 0 || entityNum >= MAX_GENTITIES ) {
+		return;
+	}
+	VectorNormalize2( dir, vel );
+	VectorScale( vel, speed, vel );
+
+	rd = RD_Find( entityNum );
+	if ( rd ) {
+		RD_PushPoints( rd, point, vel );
+		return;
+	}
+	pd = RD_PendingSlot();
+	pd->time = cg.time;
+	pd->entityNum = entityNum;
+	VectorCopy( point, pd->point );
+	VectorCopy( vel, pd->vel );
+}
+
+/*
+=================
+CG_Ragdoll_Explosion
+=================
+*/
+void CG_Ragdoll_Explosion( const vec3_t origin, float radius, float strength ) {
+	rdPending_t *pd;
+	int i;
+
+	for ( i = 0; i < RD_MAX_RAGDOLLS; i++ ) {
+		if ( rdPool[i].inUse ) {
+			RD_Blast( &rdPool[i], origin, radius, strength );
+		}
+	}
+	pd = RD_PendingSlot();
+	pd->time = cg.time;
+	pd->entityNum = -1;
+	VectorCopy( origin, pd->point );
+	pd->radius = radius;
+	pd->strength = strength;
 }
 
 /*
