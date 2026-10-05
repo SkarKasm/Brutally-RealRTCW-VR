@@ -931,6 +931,20 @@ void R_CalcBones( mdsHeader_t *header, const refEntity_t *refent, int *boneList,
 
 	boneInfo = ( mdsBoneInfo_t * )( (byte *)header + header->ofsBones );
 	boneRefs = boneList;
+
+	// RealRTCW-VR: a ragdoll supplies every bone itself
+	if ( refent->ragdollBones && refent->ragdollMagic == RAGDOLL_MAGIC ) {
+		for ( i = 0; i < numBones; i++ ) {
+			const float *b = refent->ragdollBones + boneList[i] * 12;
+			memcpy( bones[boneList[i]].matrix, b, sizeof( float ) * 9 );
+			VectorCopy( b + 9, bones[boneList[i]].translation );
+		}
+		// the bone cache can't tell ragdoll frames apart
+		memset( validBones, 0, header->numBones );
+		memset( &lastBoneEntity, 0, sizeof( lastBoneEntity ) );
+		return;
+	}
+
 	//
 	Matrix3Transpose( refent->torsoAxis, torsoAxis );
 
@@ -1299,6 +1313,54 @@ void R_RecursiveBoneListAdd( int bi, int *boneList, int *numBones, mdsBoneInfo_t
 
 	boneList[ ( *numBones )++ ] = bi;
 
+}
+
+
+/*
+===============
+RE_GetSkeleton
+
+RealRTCW-VR ragdolls: the pose of every bone of a skeletal (MDS) model as it would be
+drawn for refent, in model space: 12 floats per bone (3x3 matrix rows, then the
+translation), plus each bone's parent, flags (BONEFLAG_TAG) and name (32 chars each).
+Returns the number of bones, 0 if the model isn't skeletal.
+===============
+*/
+int RE_GetSkeleton( const refEntity_t *refent, int maxBones, int *parents, int *flags, char *names, float *out ) {
+	model_t *mod = R_GetModelByHandle( refent->hModel );
+	mdsHeader_t *header;
+	mdsBoneInfo_t *info;
+	int boneList[MDS_MAX_BONES];
+	refEntity_t ent;
+	int i, n;
+
+	if ( !mod || mod->type != MOD_MDS || !mod->mds ) {
+		return 0;
+	}
+	header = mod->mds;
+	n = header->numBones;
+	if ( n > maxBones || n > MDS_MAX_BONES ) {
+		return 0;
+	}
+	for ( i = 0; i < n; i++ ) {
+		boneList[i] = i;
+	}
+
+	ent = *refent;
+	ent.ragdollBones = NULL;    // the animated pose, never a ragdoll's
+	R_CalcBones( header, &ent, boneList, n );
+	memset( &lastBoneEntity, 0, sizeof( lastBoneEntity ) );
+
+	info = ( mdsBoneInfo_t * )( (byte *)header + header->ofsBones );
+	for ( i = 0; i < n; i++ ) {
+		float *o = out + i * 12;
+		memcpy( o, bones[i].matrix, sizeof( float ) * 9 );
+		VectorCopy( bones[i].translation, o + 9 );
+		parents[i] = info[i].parent;
+		flags[i] = info[i].flags;
+		Q_strncpyz( names + i * 32, info[i].name, 32 );
+	}
+	return n;
 }
 
 /*

@@ -1621,6 +1621,7 @@ refexport_t *GetRefAPI( int apiVersion, refimport_t *rimp ) {
 
 	re.MarkFragments    = R_MarkFragments;
 	re.LerpTag          = R_LerpTag;
+	re.GetSkeleton      = RE_GetSkeleton;   // RealRTCW-VR
 	re.ModelBounds      = R_ModelBounds;
 
 	re.ClearScene       = RE_ClearScene;

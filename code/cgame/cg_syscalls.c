@@ -369,6 +369,11 @@ void    trap_R_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs ) {
 	syscall( CG_R_MODELBOUNDS, model, mins, maxs );
 }
 
+// RealRTCW-VR ragdolls
+int     trap_R_GetSkeleton( const refEntity_t *refent, int maxBones, int *parents, int *flags, char *names, float *bones ) {
+	return syscall( CG_R_GETSKELETON, refent, maxBones, parents, flags, names, bones );
+}
+
 int     trap_R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagName, int startIndex ) {
 	return syscall( CG_R_LERPTAG, tag, refent, tagName, startIndex );
 }

@@ -226,7 +226,9 @@ typedef enum {
 	CG_GETMODELINFO,
 
 	// New in IORTCW
-	CG_ALLOC = 900
+	CG_ALLOC = 900,
+
+	CG_R_GETSKELETON = 950      // RealRTCW-VR ragdolls
 
 } cgameImport_t;
 

@@ -3,7 +3,8 @@ RealRTCW-VR Co-op
 
 Co-op Return to Castle Wolfenstein (RealRTCW co-op mode, including the Cursed Sands mod)
 with full VR support: 6DOF head and hands, guns held in your hands, manual reloading,
-a physical knife, grabbing bodies, a world-space menu with a laser pointer.
+a physical knife, ragdolls you can pick up and throw, a world-space menu with a laser
+pointer. Ragdolls can be turned off in VR OPTIONS.
 
 Every player needs this build. The normal RTCWCoop.exe can't join a game hosted with
 it, and the other way round. Players without a headset can still use it: the
