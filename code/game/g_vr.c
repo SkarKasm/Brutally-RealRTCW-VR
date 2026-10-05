@@ -590,11 +590,14 @@ static qboolean G_VR_TakedownChar( int aiChar ) {
 	}
 }
 
+static qboolean vrLivingTouched;    // the last G_VR_GrabLiving found someone
+
 static gentity_t *G_VR_GrabLiving( gentity_t *ent, const vec3_t hand, int off ) {
 	gentity_t *e;
 	vec3_t fwd, toMe, push;
 	int i, k;
 
+	vrLivingTouched = qfalse;
 	for ( i = 1; i < level.maxclients; i++ ) {
 		e = &g_entities[i];
 		if ( e == ent || !e->inuse || !e->client || !e->aiCharacter || e->health <= 0 || !e->r.linked ) {
@@ -608,6 +611,7 @@ static gentity_t *G_VR_GrabLiving( gentity_t *ent, const vec3_t hand, int off ) 
 		if ( k < 3 ) {
 			continue;
 		}
+		vrLivingTouched = qtrue;
 
 		AngleVectors( e->client->ps.viewangles, fwd, NULL, NULL );
 		fwd[2] = 0;
@@ -634,6 +638,64 @@ static gentity_t *G_VR_GrabLiving( gentity_t *ent, const vec3_t hand, int off ) 
 		return NULL;
 	}
 	return NULL;
+}
+
+/*
+=================
+G_VR_GrabItem / G_VR_HandUse
+
+The off hand closing on things: an item is picked up, and a door, button, lever, locker
+or friendly is used the way the use button would, by what the hand is reaching for.
+=================
+*/
+#define VR_ITEM_MARGIN      6.0f
+
+qboolean g_vrHandUse;           // Cmd_Activate_f traces g_vrHandFrom -> g_vrHandTo instead
+vec3_t g_vrHandFrom, g_vrHandTo;
+
+static qboolean G_VR_GrabItem( gentity_t *ent, const vec3_t hand ) {
+	gentity_t *e;
+	trace_t tr;
+	int i, k;
+
+	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
+		e = &g_entities[i];
+		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item ) {
+			continue;
+		}
+		for ( k = 0; k < 3; k++ ) {
+			if ( hand[k] < e->r.absmin[k] - VR_ITEM_MARGIN || hand[k] > e->r.absmax[k] + VR_ITEM_MARGIN ) {
+				break;
+			}
+		}
+		if ( k < 3 ) {
+			continue;
+		}
+		memset( &tr, 0, sizeof( tr ) );
+		e->active = qtrue;      // as if the use button were pressed on it
+		Touch_Item( e, ent, &tr );
+		if ( e->inuse ) {
+			e->active = qfalse;
+		}
+		return qtrue;
+	}
+	return qfalse;
+}
+
+static void G_VR_HandUse( gentity_t *ent, const vec3_t hand ) {
+	vec3_t eye, dir;
+
+	G_VR_Eye( ent, eye );
+	VectorSubtract( hand, eye, dir );
+	if ( VectorNormalize( dir ) < 1.0f ) {
+		return;
+	}
+	// a little behind the hand to a little past it, along the reach
+	VectorMA( hand, -6.0f, dir, g_vrHandFrom );
+	VectorMA( hand, 14.0f, dir, g_vrHandTo );
+	g_vrHandUse = qtrue;
+	Cmd_Activate_f( ent );
+	g_vrHandUse = qfalse;
 }
 
 /*
@@ -722,9 +784,18 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 			VectorCopy( offHand, body->s.origin2 );
 		}
 	} else if ( pressed && !used ) {
-		gentity_t *body = G_VR_FindBody( ent, offHand );
-		if ( !body && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
-			body = G_VR_GrabLiving( ent, offHand, off );    // alive: takedown or shove
+		gentity_t *body = NULL;
+		// an item in the hand, a body, someone alive (takedown or shove), or something to use
+		if ( ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_GrabItem( ent, offHand ) ) {
+			G_VR_Haptic( ent, off, 0.4f, 40 );
+		} else {
+			body = G_VR_FindBody( ent, offHand );
+			if ( !body && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
+				body = G_VR_GrabLiving( ent, offHand, off );
+				if ( !body && !vrLivingTouched ) {
+					G_VR_HandUse( ent, offHand );
+				}
+			}
 		}
 		if ( body && !G_VR_BodyTaken( body->s.number, ent->s.number ) ) {
 			vrp->grabbed = body->s.number;

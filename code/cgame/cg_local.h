@@ -2535,6 +2535,10 @@ void        CG_VR_IronSights( void );
 void        CG_VR_RecoilInit( void );
 void        CG_VR_RecoilKick( int weapon );
 void        CG_VR_RecoilUpdate( void );
+
+// cg_vrwrist.c (RealRTCW-VR)
+void        CG_VR_WristInit( void );
+void        CG_VR_WristHUD( void );
 int         CG_VR_DualSingle( int weapon );
 void        CG_VR_AddDualGuns( playerState_t *ps, int single );
 #ifdef VR_NET_HANDS

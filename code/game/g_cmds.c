@@ -2548,6 +2548,12 @@ void Cmd_Activate_f( gentity_t *ent ) {
 
 	VectorMA( offset, 96, forward, end );
 
+	// RealRTCW-VR: a hand reaching for it
+	if ( g_vrHandUse ) {
+		VectorCopy( g_vrHandFrom, offset );
+		VectorCopy( g_vrHandTo, end );
+	}
+
 	// removed corpse since they can block doors.
 	trap_Trace( &tr, offset, NULL, NULL, end, ent->s.number, ( CONTENTS_SOLID | CONTENTS_BODY /*| CONTENTS_CORPSE*/ | CONTENTS_TRIGGER ) );
 
