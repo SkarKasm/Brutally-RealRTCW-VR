@@ -497,6 +497,76 @@ static void G_VR_FlyBody( float dt ) {
 
 /*
 =================
+G_VR_GrabLiving
+
+The off hand grabbing someone alive: an enemy soldier taken from behind is a silent
+takedown (and then a body in the hand), anyone else is shoved back.
+Returns the body if it was a takedown.
+=================
+*/
+#define VR_GRAB_LIVING_MARGIN   8.0f
+
+static qboolean G_VR_TakedownChar( int aiChar ) {
+	switch ( aiChar ) {
+	case AICHAR_SOLDIER:
+	case AICHAR_ELITEGUARD:
+	case AICHAR_BLACKGUARD:
+	case AICHAR_MERCENARY:
+	case AICHAR_TRENCH:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
+static gentity_t *G_VR_GrabLiving( gentity_t *ent, const vec3_t hand, int off ) {
+	gentity_t *e;
+	vec3_t fwd, toMe, push;
+	int i, k;
+
+	for ( i = 1; i < level.maxclients; i++ ) {
+		e = &g_entities[i];
+		if ( e == ent || !e->inuse || !e->client || !e->aiCharacter || e->health <= 0 || !e->r.linked ) {
+			continue;
+		}
+		for ( k = 0; k < 3; k++ ) {
+			if ( hand[k] < e->r.absmin[k] - VR_GRAB_LIVING_MARGIN || hand[k] > e->r.absmax[k] + VR_GRAB_LIVING_MARGIN ) {
+				break;
+			}
+		}
+		if ( k < 3 ) {
+			continue;
+		}
+
+		AngleVectors( e->client->ps.viewangles, fwd, NULL, NULL );
+		fwd[2] = 0;
+		VectorNormalize( fwd );
+		VectorSubtract( ent->r.currentOrigin, e->r.currentOrigin, toMe );
+		toMe[2] = 0;
+		VectorNormalize( toMe );
+
+		if ( G_VR_TakedownChar( e->aiCharacter ) && DotProduct( fwd, toMe ) < -0.3f ) {
+			// from behind: over before they know it
+			G_Damage( e, ent, ent, NULL, NULL, 10000, DAMAGE_NO_PROTECTION, MOD_KNIFE_STEALTH );
+			G_VR_Haptic( off, 1.0f, 120 );
+			return e->health <= 0 ? e : NULL;
+		}
+
+		// face to face: a shove
+		VectorScale( toMe, -350.0f, push );
+		push[2] = 120.0f;
+		VectorAdd( e->client->ps.velocity, push, e->client->ps.velocity );
+		e->client->ps.pm_time = 200;
+		e->client->ps.pm_flags |= PMF_TIME_KNOCKBACK;
+		G_Damage( e, ent, ent, NULL, NULL, 2, DAMAGE_NO_KNOCKBACK, MOD_KICKED );
+		G_VR_Haptic( off, 0.6f, 60 );
+		return NULL;
+	}
+	return NULL;
+}
+
+/*
+=================
 G_VR_PlayerThink
 
 After every pmove of the headset player.
@@ -580,6 +650,9 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 		}
 	} else if ( pressed && !used ) {
 		gentity_t *body = G_VR_FindBody( offHand );
+		if ( !body && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
+			body = G_VR_GrabLiving( ent, offHand, off );    // alive: takedown or shove
+		}
 		if ( body ) {
 			vrp.grabbed = body->s.number;
 			// held by the hand, hanging below it (a shield, see vrCarryMins)
