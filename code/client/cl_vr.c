@@ -1085,7 +1085,6 @@ static void VR_SimInitSession( void ) {
 	xr.state = XR_SESSION_STATE_FOCUSED;
 	xr.menuPlaced = qfalse;
 	xr.lastRawHeadValid = qfalse;
-	Cvar_Set( "com_maxfps", "90" );
 	Com_Printf( "VR: simulated session created\n" );
 }
 
@@ -1397,7 +1396,6 @@ void CL_VR_Init( void ) {
 	// settings the headset path depends on
 	Cvar_Set( "r_ignorehwgamma", "1" );     // hardware gamma never reaches the headset
 	Cvar_Set( "r_swapInterval", "0" );      // xrWaitFrame paces the game, not the monitor
-	Cvar_Set( "com_maxfps", "0" );
 	Cvar_Set( "ui_fixedAspect", "0" );      // 640x480 UI stretched over the 4:3 panel
 	Cvar_Set( "cg_fixedAspect", "0" );
 	Cvar_Set( "cg_viewsize", "100" );

@@ -115,7 +115,7 @@ def mirrored(surfaces):
 # (name, text, action, highlighted). HOST GAME starts a game friends can join over Steam,
 # JOIN FRIEND joins a Steam friend's (net_steam.c).
 MENU_BUTTONS = (
-    ("vrhostgame", "HOST GAME", "close main; exec \"hostcoop\"", True),
+    ("vrhostgame", "HOST GAME", "close main; open vr_host", True),
     ("vrjoinfriend", "JOIN FRIEND", "exec \"steamjoin\"", True),
     ("vroptionsmenu", "VR OPTIONS", "close main; open vr_options", False),
 )
@@ -173,11 +173,159 @@ EE_PLACES = ((8, 378, 72), (119, 378, 64), (392, 378, 72))     # above CREATE SE
 COOP_ROWS = (309, 342, 375)
 
 
+def arena_maps(paks):
+    """[(map, long name)] of the campaign, from the game's scripts/arenas.txt."""
+    data = paks.read("scripts/arenas.txt")
+    if not data:
+        return []
+    text = data.decode(errors="replace")
+    out = []
+    for block in re.findall(r"\{(.*?)\}", text, re.S):
+        m = re.search(r'\bmap\s+"([^"]+)"', block)
+        n = re.search(r'\blongname\s+"([^"]+)"', block)
+        if m:
+            out.append((m.group(1), n.group(1) if n else m.group(1)))
+    return out
+
+
+# the host page: (cvar, label, choices). Choices are (text, value) pairs; numbers become
+# cvarFloatList entries, strings cvarStrList.
+HOST_GAME = (
+    ("g_gametype", "Mode:", (("Co-op", 2), ("Speedrun", 1), ("Battle (1 vs 1)", 0))),
+    ("g_gameskill", "Difficulty:", (("Can I play, Daddy?", 0), ("Don't hurt me.", 1),
+                                    ("Bring 'em on!", 2), ("I am Death Incarnate!", 3))),
+    ("sv_maxcoopclients", "Players:", (("2", 2), ("3", 3), ("4", 4), ("6", 6), ("8", 8))),
+    ("g_skipcutscenes", "Cutscenes:", (("Watch", 0), ("Skip", 1))),
+    ("g_reinforce", "Enemies:", (("Normal", 0), ("More", 1), ("Even more", 2))),
+    ("g_airespawn", "Enemies respawn:", (("No", 0), ("Yes", 1))),
+)
+HOST_RULES = (
+    ("g_friendlyFire", "Friendly fire:", (("Off", 0), ("On", 1), ("On (health penalty)", 2))),
+    ("g_maxlives", "Lives:", (("Unlimited", 0), ("1", 1), ("3", 3), ("5", 5), ("10", 10))),
+    ("g_sharedlives", "Shared lives:", (("No", 0), ("Yes", 1))),
+    ("g_freeze", "After dying:", (("Respawn", 0), ("Frozen till knifed free", 1))),
+    ("g_spawnpoints", "Saves:", (("Autosaves", 0), ("Manual saves", 1), ("Checkpoints", 2))),
+    ("g_maxspawnpoints", "Max saves:", (("Unlimited", 0), ("1", 1), ("3", 3), ("5", 5), ("10", 10))),
+    ("g_limbotime", "Respawn delay:", (("1 sec", 1000), ("3 sec", 3000), ("5 sec", 5000),
+                                       ("10 sec", 10000), ("20 sec", 20000), ("30 sec", 30000))),
+    ("g_spawnInvul", "Spawn protection:", (("Off", 0), ("3 sec", 3), ("5 sec", 5), ("10 sec", 10))),
+    ("g_throwKnives", "Throwing knives:", (("Off", 0), ("On", 1))),
+    ("g_shove", "Shove teammates:", (("Off", 0), ("On", 1))),
+)
+
+
+def menu_multi(cvar, label, choices, x, y):
+    if all(isinstance(v, str) for _t, v in choices):
+        kind = "cvarStrList"
+        items = " ".join('"%s" "%s"' % (t, v) for t, v in choices)
+    else:
+        kind = "cvarFloatList"
+        items = " ".join('"%s" %s' % (t, v) for t, v in choices)
+    return """
+		itemDef {
+			name vr_host_opt
+			type ITEM_TYPE_MULTI
+			text "%s"
+			cvar "%s"
+			%s { %s }
+			rect %d %d 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 120
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+""" % (label, cvar, kind, items, x, y)
+
+
+def menu_text(name, text, x, y, w, scale, color, align="ITEM_ALIGN_LEFT", alignx=4):
+    return """
+		itemDef {
+			name %s
+			text "%s"
+			rect %d %d %d 16
+			textalign %s
+			textalignx %d
+			textaligny 13
+			textscale %s
+			textfont UI_FONT_BIG
+			forecolor %s
+			visible 1
+			decoration
+		}
+""" % (name, text, x, y, w, align, alignx, scale, color)
+
+
+def menu_button(name, text, x, w, action):
+    return """
+		itemDef {
+			name %s
+			type ITEM_TYPE_BUTTON
+			text "%s"
+			rect %d 425 %d 24
+			textalign ITEM_ALIGN_CENTER
+			textalignx %d
+			textaligny 19
+			textscale .3
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+			action { %s }
+		}
+""" % (name, text, x, w, w // 2, action)
+
+
+def vr_host_menu(maps):
+    """The HOST GAME page: level and every co-op server option, then START GAME."""
+    items = [menu_text("vr_host_title", "HOST GAME", 0, 28, 640, ".4", "1 .85 .5 1", "ITEM_ALIGN_CENTER", 320),
+             menu_text("vr_host_game", "GAME", 20, 78, 290, ".27", "1 .75 0 1"),
+             menu_text("vr_host_rules", "RULES", 330, 78, 290, ".27", "1 .75 0 1")]
+    y = 104
+    if maps:
+        # by position in arenas.txt: co-op's menus can't show text-valued choices
+        items.append(menu_multi("vr_hostLevel", "Level:", [(n, i) for i, (m, n) in enumerate(maps)], 20, y))
+        y += 20
+    for cvar, label, choices in HOST_GAME:
+        items.append(menu_multi(cvar, label, choices, 20, y))
+        y += 20
+    y = 104
+    for cvar, label, choices in HOST_RULES:
+        items.append(menu_multi(cvar, label, choices, 330, y))
+        y += 20
+    items.append(menu_text("vr_host_note", "Friends join with JOIN FRIEND on their main menu, or Join Game in Steam. "
+                           "Nothing else to set up.", 0, 395, 640, ".18", ".8 .8 .8 1", "ITEM_ALIGN_CENTER", 320))
+    items.append(menu_button("vr_host_start", "START GAME", 190, 140, 'close vr_host; exec "hostcoop"'))
+    items.append(menu_button("vr_host_back", "BACK", 350, 100, "close vr_host; open main"))
+    return ("""// RealRTCW-VR: HOST GAME page, generated by misc/vr/make_vr_assets.py.
+#include "ui/menudef.h"
+
+{
+	menuDef {
+		name "vr_host"
+		rect 0 0 640 480
+		fullScreen MENU_TRUE
+		visible MENU_FALSE
+		focusColor 1 .75 0 1
+		style WINDOW_STYLE_FILLED
+		backcolor 0 0 0 .85
+		onESC { close vr_host; open main }
+""" + "".join(items) + """	}
+}
+""").encode()
+
+
 def vr_menus(paks):
     here = os.path.dirname(os.path.abspath(__file__))
     out = {}
     with open(os.path.join(here, "ui", "vr_options.menu"), "rb") as f:
         out["ui/vr_options.menu"] = f.read()
+    out["ui/vr_host.menu"] = vr_host_menu(arena_maps(paks))
 
     menus = paks.read("ui/menus.txt")
     main = paks.read("ui/main.menu")
@@ -187,7 +335,8 @@ def vr_menus(paks):
     menus = menus.decode(errors="replace")
     if "vr_options.menu" not in menus:
         menus = re.sub(r'(loadMenu\s*\{\s*"ui/main\.menu"\s*\})',
-                       r'\1\n\tloadMenu { "ui/vr_options.menu" }\t// RealRTCW-VR', menus, count=1)
+                       r'\1\n\tloadMenu { "ui/vr_options.menu" }\t// RealRTCW-VR'
+                       r'\n\tloadMenu { "ui/vr_host.menu" }\t// RealRTCW-VR', menus, count=1)
     out["ui/menus.txt"] = menus.encode()
 
     main = main.decode(errors="replace")

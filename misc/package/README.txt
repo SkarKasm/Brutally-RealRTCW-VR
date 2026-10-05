@@ -40,8 +40,9 @@ Playing together (over Steam - nothing to set up)
 Keep Steam running and be Steam friends. No IP addresses, port forwarding or VPN:
 the game connects through Steam.
 
-Host:  start a launcher and click HOST GAME on the main menu.
-       (CREATE SERVER also works if you want to pick the level.)
+Host:  start a launcher and click HOST GAME on the main menu. Pick the level,
+       difficulty, number of players, lives, friendly fire, saves and the other rules,
+       then click START GAME. Your choices are remembered for next time.
 
 Join:  start a launcher and click JOIN FRIEND. That's it.
        Or, with the game running, right-click the host in your Steam friends list

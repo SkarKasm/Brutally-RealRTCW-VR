@@ -2759,10 +2759,20 @@ void Com_Frame( void ) {
 				minMsec = 1000 / com_maxfpsMinimized->integer;
 			else if(com_unfocused->integer && com_maxfpsUnfocused->integer > 0)
 				minMsec = 1000 / com_maxfpsUnfocused->integer;
+			// RealRTCW-VR: a headset paces the game itself (xrWaitFrame), but only in the
+			// simulator nothing does
+			else if(com_vr.active)
+				minMsec = Cvar_VariableIntegerValue("vr_simulate") ? 11 : 1;
+			// RealRTCW-VR: on the monitor never faster than 166 fps (125 for "unlimited").
+			// Every frame sends a move; the engine keeps only the last CMD_BACKUP (64) of
+			// them, and at hundreds of fps they cover less time than a network round trip,
+			// which shows "Connection Interrupted" even on the host.
+			else if(com_maxfps->integer > 166)
+				minMsec = 1000 / 166;
 			else if(com_maxfps->integer > 0)
 				minMsec = 1000 / com_maxfps->integer;
 			else
-				minMsec = 1;
+				minMsec = 1000 / 125;
 			
 			timeVal = com_frameTime - lastTime;
 			bias += timeVal - minMsec;

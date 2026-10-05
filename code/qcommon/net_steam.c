@@ -123,6 +123,7 @@ static struct {
 static cvar_t *net_steam;
 static cvar_t *net_steamFake;
 
+
 static void *NET_Steam_Proc( const char *name ) {
 	void *p = (void *)GetProcAddress( st.dll, name );
 	if ( !p ) {
@@ -505,18 +506,85 @@ NET_Steam_Host_f
 is given.
 ==================
 */
-static void NET_Steam_Host_f( void ) {
-	const char *map = Cmd_Argc() > 1 ? Cmd_Argv( 1 ) : ( !Q_stricmp( Cvar_VariableString( "fs_game" ), "EE" ) ? "ee1" : "escape1" );
+// the first level of the campaign being played
+static const char *NET_Steam_FirstMap( void ) {
+	return !Q_stricmp( Cvar_VariableString( "fs_game" ), "EE" ) ? "ee1" : "escape1";
+}
 
-	Cvar_Set( "dedicated", "0" );
-	Cvar_Set( "g_gametype", "2" );      // GT_COOP
-	Cvar_Set( "sv_maxclients", "8" );
+/*
+==================
+NET_Steam_LevelMap
+
+The n-th level of the loaded campaign, in scripts/arenas.txt order (the HOST GAME page
+lists them the same way).
+==================
+*/
+static qboolean NET_Steam_LevelMap( int n, char *out, int size ) {
+	char *buf, *p, *token;
+	int index = 0;
+	qboolean found = qfalse;
+
+	if ( n < 0 || FS_ReadFile( "scripts/arenas.txt", (void **)&buf ) <= 0 ) {
+		return qfalse;
+	}
+	p = buf;
+	while ( !found ) {
+		token = COM_Parse( &p );
+		if ( !token[0] ) {
+			break;
+		}
+		if ( !Q_stricmp( token, "map" ) ) {
+			token = COM_Parse( &p );
+			if ( index++ == n ) {
+				Q_strncpyz( out, token, size );
+				found = qtrue;
+			}
+		}
+	}
+	FS_FreeFile( buf );
+	return found;
+}
+
+static void NET_Steam_Host_f( void ) {
+	char map[MAX_QPATH];
+	int gametype = Cvar_VariableIntegerValue( "g_gametype" );
+
+	if ( Cmd_Argc() > 1 ) {
+		Q_strncpyz( map, Cmd_Argv( 1 ), sizeof( map ) );
+	} else if ( !NET_Steam_LevelMap( Cvar_VariableIntegerValue( "vr_hostLevel" ), map, sizeof( map ) ) ) {
+		Q_strncpyz( map, NET_Steam_FirstMap(), sizeof( map ) );
+	}
+	if ( FS_ReadFile( va( "maps/%s.bsp", map ), NULL ) <= 0 ) {     // in the paks too
+		Q_strncpyz( map, NET_Steam_FirstMap(), sizeof( map ) );
+	}
+	if ( gametype < 0 || gametype > 2 ) {
+		Cvar_Set( "g_gametype", "2" );      // GT_COOP
+	}
+	Cvar_Set( "dedicated", "0" );       // a game the host plays in, never a bare server
 	Cbuf_AddText( va( "wait ; wait ; coopmap %s\n", map ) );
 }
+
+// defaults for the HOST GAME page, before the game code has registered them
+static void NET_Steam_HostDefaults( void ) {
+	static const char *defaults[][2] = {
+		{ "vr_hostLevel", "0" }, { "g_gametype", "2" }, { "g_gameskill", "2" }, { "sv_maxcoopclients", "4" },
+		{ "g_skipcutscenes", "0" }, { "g_reinforce", "0" }, { "g_airespawn", "0" }, { "g_friendlyFire", "0" },
+		{ "g_maxlives", "0" }, { "g_sharedlives", "0" }, { "g_freeze", "0" }, { "g_spawnpoints", "0" },
+		{ "g_maxspawnpoints", "0" }, { "g_limbotime", "10000" }, { "g_spawnInvul", "5" },
+		{ "g_throwKnives", "0" }, { "g_shove", "0" }
+	};
+	int i;
+
+	for ( i = 0; i < (int)ARRAY_LEN( defaults ); i++ ) {
+		Cvar_Get( defaults[i][0], defaults[i][1], CVAR_ARCHIVE );
+	}
+}
+
 
 void NET_Steam_Startup( void ) {
 	NET_Steam_Init();
 	Cmd_AddCommand( "hostcoop", NET_Steam_Host_f );
+	NET_Steam_HostDefaults();
 	Cmd_AddCommand( "steamjoin", NET_Steam_Join_f );
 	Cmd_AddCommand( "steaminfo", NET_Steam_Info_f );
 }
