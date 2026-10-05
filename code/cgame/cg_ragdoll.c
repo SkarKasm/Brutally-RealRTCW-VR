@@ -36,11 +36,12 @@ the Free Software Foundation, either version 3 of the License, or
 
 #define RD_MAX_RAGDOLLS     32
 #define RD_MAX_BONES        128
-#define RD_MAX_LINKS        64
+#define RD_MAX_LINKS        96
 #define RD_STEP_MS          16          // fixed step, the same on every machine
 #define RD_STEP             ( RD_STEP_MS * 0.001f )
 #define RD_MAX_STEPS        6           // per frame, after a hitch the rest is dropped
-#define RD_ITERATIONS       8
+#define RD_ITERATIONS       12
+#define RD_MASK             ( MASK_SOLID | CONTENTS_PLAYERCLIP )    // props are often only player-clipped
 #define RD_GRAVITY          800.0f
 #define RD_ANCHOR_SLACK     20.0f       // how far the pelvis may drift from the server's body
 #define RD_SLEEP_MOVE       0.04f       // a point moving less than this per step is at rest
@@ -272,6 +273,34 @@ static void RD_AddLimb( ragdoll_t *rd, int a, int b, int c, float minBend ) {
 	}
 }
 
+// two points that must stay apart (a limb can't sink into the body)
+static void RD_AddSeparation( ragdoll_t *rd, int a, int b, float dist ) {
+	float d0;
+
+	if ( !rd->hasPoint[a] || !rd->hasPoint[b] ) {
+		return;
+	}
+	d0 = Distance( rd->p0[a], rd->p0[b] );
+	RD_AddLink( rd, a, b, ( dist < d0 * 0.9f ? dist : d0 * 0.9f ), 1e6f, 1.0f );
+}
+
+// knees only bend forwards
+static void RD_KneeHinge( ragdoll_t *rd, int hip, int knee, int ankle, const vec3_t forward ) {
+	vec3_t mid, off;
+	float ahead;
+
+	if ( !rd->hasPoint[hip] || !rd->hasPoint[knee] || !rd->hasPoint[ankle] || knee == rd->pinned ) {
+		return;
+	}
+	VectorAdd( rd->p[hip], rd->p[ankle], mid );
+	VectorScale( mid, 0.5f, mid );
+	VectorSubtract( rd->p[knee], mid, off );
+	ahead = DotProduct( off, forward );
+	if ( ahead < 0.5f ) {
+		VectorMA( rd->p[knee], 0.5f - ahead, forward, rd->p[knee] );
+	}
+}
+
 static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 	static int parents[RD_MAX_BONES], flags[RD_MAX_BONES];
 	static char names[RD_MAX_BONES * 32];
@@ -385,6 +414,24 @@ static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 	RD_AddLink( rd, P_RKNEE, P_NECK, 0.72f, 1.1f, 0 );
 	RD_AddLink( rd, P_LKNEE, P_RKNEE, 0.45f, 4.0f, 0 );
 	RD_AddLink( rd, P_LANKLE, P_RANKLE, 0.35f, 6.0f, 0 );
+
+	// self collision: arms, legs and head stay out of the body
+	{
+		const int arms[] = { P_LELBOW, P_LWRIST, P_LHANDEND, P_RELBOW, P_RWRIST, P_RHANDEND };
+		for ( i = 0; i < (int)ARRAY_LEN( arms ); i++ ) {
+			RD_AddSeparation( rd, arms[i], P_PELVIS, 9.0f );
+			RD_AddSeparation( rd, arms[i], P_CHEST, 9.0f );
+		}
+	}
+	RD_AddSeparation( rd, P_LKNEE, P_CHEST, 14.0f );
+	RD_AddSeparation( rd, P_RKNEE, P_CHEST, 14.0f );
+	RD_AddSeparation( rd, P_LANKLE, P_PELVIS, 12.0f );
+	RD_AddSeparation( rd, P_RANKLE, P_PELVIS, 12.0f );
+	RD_AddSeparation( rd, P_LANKLE, P_CHEST, 14.0f );
+	RD_AddSeparation( rd, P_RANKLE, P_CHEST, 14.0f );
+	RD_AddSeparation( rd, P_HEAD, P_PELVIS, 16.0f );
+	RD_AddSeparation( rd, P_HEADEND, P_LHIP, 14.0f );
+	RD_AddSeparation( rd, P_HEADEND, P_RHIP, 14.0f );
 	RD_AddLimb( rd, P_LELBOW, P_LWRIST, P_LHANDEND, 0.6f );
 	RD_AddLimb( rd, P_RELBOW, P_RWRIST, P_RHANDEND, 0.6f );
 	RD_AddLimb( rd, P_LKNEE, P_LANKLE, P_LTOE, 0.72f );
@@ -443,7 +490,7 @@ static void RD_Collide( ragdoll_t *rd, int k, const vec3_t from ) {
 	trace_t tr;
 	vec3_t v, vn;
 
-	CG_Trace( &tr, from, mins, maxs, rd->p[k], rd->entityNum, MASK_SOLID );
+	CG_Trace( &tr, from, mins, maxs, rd->p[k], rd->entityNum, RD_MASK );
 	if ( tr.startsolid ) {
 		return;     // already embedded: leave it to the links to pull it out
 	}
@@ -527,6 +574,14 @@ static void RD_Step( ragdoll_t *rd, centity_t *cent, const vec3_t grabPoint, qbo
 			VectorMA( rd->p[l->a], wa, v, rd->p[l->a] );
 			VectorMA( rd->p[l->b], -wb, v, rd->p[l->b] );
 		}
+
+		{
+			vec3_t f[3], forward;
+			RD_TorsoFrame( rd->p, f );
+			VectorNegate( f[2], forward );      // up x left points backwards
+			RD_KneeHinge( rd, P_LHIP, P_LKNEE, P_LANKLE, forward );
+			RD_KneeHinge( rd, P_RHIP, P_RKNEE, P_RANKLE, forward );
+		}
 	}
 
 	// the links must not drag points through walls
@@ -535,7 +590,7 @@ static void RD_Step( ragdoll_t *rd, centity_t *cent, const vec3_t grabPoint, qbo
 			float r = rdPointRadius[k];
 			vec3_t mins = { -r, -r, -r }, maxs = { r, r, r };
 			trace_t tr;
-			CG_Trace( &tr, start[k], mins, maxs, rd->p[k], rd->entityNum, MASK_SOLID );
+			CG_Trace( &tr, start[k], mins, maxs, rd->p[k], rd->entityNum, RD_MASK );
 			if ( tr.fraction < 1.0f && !tr.startsolid ) {
 				VectorMA( tr.endpos, 0.1f, tr.plane.normal, rd->p[k] );
 			}

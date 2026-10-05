@@ -920,6 +920,11 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		return;
 	}
 
+	// RealRTCW-VR: a body held up as a shield soaks up the hits (and doesn't fall apart)
+	if ( targ->client && targ->health <= 0 && targ->s.dl_intensity > 0 ) {
+		return;
+	}
+
 //----(SA)	added
 		if ( g_gametype.integer <= GT_SINGLE_PLAYER && !targ->aiCharacter && targ->client && targ->client->cameraPortal ) {
 		// get out of damage in sp if in cutscene.

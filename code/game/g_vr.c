@@ -43,7 +43,9 @@ the Free Software Foundation, either version 3 of the License, or
 #define VR_ACTION_RADIUS    9.0f    // ~23cm around the gun hand also reaches the action
 #define VR_CHARGE_PULL      0.6f    // fraction of the travel that counts as racked
 #define VR_GRAB_MARGIN      18.0f   // reach around a body's box (its ragdoll lies a little off it)
-#define VR_THROW_MAX        600.0f
+#define VR_THROW_MAX        900.0f
+#define VR_THROW_SCALE      1.5f    // throws carry a little further than the hand moved
+#define VR_THROW_SPEED      40.0f   // a let-go faster than this is a throw
 
 typedef struct {
 	qboolean    initialised;
@@ -66,6 +68,7 @@ typedef struct {
 	int         grabbed;            // entity number, -1 none
 	vec3_t      grabOffset;
 	int         grabbedPmType;
+	vec3_t      grabbedMins, grabbedMaxs;   // the body's own box, while it hangs from the hand
 
 	int         thrown;             // body flying after a throw, -1 none
 	vec3_t      thrownVel;
@@ -471,11 +474,16 @@ static qboolean G_VR_BodyTaken( int body, int self ) {
 	return qfalse;
 }
 
-// move a body to a spot, stopping at walls
+
+// a carried body hangs from the hand: an upright box below it, so it covers the holder
+static const vec3_t vrCarryMins = { -12, -12, -54 };
+static const vec3_t vrCarryMaxs = { 12, 12, 6 };
+
+// move a carried body to the hand, stopping where the hand meets a wall
 static void G_VR_PlaceBody( gentity_t *e, const vec3_t target ) {
 	trace_t tr;
 
-	trap_Trace( &tr, e->client->ps.origin, e->r.mins, e->r.maxs, target, e->s.number, MASK_SOLID );
+	trap_Trace( &tr, e->client->ps.origin, NULL, NULL, target, e->s.number, MASK_SOLID );
 	if ( tr.allsolid ) {
 		return;
 	}
@@ -487,10 +495,31 @@ static void G_VR_PlaceBody( gentity_t *e, const vec3_t target ) {
 }
 
 static void G_VR_ReleaseBody( vrPlayer_t *vrp, gentity_t *e, qboolean thrown ) {
+	trace_t tr;
+	int up;
+
+	// back to the body's own box, out of anything it was held into
+	VectorCopy( vrp->grabbedMins, e->r.mins );
+	VectorCopy( vrp->grabbedMaxs, e->r.maxs );
+	for ( up = 0; up <= 48; up += 8 ) {
+		vec3_t p;
+		VectorCopy( e->client->ps.origin, p );
+		p[2] += up;
+		trap_Trace( &tr, p, e->r.mins, e->r.maxs, p, e->s.number, MASK_SOLID );
+		if ( !tr.startsolid ) {
+			VectorCopy( p, e->client->ps.origin );
+			VectorCopy( p, e->r.currentOrigin );
+			VectorCopy( p, e->s.pos.trBase );
+			break;
+		}
+	}
+	trap_LinkEntity( e );
+
 	e->client->ps.pm_type = vrp->grabbedPmType;
-	if ( thrown ) {
+	// thrown, or just let go: either way it falls (dead bodies don't move by themselves)
+	{
 		vrp->thrown = e->s.number;
-		VectorCopy( vrp->handVel, vrp->thrownVel );
+		VectorScale( vrp->handVel, thrown ? VR_THROW_SCALE : 0.5f, vrp->thrownVel );
 		if ( VectorLength( vrp->thrownVel ) > VR_THROW_MAX ) {
 			VectorNormalize( vrp->thrownVel );
 			VectorScale( vrp->thrownVel, VR_THROW_MAX, vrp->thrownVel );
@@ -583,10 +612,14 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 	if ( vrp->grabbed >= 0 ) {
 		gentity_t *body = &g_entities[vrp->grabbed];
 		if ( !body->inuse || !body->client || body->health > 0 ) {
+			if ( body->inuse ) {
+				VectorCopy( vrp->grabbedMins, body->r.mins );
+				VectorCopy( vrp->grabbedMaxs, body->r.maxs );
+			}
 			body->s.dl_intensity = 0;
 			vrp->grabbed = -1;
 		} else if ( !down ) {
-			G_VR_ReleaseBody( vrp, body, VectorLength( vrp->handVel ) > 60.0f );
+			G_VR_ReleaseBody( vrp, body, VectorLength( vrp->handVel ) > VR_THROW_SPEED );
 			body->s.dl_intensity = 0;
 			vrp->grabbed = -1;
 		} else {
@@ -601,7 +634,12 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 		gentity_t *body = G_VR_FindBody( ent, offHand );
 		if ( body && !G_VR_BodyTaken( body->s.number, ent->s.number ) ) {
 			vrp->grabbed = body->s.number;
-			VectorSubtract( body->client->ps.origin, offHand, vrp->grabOffset );
+			// held by the hand, hanging below it (a shield, see vrCarryMins)
+			VectorClear( vrp->grabOffset );
+			VectorCopy( body->r.mins, vrp->grabbedMins );
+			VectorCopy( body->r.maxs, vrp->grabbedMaxs );
+			VectorCopy( vrCarryMins, body->r.mins );
+			VectorCopy( vrCarryMaxs, body->r.maxs );
 			vrp->grabbedPmType = body->client->ps.pm_type == PM_FREEZE ? PM_DEAD : body->client->ps.pm_type;
 			body->client->ps.pm_type = PM_FREEZE;   // stays put in the hand instead of falling
 			body->s.dl_intensity = ent->s.number + 1;
