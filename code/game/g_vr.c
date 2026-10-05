@@ -787,3 +787,57 @@ void G_VR_KnifeStab( gentity_t *ent ) {
 	VectorCopy( tip, vrp->knifeTip );
 	vrp->knifeTime = now;
 }
+
+/*
+=================
+G_VR_Training
+
+HOST GAME's training mode (g_vrTraining): 1 = every weapon, the reserve ammo kept full
+(magazines still need reloading) and no harm to players; 2 = and enemies ignore them, so
+there's something to test the guns on.
+=================
+*/
+void G_VR_Training( gentity_t *ent ) {
+	static int nextRefill[MAX_CLIENTS];
+	gclient_t *client = ent->client;
+	int i, num;
+
+	if ( !client || ent->aiCharacter || !g_vrTraining.integer ) {
+		return;
+	}
+	num = ent - g_entities;
+	if ( num < 0 || num >= MAX_CLIENTS ) {
+		return;
+	}
+
+	ent->flags |= FL_GODMODE;
+	if ( g_vrTraining.integer >= 2 ) {
+		ent->flags |= FL_NOTARGET;
+	} else {
+		ent->flags &= ~FL_NOTARGET;
+	}
+	if ( client->ps.stats[STAT_HEALTH] <= 0 ) {
+		return;
+	}
+
+	// as "give all" does it
+	for ( i = 0; i <= WP_DYNAMITE; i++ ) {
+		COM_BitSet( client->ps.weapons, i );
+	}
+	client->ps.stats[STAT_KEYS] |= ( 1 << INV_BINOCS );
+
+	if ( level.time >= nextRefill[num] || nextRefill[num] > level.time + 1000 ) {
+		nextRefill[num] = level.time + 500;
+		for ( i = 1; i < WP_MONSTER_ATTACK1; i++ ) {
+			Add_Ammo( ent, i, 999, qfalse );
+		}
+		if ( client->ps.stats[STAT_ARMOR] < 100 ) {
+			client->ps.stats[STAT_ARMOR] = 100;
+		}
+	}
+}
+
+// a headset player: their gun is aimed by their hands, not the flat game's view
+qboolean G_VR_Aiming( gentity_t *ent ) {
+	return G_VR_IsPlayer( ent );
+}

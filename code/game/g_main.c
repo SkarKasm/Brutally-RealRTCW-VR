@@ -173,6 +173,7 @@ vmCvar_t sv_hostname;       // So it's more accesible
 vmCvar_t g_votesPerUser;    // How many votes can user call each game
 vmCvar_t g_bannedMSG;       // Used to point banned users to desired forum..
 vmCvar_t g_shove;           // Enable - Disable shove
+vmCvar_t g_vrTraining;      // RealRTCW-VR: 1 all weapons, ammo, no harm; 2 and enemies ignore you
 vmCvar_t g_shoveAmount;     // How far one is pushed
 vmCvar_t g_throwKnives;     // 0 = disabled, anything else is the value of knives player gets, alt -1 = unlimited.
 
@@ -325,6 +326,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_bannedMSG, "g_bannedMSG", "You are ^jBanned ^7from this server!", CVAR_ARCHIVE, 0, qfalse },
 	{ &g_needpass, "g_needpass", "0", CVAR_ARCHIVE, 0, qfalse },
 	{ &g_shove, "g_shove", "0", CVAR_ARCHIVE, 0, qtrue},
+	{ &g_vrTraining, "g_vrTraining", "0", CVAR_ARCHIVE | CVAR_SERVERINFO, 0, qtrue},
 	{ &g_shoveAmount, "g_shoveAmount", "0.8", CVAR_ARCHIVE, 0, qtrue}, // Don't give to much...
 	{ &g_throwKnives, "g_throwKnives", "0", CVAR_ARCHIVE, 0, qtrue },
 

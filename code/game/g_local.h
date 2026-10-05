@@ -1012,9 +1012,11 @@ void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, 
 void G_KnifeHit( gentity_t *ent, trace_t *trp );            // RealRTCW-VR
 // g_vr.c
 qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out );
+qboolean G_VR_Aiming( gentity_t *ent );
 void G_VR_KnifeStab( gentity_t *ent );
 void G_VR_UpdateWeaponState( gentity_t *ent );
 void G_VR_PlayerThink( gentity_t *ent );
+void G_VR_Training( gentity_t *ent );
 void G_VR_OnFire( gentity_t *ent );
 void G_VR_Reset( void );
 float G_VR_SpreadScale( gentity_t *ent );
@@ -1326,6 +1328,7 @@ extern vmCvar_t sv_hostname;
 extern vmCvar_t g_votesPerUser;
 extern vmCvar_t g_bannedMSG;
 extern vmCvar_t g_shove;
+extern vmCvar_t g_vrTraining;           // RealRTCW-VR: HOST GAME training mode
 extern vmCvar_t g_shoveAmount;
 extern vmCvar_t g_throwKnives;
 

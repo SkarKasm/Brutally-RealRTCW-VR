@@ -1100,6 +1100,7 @@ void ClientThink_real( gentity_t *ent ) {
 	// RealRTCW-VR: the knife hurts by physically stabbing with it; hand reloading, grabbing
 	G_VR_KnifeStab( ent );
 	G_VR_PlayerThink( ent );
+	G_VR_Training( ent );
 
 	if ( monsterslick && !( ent->flags & FL_NO_MONSTERSLICK ) ) {
 		{

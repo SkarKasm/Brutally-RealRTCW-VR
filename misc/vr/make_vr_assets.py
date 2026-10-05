@@ -28,6 +28,11 @@ GRIP_SHIFT = {
     "models/weapons2/mauser/v_mauser": -7.0,
     "models/weapons2/garand/v_garand": -10.0,
 }
+# grips the measurement can't find: the idle frame shows no trigger hand on the gun, only the
+# support hand on the magazine (which would otherwise be taken for the grip)
+GRIP_POINT = {
+    "models/weapons2/mp40/v_mp40": (2.5, -8.0, -12.0),     # the pistol grip, behind the trigger guard
+}
 MELEE = ("models/weapons2/knife/v_knife", "models/multiplayer/knife/v_knife")
 
 # reload recordings of the weapons reloaded by hand, keyed like cg_vr.c looks them up
@@ -199,6 +204,8 @@ HOST_GAME = (
     ("g_skipcutscenes", "Cutscenes:", (("Watch", 0), ("Skip", 1))),
     ("g_reinforce", "Enemies:", (("Normal", 0), ("More", 1), ("Even more", 2))),
     ("g_airespawn", "Enemies respawn:", (("No", 0), ("Yes", 1))),
+    ("g_vrTraining", "Training:", (("Off", 0), ("All weapons, no damage", 1),
+                                   ("Same, enemies ignore you", 2))),
 )
 HOST_RULES = (
     ("g_friendlyFire", "Friendly fire:", (("Off", 0), ("On", 1), ("On (health penalty)", 2))),
@@ -373,6 +380,8 @@ def main():
         if not palm:
             continue
         palm = [palm[0] + GRIP_SHIFT.get(key, 0.0), palm[1], palm[2]]
+        if key in GRIP_POINT:
+            palm = list(GRIP_POINT[key])
         if key in MELEE:
             pitch, yaw = V.blade_correction(pieces, palm)
         else:

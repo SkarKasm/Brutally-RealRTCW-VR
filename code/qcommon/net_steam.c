@@ -571,7 +571,7 @@ static void NET_Steam_HostDefaults( void ) {
 		{ "g_skipcutscenes", "0" }, { "g_reinforce", "0" }, { "g_airespawn", "0" }, { "g_friendlyFire", "0" },
 		{ "g_maxlives", "0" }, { "g_sharedlives", "0" }, { "g_freeze", "0" }, { "g_spawnpoints", "0" },
 		{ "g_maxspawnpoints", "0" }, { "g_limbotime", "10000" }, { "g_spawnInvul", "5" },
-		{ "g_throwKnives", "0" }, { "g_shove", "0" }
+		{ "g_throwKnives", "0" }, { "g_shove", "0" }, { "g_vrTraining", "0" }
 	};
 	int i;
 

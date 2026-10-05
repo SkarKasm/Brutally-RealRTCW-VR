@@ -1798,7 +1798,8 @@ void CalcMuzzlePoints( gentity_t *ent, int weapon ) {
 
 	VectorCopy( ent->client->ps.viewangles, viewang );
 
-	if ( !( ent->r.svFlags & SVF_CASTAI ) ) {   // non ai's take into account scoped weapon 'sway' (just another way aimspread is visualized/utilized)
+	// RealRTCW-VR: no made-up sway for a gun held in real hands, the scope's view doesn't sway
+	if ( !( ent->r.svFlags & SVF_CASTAI ) && !G_VR_Aiming( ent ) ) {   // non ai's take into account scoped weapon 'sway' (just another way aimspread is visualized/utilized)
 		float spreadfrac, phase;
 
 		if ( weapon == WP_SNIPERRIFLE || weapon == WP_SNOOPERSCOPE || weapon == WP_FG42SCOPE ) {
