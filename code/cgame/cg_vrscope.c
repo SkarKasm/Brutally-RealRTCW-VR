@@ -205,8 +205,9 @@ static void CG_VR_Eyepiece( void ) {
 		trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
 		if ( atoi( dbg ) == 4 && cg.time >= next ) {
 			next = cg.time + 300;
-			CG_Printf( "VR scope: weapon %d, eye %.1f behind it, %.1f left %.1f up, radius %.2f\n", vs.weapon, back,
-					   DotProduct( rel, vs.axis[1] ), DotProduct( rel, vs.axis[2] ), vs.radius );		}
+			CG_Printf( "VR scope: weapon %d, eye %.1f behind it, %.1f left %.1f up, radius %.2f, sights %d\n", vs.weapon,
+					   back, DotProduct( rel, vs.axis[1] ), DotProduct( rel, vs.axis[2] ), vs.radius, cgVR->ironSights );
+		}
 	}
 	if ( back < 0.5f ) {
 		return;     // not behind it
@@ -264,6 +265,99 @@ static void CG_VR_Eyepiece( void ) {
 }
 
 /*
+==============================================================================
+
+Binoculars: the off hand raised to the eyes (cl_vr.c) zooms; each eye sees a lens in
+front of it, black all around, showing the view ahead magnified.
+
+==============================================================================
+*/
+
+#define VB_FOV          10.0f   // what the binoculars show
+#define VB_DIST         1.5f    // the lens in front of each eye...
+#define VB_RADIUS       0.75f   // ...this big (53 degrees across): about 5x
+
+static void CG_VR_BinocView( void ) {
+	refdef_t rd;
+	int size;
+
+	size = trap_R_VR_BeginScope();
+	if ( size <= 0 ) {
+		return;
+	}
+	rd = cg.refdef;
+	rd.x = rd.y = 0;
+	rd.width = rd.height = size;
+	rd.rdflags = ( cg.refdef.rdflags & ~( RDF_VRVIEW | RDF_SKYBOXPORTAL | RDF_DRAWSKYBOX ) ) | RDF_VRSCOPE;
+	rd.fov_x = rd.fov_y = VB_FOV / Com_Clamp( 0.1f, 4.0f, vr_scopeZoom.value );
+	trap_R_RenderScene( &rd );
+	trap_R_VR_EndScope();
+}
+
+static void CG_VR_BinocEyepiece( void ) {
+	polyVert_t ring[VS_RINGS + 1][VS_SEGS];
+	polyVert_t p[4];
+	float u, v, f, b, a;
+	int r, s, i, n;
+
+	// a lens straight ahead of this eye
+	VectorCopy( cg.refdef.vieworg, vs.centre );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( vs.centre, cgVR->eyeOffset[i], cg.refdef.viewaxis[i], vs.centre );
+		VectorCopy( cg.refdef.viewaxis[i], vs.axis[i] );
+	}
+	VectorMA( vs.centre, VB_DIST, vs.axis[0], vs.centre );
+	vs.radius = VB_RADIUS;
+
+	for ( r = 0; r <= VS_RINGS; r++ ) {
+		for ( s = 0; s < VS_SEGS; s++ ) {
+			polyVert_t *pv = &ring[r][s];
+
+			a = 2.0f * M_PI * s / VS_SEGS;
+			f = (float)r / VS_RINGS;
+			u = f * cos( a );
+			v = f * sin( a );
+			CG_VR_LensPoint( u, v, 0.0f, pv->xyz );
+			pv->st[0] = 0.5f - 0.5f * u;
+			pv->st[1] = 0.5f + 0.5f * v;
+			b = Com_Clamp( 0, 1, ( 1.0f - f ) / 0.3f + 0.2f );
+			pv->modulate[0] = pv->modulate[1] = pv->modulate[2] = (byte)( 255 * b );
+			pv->modulate[3] = 255;
+			if ( r == 0 ) {
+				break;
+			}
+		}
+	}
+	for ( s = 0; s < VS_SEGS; s++ ) {
+		n = ( s + 1 ) % VS_SEGS;
+		p[0] = ring[0][0];
+		p[1] = ring[1][s];
+		p[2] = ring[1][n];
+		trap_R_AddPolyToScene( vs.shader, 3, p );
+		for ( r = 1; r < VS_RINGS; r++ ) {
+			p[0] = ring[r][s];
+			p[1] = ring[r + 1][s];
+			p[2] = ring[r + 1][n];
+			p[3] = ring[r][n];
+			trap_R_AddPolyToScene( vs.shader, 4, p );
+		}
+
+		// the body of the binoculars blocks everything else
+		memset( p, 0, sizeof( p ) );
+		a = 2.0f * M_PI * s / VS_SEGS;
+		b = 2.0f * M_PI * n / VS_SEGS;
+		CG_VR_LensPoint( cos( a ), sin( a ), 0.0f, p[0].xyz );
+		CG_VR_LensPoint( 8 * cos( a ), 8 * sin( a ), 0.0f, p[1].xyz );
+		CG_VR_LensPoint( 8 * cos( b ), 8 * sin( b ), 0.0f, p[2].xyz );
+		CG_VR_LensPoint( cos( b ), sin( b ), 0.0f, p[3].xyz );
+		for ( i = 0; i < 4; i++ ) {
+			p[i].modulate[3] = 255;
+		}
+		trap_R_AddPolyToScene( vs.shader, 4, p );
+	}
+}
+
+/*
 ==============
 CG_VR_RenderScope
 
@@ -272,7 +366,17 @@ is the same for both), then the eyepiece.
 ==============
 */
 void CG_VR_RenderScope( void ) {
-	if ( !CG_VR_EyePass() || vs.frame != cg.clientFrame ) {
+	if ( !CG_VR_EyePass() ) {
+		return;
+	}
+	if ( cg.zoomedBinoc && !cg.renderingThirdPerson ) {
+		if ( cgVR->eye == 0 ) {
+			CG_VR_BinocView();
+		}
+		CG_VR_BinocEyepiece();
+		return;
+	}
+	if ( vs.frame != cg.clientFrame ) {
 		return;
 	}
 	if ( cgVR->eye == 0 ) {
@@ -284,4 +388,63 @@ void CG_VR_RenderScope( void ) {
 // a scope is being looked through this frame (for the reticle and such)
 qboolean CG_VR_ScopeActive( void ) {
 	return vs.frame == cg.clientFrame;
+}
+
+/*
+==============================================================================
+
+Iron sights: an eye on the line along the barrel, behind the gun, steadies the aim
+(half the spread, see G_VR_SpreadScale). Scopes count too, their eye line is close.
+
+==============================================================================
+*/
+
+vmCvar_t vr_ironSights;
+
+void CG_VR_IronSights( void ) {
+	static qboolean registered;
+	vec3_t fwd, eye, rel;
+	float along, perp;
+	int side;
+
+	if ( !registered ) {
+		trap_Cvar_Register( &vr_ironSights, "vr_ironSights", "1", CVAR_ARCHIVE );
+		registered = qtrue;
+	}
+	if ( !cgVR ) {
+		return;
+	}
+	cgVR->ironSights = 0;
+	trap_Cvar_Update( &vr_ironSights );
+	if ( !vr_ironSights.integer || !cgVR->muzzleValid || !CG_VR_EyePass() ) {
+		return;
+	}
+
+	AngleVectors( cgvr.weaponAngles, fwd, NULL, NULL );
+	for ( side = -1; side <= 1; side += 2 ) {
+		// either eye, about 32 mm off the middle of the head
+		VectorMA( cg.refdef.vieworg, side * 1.25f, cg.refdef.viewaxis[1], eye );
+		VectorSubtract( eye, cgvr.muzzle, rel );
+		along = -DotProduct( rel, fwd );
+		if ( along < 8.0f || along > 110.0f ) {     // long rifles reach far out
+			continue;
+		}
+		VectorMA( rel, along, fwd, rel );
+		perp = VectorLength( rel );
+		{
+			static int next;
+			char dbg[8];
+			trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
+			if ( atoi( dbg ) == 4 && cg.time >= next ) {
+				next = cg.time + 300;
+				CG_Printf( "VR sights: eye %d %.1f behind the muzzle, %.1f off the line\n", side, along, perp );
+			}
+		}
+		// looking along the barrel: within 6 degrees of the bore line (scopes sit a few
+		// units over it, on long rifles far back from the muzzle)
+		if ( perp < 8.0f && perp < along * 0.105f ) {
+			cgVR->ironSights = 1;
+			return;
+		}
+	}
 }

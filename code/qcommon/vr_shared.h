@@ -111,6 +111,11 @@ typedef struct vrShared_s {
 	// written by the engine for every VR_PASS_EYE
 	//
 	vec3_t  eyeOffset;          // this eye from the head centre (forward, left, up; game units)
+
+	//
+	// written by cgame
+	//
+	int     ironSights;         // an eye is lined up behind the gun: steadier aim
 } vrShared_t;
 
 #endif // __VR_SHARED_H__

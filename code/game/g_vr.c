@@ -91,7 +91,8 @@ float G_VR_SpreadScale( gentity_t *ent ) {
 	}
 	G_VR_Init();
 	trap_Cvar_Update( &vr_aimSpread );
-	return vr_aimSpread.value < 0 ? 0 : ( vr_aimSpread.value > 1 ? 1 : vr_aimSpread.value );
+	return ( vr_aimSpread.value < 0 ? 0 : ( vr_aimSpread.value > 1 ? 1 : vr_aimSpread.value ) ) *
+		   ( gVR->ironSights ? 0.5f : 1.0f );       // down the sights
 }
 
 void G_VR_Reset( void ) {

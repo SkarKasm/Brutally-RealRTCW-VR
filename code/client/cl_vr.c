@@ -294,6 +294,7 @@ static cvar_t *vr_enable;
 static cvar_t *vr_resolutionScale;
 static cvar_t *vr_worldScale;
 static cvar_t *vr_rightHanded;
+static cvar_t *vr_binoculars;       // off hand to the eyes: binoculars
 static cvar_t *vr_snapTurn;
 static cvar_t *vr_turnSpeed;
 static cvar_t *vr_walkDirection;
@@ -1187,6 +1188,7 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_ragdolls", "1", CVAR_ARCHIVE );       // cg_ragdoll.c
 	Cvar_Get( "vr_fullBody", "1", CVAR_ARCHIVE );       // cg_vrbody.c
 	Cvar_Get( "vr_scopes", "1", CVAR_ARCHIVE );         // cg_vrscope.c
+	vr_binoculars = Cvar_Get( "vr_binoculars", "1", CVAR_ARCHIVE );
 
 	Com_Memset( &xr, 0, sizeof( xr ) );
 	Com_Memset( &com_vr, 0, sizeof( com_vr ) );
@@ -1519,6 +1521,38 @@ static void VR_Turning( float frameSeconds ) {
 
 /*
 =================
+VR_BinocularGesture
+
+The off hand held up in front of the eyes: look through the binoculars (the game ignores
+it without them). A little wider to leave than to enter, so it doesn't flicker.
+=================
+*/
+static qboolean VR_BinocularGesture( int off ) {
+	static qboolean held;
+	XrQuaternionf inv;
+	float rel[3], local[3], slack;
+
+	if ( !vr_binoculars->integer || !xr.hands[off].gripValid ) {
+		held = qfalse;
+		return qfalse;
+	}
+	rel[0] = xr.hands[off].grip.position.x - xr.head.position.x;
+	rel[1] = xr.hands[off].grip.position.y - xr.head.position.y;
+	rel[2] = xr.hands[off].grip.position.z - xr.head.position.z;
+	inv = xr.head.orientation;
+	inv.x = -inv.x;
+	inv.y = -inv.y;
+	inv.z = -inv.z;
+	VR_QuatRotate( &inv, rel, local );      // head space: x right, y up, -z forward
+
+	slack = held ? 0.04f : 0.0f;
+	held = -local[2] > 0.02f - slack && -local[2] < 0.20f + slack &&
+		   fabs( local[1] ) < 0.10f + slack && fabs( local[0] ) < 0.12f + slack;
+	return held;
+}
+
+/*
+=================
 CL_VR_CreateCmd
 
 Called from CL_CreateCmd: aim, locomotion and room-scale for this usercmd.
@@ -1544,6 +1578,9 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 	// the trigger, sampled this frame
 	if ( xr.attackHeld && !Key_GetCatcher() ) {
 		cmd->buttons |= BUTTON_ATTACK;
+	}
+	if ( !Key_GetCatcher() && VR_BinocularGesture( off ) ) {
+		cmd->wbuttons |= WBUTTON_ZOOM;
 	}
 
 	if ( Key_GetCatcher() ) {
