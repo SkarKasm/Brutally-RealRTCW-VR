@@ -297,6 +297,7 @@ static cvar_t *vr_resolutionScale;
 static cvar_t *vr_worldScale;
 static cvar_t *vr_rightHanded;
 static cvar_t *vr_binoculars;       // off hand to the eyes: binoculars
+static cvar_t *vr_hipNotebook;      // off hand grip at the hip: the notebook
 static cvar_t *vr_snapTurn;
 static cvar_t *vr_turnSpeed;
 static cvar_t *vr_walkDirection;
@@ -1192,6 +1193,8 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_scopes", "1", CVAR_ARCHIVE );         // cg_vrscope.c
 	Cvar_Get( "vr_recoil", "1", CVAR_ARCHIVE );         // cg_vrrecoil.c
 	vr_binoculars = Cvar_Get( "vr_binoculars", "1", CVAR_ARCHIVE );
+	vr_hipNotebook = Cvar_Get( "vr_hipNotebook", "1", CVAR_ARCHIVE );
+	Cvar_Get( "vr_wristHud", "1", CVAR_ARCHIVE );           // cg_vrwrist.c
 
 	Com_Memset( &xr, 0, sizeof( xr ) );
 	Com_Memset( &com_vr, 0, sizeof( com_vr ) );
@@ -1443,6 +1446,40 @@ static void VR_Hold( const char *cmd, int hand, vrButton_t b ) {
 	}
 }
 
+/*
+=================
+VR_HandAtHip
+
+The off hand down at the hip on its own side (the notebook's pocket).
+=================
+*/
+static qboolean VR_HandAtHip( int hand ) {
+	float rel[3], f[3], fwd[2], right[2], len, side, ahead;
+	static const float minusZ[3] = { 0, 0, -1 };
+
+	if ( !xr.hands[hand].gripValid || !xr.headValid ) {
+		return qfalse;
+	}
+	rel[0] = xr.hands[hand].grip.position.x - xr.head.position.x;
+	rel[1] = xr.hands[hand].grip.position.y - xr.head.position.y;
+	rel[2] = xr.hands[hand].grip.position.z - xr.head.position.z;
+	VR_QuatRotate( &xr.head.orientation, minusZ, f );     // where the head faces, level
+	len = sqrt( f[0] * f[0] + f[2] * f[2] );
+	if ( len < 0.01f ) {
+		return qfalse;
+	}
+	fwd[0] = f[0] / len;
+	fwd[1] = f[2] / len;
+	right[0] = -fwd[1];
+	right[1] = fwd[0];
+	ahead = rel[0] * fwd[0] + rel[2] * fwd[1];
+	side = rel[0] * right[0] + rel[2] * right[1];
+	if ( hand == VR_HAND_LEFT ) {
+		side = -side;
+	}
+	return rel[1] < -0.45f && rel[1] > -0.95f && side > 0.10f && ahead < 0.15f && ahead > -0.25f;
+}
+
 // in-game controls, after the RTCWQuest layout
 static void VR_GameControls( void ) {
 	int dom = vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT;
@@ -1488,6 +1525,11 @@ static void VR_GameControls( void ) {
 	}
 
 	// off hand
+	// the notebook, from its pocket at the hip
+	if ( VR_Pressed( off, VRB_SQUEEZE ) && vr_hipNotebook->integer && VR_HandAtHip( off ) ) {
+		Cbuf_AddText( "notebook\n" );
+	}
+
 	if ( com_vr.dualWield ) {
 		// a pistol in this hand too: its trigger fires it
 		if ( VR_Pressed( off, VRB_TRIGGER ) ) {

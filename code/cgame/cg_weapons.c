@@ -3824,6 +3824,7 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		CG_VR_AddHands();
 		CG_VR_AddReticle();
 		CG_VR_AddReloadItems();
+		CG_VR_WristHUD();
 		cg.predictedPlayerEntity.lastWeaponClientFrame = cg.clientFrame;
 		return;
 	}

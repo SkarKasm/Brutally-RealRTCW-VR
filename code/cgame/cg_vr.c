@@ -75,6 +75,7 @@ void CG_VR_Init( void ) {
 	CG_VR_BodyInit();
 	CG_VR_ScopeInit();
 	CG_VR_RecoilInit();
+	CG_VR_WristInit();
 
 	// Fine tuning on top of the measured grip, "forward left up pitch yaw roll" in model
 	// units/degrees. vr_gunOffset_<weapon number> applies to a single weapon.
@@ -585,6 +586,35 @@ void CG_VR_AddReloadItems( void ) {
 		VectorCopy( ent.origin, ent.lightingOrigin );
 		ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN;
 		trap_R_AddRefEntityToScene( &ent );
+	}
+	// spare magazines in the chest pouch, where the off hand takes them from (g_vr.c)
+	if ( model && BG_VR_ReloadClass( cgvr.gunWeapon ) == VRR_MAG && CG_VR_BodyDrawn() ) {
+		int spare, i, clip = ammoTable[cgvr.gunWeapon].maxclip;
+		vec3_t yaw, fwd, right, pouch;
+
+		spare = clip > 0 ? cg.predictedPlayerState.ammo[BG_FindAmmoForWeapon( cgvr.gunWeapon )] / clip : 0;
+		if ( spare > 3 ) {
+			spare = 3;
+		}
+		VectorSet( yaw, 0, cg.refdefViewAngles[YAW], 0 );
+		AngleVectors( yaw, fwd, right, NULL );
+		for ( i = 0; i < spare; i++ ) {
+			memset( &ent, 0, sizeof( ent ) );
+			ent.hModel = model;
+			AxisCopy( axisDefault, ent.axis );
+			VectorCopy( fwd, ent.axis[0] );
+			VectorScale( right, -1, ent.axis[1] );
+			// 12 below the eyes (the server's chest), a little in front, side by side
+			VectorMA( cg.refdef.vieworg, 7.0f, fwd, pouch );
+			VectorMA( pouch, ( i - ( spare - 1 ) * 0.5f ) * 2.6f, right, pouch );
+			pouch[2] -= 12.0f;
+			BG_VR_ModelDir( ent.axis, geom.magLocal, ent.origin );
+			VectorSubtract( pouch, ent.origin, ent.origin );
+			VectorCopy( ent.origin, ent.oldorigin );
+			VectorCopy( ent.origin, ent.lightingOrigin );
+			ent.renderfx = RF_FIRST_PERSON | RF_LIGHTING_ORIGIN;
+			trap_R_AddRefEntityToScene( &ent );
+		}
 	}
 }
 
