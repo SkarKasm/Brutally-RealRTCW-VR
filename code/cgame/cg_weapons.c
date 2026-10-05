@@ -2960,6 +2960,7 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 			}
 			CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity );
 		}
+		CG_VR_IronSights();
 		CG_VR_AddHands();
 		CG_VR_AddReticle();
 		CG_VR_AddReloadItems();

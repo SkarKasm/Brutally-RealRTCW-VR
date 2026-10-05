@@ -78,7 +78,7 @@ float BG_VR_SpreadScale( int vrFlags ) {
 	if ( !( vrFlags & VRF_ACTIVE ) ) {
 		return 1.0f;
 	}
-	return scale[( vrFlags & VRF_SPREAD_MASK ) >> VRF_SPREAD_SHIFT];
+	return scale[( vrFlags & VRF_SPREAD_MASK ) >> VRF_SPREAD_SHIFT] * ( ( vrFlags & VRF_SIGHTS ) ? 0.5f : 1.0f );
 }
 
 /*

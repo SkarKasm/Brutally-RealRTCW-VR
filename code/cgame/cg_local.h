@@ -2526,6 +2526,7 @@ void        CG_VR_ScopeInit( void );
 void        CG_VR_ScopePiece( int weapon, int part, const refEntity_t *ent );
 void        CG_VR_RenderScope( void );
 qboolean    CG_VR_ScopeActive( void );
+void        CG_VR_IronSights( void );
 #ifdef VR_NET_HANDS
 qboolean    CG_VR_RemoteBody( centity_t *cent );
 void        CG_VR_BodyApplyRemote( centity_t *cent, refEntity_t *body );

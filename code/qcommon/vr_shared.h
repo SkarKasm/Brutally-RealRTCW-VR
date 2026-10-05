@@ -51,6 +51,7 @@ the Free Software Foundation, either version 3 of the License, or
 #define VRF_MANUAL      256     // the player wants to reload by hand
 #define VRF_SPREAD_SHIFT 9      // 2 bits: aim spread setting, see BG_VR_SpreadScale
 #define VRF_SPREAD_MASK ( 3 << VRF_SPREAD_SHIFT )
+#define VRF_SIGHTS      2048    // aiming down the sights: steadier
 
 // playerState_t.vrState
 #define VRS_MANUAL      0x0001  // current weapon is reloaded by hand
@@ -143,6 +144,11 @@ typedef struct vrShared_s {
 	// written by the engine for every VR_PASS_EYE
 	//
 	vec3_t  eyeOffset;          // this eye from the head centre (forward, left, up; game units)
+
+	//
+	// written by cgame
+	//
+	int     ironSights;         // an eye is lined up behind the gun: steadier aim
 } vrShared_t;
 
 #endif // __VR_SHARED_H__
