@@ -3439,6 +3439,14 @@ void FS_AddGameDirectory( const char *path, const char *dir, qboolean allowUnzip
 	// and lastly all the 'others'
 	for ( i = 0 ; i < numfiles ; i++ ) {
 		if ( Q_strncmp( sorted[i],"sp_",3 ) && Q_strncmp( sorted[i],"mp_",3 ) && Q_strncmp( sorted[i], "pak0",4 ) ) {
+			// RealRTCW-VR: co-op only wants the original game's paks from "main". Mods
+			// installed there (RealRTCW single player, survival packs...) bring scripts,
+			// weapons and shaders co-op doesn't have, and crash it when a level loads.
+			if ( !Q_stricmp( dir, BASEGAME ) ) {
+				Com_Printf( "Ignoring %s%c%s: not part of the original game\n", curpath, PATH_SEP, sorted[i] );
+				continue;
+			}
+
 			pakfile = FS_BuildOSPath( path, dir, sorted[i] );
 			if ( ( pak = FS_LoadZipFile( pakfile, sorted[i] ) ) == 0 ) {
 				continue;
