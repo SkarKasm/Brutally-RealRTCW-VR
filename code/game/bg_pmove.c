@@ -3747,6 +3747,12 @@ static void PM_Weapon( void ) {
 	break;
 	}
 
+	// RealRTCW-VR: a gun held in a tracked hand is already up and aimed, it fires on the
+	// trigger (the flat game's fireDelayTime gives the view model time to come up)
+	if ( pm->vrAim && BG_VR_InstantFire( pm->ps->weapon ) ) {
+		pm->ps->weaponDelay = 0;
+	}
+
 	if ( PM_AltFiring(delayedFire) || PM_AltFire() )
 		pm->ps->weaponstate = WEAPON_FIRINGALT;
 	else

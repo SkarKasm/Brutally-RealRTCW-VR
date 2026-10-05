@@ -1855,6 +1855,9 @@ void CG_WeaponAnimation( playerState_t *ps, weaponInfo_t *weapon, int *weapOld, 
 qboolean CG_VR_DrawHands( void );
 void CG_VR_Haptic( int hand, float amplitude, int msec );
 int CG_VR_DominantHand( void );
+qboolean CG_VR_PredictsHits( int weapon );
+void CG_VR_DebugServerImpact( int shooter );
+void CG_VR_PredictBullet( int weapon );
 extern centity_t cg_entities[MAX_GENTITIES];
 extern weaponInfo_t cg_weapons[MAX_WEAPONS];
 extern itemInfo_t cg_items[MAX_ITEMS];

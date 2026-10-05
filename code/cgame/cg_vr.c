@@ -30,6 +30,7 @@ static vmCvar_t vr_inspect;
 static vmCvar_t vr_emptySwitch;
 
 static qboolean CG_VR_OneHanded( int weapon );
+static vmCvar_t vr_predictHits;
 
 /*
 =================
@@ -80,6 +81,7 @@ void CG_VR_Init( void ) {
 	trap_Cvar_Register( &vr_reticle, "vr_reticle", "1", CVAR_ARCHIVE );
 	trap_Cvar_Register( &vr_inspect, "vr_inspect", "0", 0 );
 	trap_Cvar_Register( &vr_emptySwitch, "vr_emptySwitch", "0", CVAR_ARCHIVE );
+	trap_Cvar_Register( &vr_predictHits, "vr_predictHits", "1", CVAR_ARCHIVE );
 
 	// built by misc/vr/make_vr_assets.py into main/z_vr_assets.pk3
 	cgvr.handModel[VR_HAND_LEFT] = trap_R_RegisterModel( "models/vr/hand_l.md3" );
@@ -754,5 +756,113 @@ void CG_VR_Haptic( int hand, float amplitude, int msec ) {
 	if ( amplitude > cgVR->hapticAmplitude[hand] ) {
 		cgVR->hapticAmplitude[hand] = amplitude;
 		cgVR->hapticDuration[hand] = msec;
+	}
+}
+
+/*
+==============================================================================
+
+Instant hits: the player's own bullet impacts are drawn the moment the gun fires, from
+its muzzle along its aim, instead of when the server's impact events come back (a
+server frame, plus snapshot interpolation, plus the round trip in co-op). The server
+still decides damage; its impact events for the player's own bullets are skipped.
+In VR only: the server's random spread is small there (at most ~0.7 degrees with the
+VR accuracy setting, none for scoped weapons), so the drawn hit is where the real one is.
+
+==============================================================================
+*/
+
+// weapons that fire single bullets straight from the gun (no pellets, no projectiles)
+static qboolean CG_VR_HitscanWeapon( int weapon ) {
+	switch ( weapon ) {
+	case WP_LUGER:
+	case WP_SILENCER:
+	case WP_COLT:
+	case WP_AKIMBO:
+	case WP_TT33:
+	case WP_DUAL_TT33:
+	case WP_REVOLVER:
+	case WP_HDM:
+	case WP_MP40:
+	case WP_THOMPSON:
+	case WP_STEN:
+	case WP_PPSH:
+	case WP_MP34:
+	case WP_MAUSER:
+	case WP_GARAND:
+	case WP_MOSIN:
+	case WP_DELISLE:
+	case WP_M1GARAND:
+	case WP_G43:
+	case WP_M1941:
+	case WP_MP44:
+	case WP_FG42:
+	case WP_BAR:
+	case WP_SNIPERRIFLE:
+	case WP_SNOOPERSCOPE:
+	case WP_DELISLESCOPE:
+	case WP_FG42SCOPE:
+	case WP_M1941SCOPE:
+	case WP_MG42M:
+	case WP_BROWNING:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
+// vr_debug 2: when the server's impact for one of our bullets arrives
+void CG_VR_DebugServerImpact( int shooter ) {
+	char dbg[8];
+
+	trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
+	if ( atoi( dbg ) == 2 && shooter == cg.snap->ps.clientNum ) {
+		CG_Printf( "VR fire: server impact at %d ms\n", trap_Milliseconds() );
+	}
+}
+
+qboolean CG_VR_PredictsHits( int weapon ) {
+	trap_Cvar_Update( &vr_predictHits );
+	return cgvr.active && vr_predictHits.integer && !cg.demoPlayback && CG_VR_HitscanWeapon( weapon );
+}
+
+/*
+=================
+CG_VR_PredictBullet
+
+The player's gun just fired (predicted EV_FIRE_WEAPON).
+=================
+*/
+void CG_VR_PredictBullet( int weapon ) {
+	vec3_t start, end, forward, reflect;
+	trace_t tr;
+	int self = cg.snap->ps.clientNum;
+	char dbg[8];
+
+	trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
+	if ( atoi( dbg ) == 2 ) {
+		CG_Printf( "VR fire: shot at %d ms\n", trap_Milliseconds() );
+	}
+	if ( !CG_VR_PredictsHits( weapon ) || !cgVR->muzzleValid ) {
+		return;
+	}
+	VectorCopy( cgvr.muzzle, start );
+	AngleVectors( cgvr.weaponAngles, forward, NULL, NULL );
+	VectorMA( start, 8192 * 2, forward, end );
+
+	CG_Trace( &tr, start, NULL, NULL, end, self, MASK_SHOT );
+	if ( tr.fraction >= 1.0f || ( tr.surfaceFlags & ( SURF_NOIMPACT | SURF_SKY ) ) ) {
+		return;
+	}
+	if ( atoi( dbg ) == 2 ) {
+		CG_Printf( "VR fire: impact drawn %.0f units away (entity %d)\n", Distance( start, tr.endpos ), tr.entityNum );
+	}
+
+	if ( tr.entityNum < MAX_CLIENTS && tr.entityNum != self ) {
+		CG_Bullet( tr.endpos, self, tr.plane.normal, qtrue, tr.entityNum, qfalse, ENTITYNUM_NONE );
+	} else {
+		VectorMA( forward, -2 * DotProduct( forward, tr.plane.normal ), tr.plane.normal, reflect );
+		VectorNormalize( reflect );
+		CG_Bullet( tr.endpos, self, reflect, qfalse, ENTITYNUM_WORLD, qfalse, ENTITYNUM_NONE );
 	}
 }
