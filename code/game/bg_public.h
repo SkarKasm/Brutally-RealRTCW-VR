@@ -353,6 +353,7 @@ typedef struct {
 } vrWeaponGeom_t;
 
 int  BG_VR_ReloadClass( int weapon );
+qboolean BG_VR_InstantFire( int weapon );
 void BG_VR_WeaponGeom( int weapon, qboolean vanillaGuns, vrWeaponGeom_t *out );
 void BG_VR_WeaponFrame( const vrWeaponGeom_t *g, const vec3_t hand, const vec3_t aimAngles, const float *adj,
 						vec3_t origin, vec3_t axis[3] );

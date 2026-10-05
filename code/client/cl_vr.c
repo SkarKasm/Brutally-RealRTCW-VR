@@ -314,6 +314,7 @@ static struct {
 	char            heldCommands[16][32];
 	int             numHeldCommands;
 	qboolean        rightGripCombo;     // right grip was used as a modifier while held
+	qboolean        attackHeld;         // the trigger fires: goes straight into the usercmd
 	qboolean        steadyLatched;      // off hand grip closed in front of the gun: two handed aim
 } xr;
 
@@ -802,7 +803,8 @@ static void VR_ReadInput( void ) {
 		VR_GetStick( h, hand->stick );
 
 		// analog -> digital with hysteresis
-		hand->down[VRB_TRIGGER] = hand->trigger > ( hand->wasDown[VRB_TRIGGER] ? 0.35f : 0.6f );
+		// a light pull fires, like a real trigger's break; released well below that
+		hand->down[VRB_TRIGGER] = hand->trigger > ( hand->wasDown[VRB_TRIGGER] ? 0.15f : 0.25f );
 		hand->down[VRB_SQUEEZE] = hand->squeeze > ( hand->wasDown[VRB_SQUEEZE] ? 0.35f : 0.6f );
 		hand->down[VRB_LOWER] = VR_GetBool( xr.actLower, h );
 		hand->down[VRB_UPPER] = VR_GetBool( xr.actUpper, h );
@@ -1149,6 +1151,12 @@ static void VR_SimPoses( void ) {
 		xr.hands[h].grip.position.z = xr.head.position.z + out[2];
 		xr.hands[h].aim = xr.hands[h].grip;
 		xr.hands[h].gripValid = xr.hands[h].aimValid = qtrue;
+
+		// vr_simTrigger <0..1>: the weapon hand's trigger
+		Com_Memcpy( xr.hands[h].wasDown, xr.hands[h].down, sizeof( xr.hands[h].down ) );
+		xr.hands[h].trigger = h == ( vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT ) ?
+							  Cvar_VariableValue( "vr_simTrigger" ) : 0.0f;
+		xr.hands[h].down[VRB_TRIGGER] = xr.hands[h].trigger > ( xr.hands[h].wasDown[VRB_TRIGGER] ? 0.15f : 0.25f );
 	}
 }
 
@@ -1616,6 +1624,7 @@ static void VR_ButtonCommand( const char *cmd, qboolean down ) {
 }
 
 static void VR_ReleaseAllCommands( void ) {
+	xr.attackHeld = qfalse;
 	while ( xr.numHeldCommands > 0 ) {
 		VR_ButtonCommand( xr.heldCommands[0], qfalse );
 	}
@@ -1637,15 +1646,20 @@ static void VR_GameControls( void ) {
 	qboolean modifier = d->down[VRB_SQUEEZE];
 
 	// weapon hand
+	// firing doesn't go through the command buffer (+attack would only reach the usercmd
+	// a frame later): CL_VR_CreateCmd sets the button directly
 	if ( VR_Pressed( dom, VRB_TRIGGER ) ) {
 		if ( modifier ) {
 			Cbuf_AddText( "weapalt\n" );        // grip + trigger: alternate fire mode
 			xr.rightGripCombo = qtrue;
 		} else {
-			VR_ButtonCommand( "attack", qtrue );
+			xr.attackHeld = qtrue;
+			if ( vr_debug->integer == 2 ) {
+				Com_Printf( "VR fire: trigger at %d ms\n", Sys_Milliseconds() );
+			}
 		}
-	} else if ( VR_Released( dom, VRB_TRIGGER ) ) {
-		VR_ButtonCommand( "attack", qfalse );
+	} else if ( !d->down[VRB_TRIGGER] ) {
+		xr.attackHeld = qfalse;
 	}
 
 	if ( VR_Pressed( dom, VRB_SQUEEZE ) ) {
@@ -1788,6 +1802,11 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 	cl.viewangles[PITCH] = com_vr.weaponAngles[PITCH];
 	cl.viewangles[YAW] = com_vr.weaponAngles[YAW];
 	cl.viewangles[ROLL] = 0;
+
+	// the trigger, sampled this frame
+	if ( xr.attackHeld && !Key_GetCatcher() ) {
+		cmd->buttons |= BUTTON_ATTACK;
+	}
 
 	VR_WriteCmdTracking( cmd );
 

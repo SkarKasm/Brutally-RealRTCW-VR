@@ -4593,9 +4593,11 @@ void CG_FireWeapon( centity_t *cent ) {
 
 	ent = &cent->currentState;
 
-	// RealRTCW-VR: recoil is felt in the hand instead of kicking the aim
+	// RealRTCW-VR: recoil is felt in the hand instead of kicking the aim, and the bullet's
+	// impact shows straight away
 	if ( cg.snap && ent->number == cg.snap->ps.clientNum && ent->weapon != WP_KNIFE ) {
 		CG_VR_Haptic( CG_VR_DominantHand(), 0.8f, 60 );
+		CG_VR_PredictBullet( ent->weapon );
 	}
 
 	// Rafael - mg42

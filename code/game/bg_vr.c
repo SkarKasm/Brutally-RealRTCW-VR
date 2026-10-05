@@ -252,3 +252,34 @@ void BG_VR_ModelDir( vec3_t axis[3], const vec3_t local, vec3_t out ) {
 	VectorMA( out, local[1], axis[1], out );
 	VectorMA( out, local[2], axis[2], out );
 }
+
+/*
+=================
+BG_VR_InstantFire
+
+Guns that fire the moment the trigger is pulled when aimed with a tracked controller.
+The flat game delays every shot so the first person model can come up into position
+first (fireDelayTime); a gun held in the hand is already up and aimed. Weapons where the
+delay is part of how they work (the Venom's spin-up, throws) keep it.
+=================
+*/
+qboolean BG_VR_InstantFire( int weapon ) {
+	switch ( weapon ) {
+	case WP_LUGER:
+	case WP_SILENCER:
+	case WP_COLT:
+	case WP_AKIMBO:
+	case WP_MP40:
+	case WP_THOMPSON:
+	case WP_STEN:
+	case WP_MAUSER:
+	case WP_GARAND:
+	case WP_FG42:
+	case WP_FG42SCOPE:
+	case WP_SNIPERRIFLE:
+	case WP_SNOOPERSCOPE:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}

@@ -2283,11 +2283,19 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		break;
 	case EV_BULLET_HIT_WALL:
 		DEBUGNAME( "EV_BULLET_HIT_WALL" );
+		CG_VR_DebugServerImpact( es->otherEntityNum );
+		// RealRTCW-VR: our own impacts were already drawn when the gun fired
+		if ( es->otherEntityNum == cg.snap->ps.clientNum && CG_VR_PredictsHits( cg.predictedPlayerState.weapon ) ) {
+			break;
+		}
 		ByteToDir( es->eventParm, dir );
 		CG_Bullet( es->pos.trBase, es->otherEntityNum, dir, qfalse, ENTITYNUM_WORLD, qfalse, es->otherEntityNum2 );
 		break;
 	case EV_BULLET_HIT_FLESH:
 		DEBUGNAME( "EV_BULLET_HIT_FLESH" );
+		if ( es->otherEntityNum == cg.snap->ps.clientNum && CG_VR_PredictsHits( cg.predictedPlayerState.weapon ) ) {
+			break;  // RealRTCW-VR: drawn when the gun fired
+		}
 		CG_Bullet( es->pos.trBase, es->otherEntityNum, dir, qtrue, es->eventParm, qfalse, es->otherEntityNum2 );
 		break;
 	case EV_WOLFKICK_HIT_WALL:
