@@ -1895,7 +1895,10 @@ typedef struct {
 	int         lensPart;       // scope eyepiece on the gun (0) or its scope attachment (1), -1 none
 	vec3_t      lens;           // its centre in that model
 	float       lensRadius;
+	float       scale;          // drawn this size about the grip (0 or 1: as modelled)
 } vrWeaponGeom_t;
+float BG_VR_WeaponScale( int preset );
+int BG_VR_ScalePreset( float scale );
 
 int  BG_VR_ReloadClass( int weapon );
 qboolean BG_VR_InstantFire( int weapon );

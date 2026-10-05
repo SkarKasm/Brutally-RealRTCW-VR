@@ -40,6 +40,9 @@ the Free Software Foundation, either version 3 of the License, or
 
 // usercmd_t.vrFlags (co-op): dual pistols, the off hand's gun fires
 #define VRF_AKIMBO_LEFT 4096
+// usercmd_t.vrFlags (co-op): 2 bits, which weapon size (BG_VR_WeaponScale)
+#define VRF_SCALE_SHIFT 13
+#define VRF_SCALE_MASK  ( 3 << VRF_SCALE_SHIFT )
 
 // refEntity renderfx: don't draw hand / arm / sleeve / glove surfaces (first person weapon in VR)
 #define RF_VR_NOHANDS   ( 1 << 12 )
@@ -122,6 +125,7 @@ typedef struct vrShared_s {
 	float   recoilPitch;        // the gun's kick, added to the aim (degrees, negative is up)
 	float   recoilBack;         // and how far it jolts back in the hand (game units)
 	int     dualWield;          // a pistol in each hand: the off hand's trigger fires its own
+	float   weaponScale;        // guns and hands drawn this size (1 = the flat game's models)
 
 	//
 	// written by the engine

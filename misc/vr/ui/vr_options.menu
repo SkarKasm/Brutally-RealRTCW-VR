@@ -384,6 +384,42 @@
 		itemDef {
 			name vr_opt
 			type ITEM_TYPE_MULTI
+			text "Weapon size:"
+			cvar "vr_weaponScale"
+			cvarFloatList { "Original" 1 "Smaller" 0.7 "Realistic" 0.42 }
+			rect 330 324 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_MULTI
+			text "Spare magazines:"
+			cvar "vr_pouchMags"
+			cvarFloatList { "Hidden" 0 "Shown" 1 }
+			rect 330 344 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_MULTI
 			text "Movement:"
 			cvar "vr_teleport"
 			cvarFloatList { "Smooth" 0 "Teleport" 1 }

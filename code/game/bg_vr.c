@@ -241,10 +241,42 @@ void BG_VR_WeaponFrame( const vrWeaponGeom_t *g, const vec3_t hand, const vec3_t
 		}
 	}
 
+	// a smaller gun: the same pose, every axis shortened, so it shrinks towards the grip
+	if ( g->scale > 0.0f && g->scale != 1.0f ) {
+		VectorScale( axis[0], g->scale, axis[0] );
+		VectorScale( axis[1], g->scale, axis[1] );
+		VectorScale( axis[2], g->scale, axis[2] );
+	}
+
 	VectorCopy( hand, origin );
 	VectorMA( origin, -grip[0], axis[0], origin );
 	VectorMA( origin, -grip[1], axis[1], origin );
 	VectorMA( origin, -grip[2], axis[2], origin );
+}
+
+/*
+=================
+BG_VR_WeaponScale / BG_VR_ScalePreset
+
+The weapon sizes on offer (VR OPTIONS: Original, Smaller, Realistic). The flat game's first
+person models are about two and a half times life size; co-op sends which one in two bits.
+=================
+*/
+static const float vrWeaponScales[3] = { 1.0f, 0.7f, 0.42f };
+
+float BG_VR_WeaponScale( int preset ) {
+	return ( preset >= 0 && preset < 3 ) ? vrWeaponScales[preset] : 1.0f;
+}
+
+int BG_VR_ScalePreset( float scale ) {
+	int i, best = 0;
+
+	for ( i = 1; i < 3; i++ ) {
+		if ( fabs( scale - vrWeaponScales[i] ) < fabs( scale - vrWeaponScales[best] ) ) {
+			best = i;
+		}
+	}
+	return best;
 }
 
 // a point / direction of the first person model, in the world

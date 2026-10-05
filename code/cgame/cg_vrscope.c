@@ -86,7 +86,7 @@ void CG_VR_ScopePiece( int weapon, int part, const refEntity_t *ent ) {
 		VectorMA( vs.centre, g.lens[i], ent->axis[i], vs.centre );
 		VectorNormalize2( ent->axis[i], vs.axis[i] );
 	}
-	vs.radius = g.lensRadius;
+	vs.radius = g.lensRadius * VectorLength( ent->axis[0] );     // a smaller gun's smaller lens
 	vs.weapon = weapon;
 	vs.frame = cg.clientFrame;
 }

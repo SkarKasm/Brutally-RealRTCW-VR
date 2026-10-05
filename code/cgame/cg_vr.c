@@ -95,8 +95,23 @@ void CG_VR_Init( void ) {
 }
 
 // the current weapon's measured geometry (see bg_vr.c)
+// the chosen weapon size (one of the presets, so co-op servers can match it)
+float CG_VR_WeaponScale( void ) {
+	char buf[16];
+	float s;
+
+	trap_Cvar_VariableStringBuffer( "vr_weaponScale", buf, sizeof( buf ) );
+	s = buf[0] ? atof( buf ) : 1.0f;
+	s = BG_VR_WeaponScale( BG_VR_ScalePreset( s ) );
+	if ( cgVR ) {
+		cgVR->weaponScale = s;
+	}
+	return s;
+}
+
 void CG_VR_Geom( int weapon, vrWeaponGeom_t *g ) {
 	BG_VR_WeaponGeom( weapon, cg_vanilla_guns.integer, g );
+	g->scale = CG_VR_WeaponScale();
 }
 
 // tracked hand models are available and wanted
@@ -130,6 +145,14 @@ void CG_VR_AddHands( void ) {
 		VectorCopy( ent.origin, ent.oldorigin );
 		VectorCopy( ent.origin, ent.lightingOrigin );
 		AnglesToAxis( cgvr.handAngles[h], ent.axis );
+		// the hands come from the same oversized first person models as the guns
+		if ( CG_VR_WeaponScale() != 1.0f ) {
+			float s = CG_VR_WeaponScale();
+			VectorScale( ent.axis[0], s, ent.axis[0] );
+			VectorScale( ent.axis[1], s, ent.axis[1] );
+			VectorScale( ent.axis[2], s, ent.axis[2] );
+			ent.nonNormalizedAxes = qtrue;
+		}
 		ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN;
 		if ( CG_VR_BodyDrawn() ) {
 			ent.renderfx |= RF_VR_NOSLEEVES;    // the full body's arms lead up to the hands
@@ -533,6 +556,7 @@ void CG_VR_AddReloadItems( void ) {
 	vec3_t magPoint;
 	qhandle_t model = 0;
 	int off = !CG_VR_DominantHand();
+	char pouchBuf[8];
 
 	if ( !cgvr.active || cgvr.gunWeapon <= WP_NONE ) {
 		return;
@@ -589,7 +613,8 @@ void CG_VR_AddReloadItems( void ) {
 		trap_R_AddRefEntityToScene( &ent );
 	}
 	// spare magazines in the chest pouch, where the off hand takes them from (g_vr.c)
-	if ( model && BG_VR_ReloadClass( cgvr.gunWeapon ) == VRR_MAG && CG_VR_BodyDrawn() ) {
+	trap_Cvar_VariableStringBuffer( "vr_pouchMags", pouchBuf, sizeof( pouchBuf ) );
+	if ( model && BG_VR_ReloadClass( cgvr.gunWeapon ) == VRR_MAG && CG_VR_BodyDrawn() && atoi( pouchBuf ) ) {
 		int spare, i, clip = ammoTable[cgvr.gunWeapon].maxclip;
 		vec3_t yaw, fwd, right, pouch;
 
@@ -605,10 +630,10 @@ void CG_VR_AddReloadItems( void ) {
 			AxisCopy( axisDefault, ent.axis );
 			VectorCopy( fwd, ent.axis[0] );
 			VectorScale( right, -1, ent.axis[1] );
-			// 12 below the eyes (the server's chest), a little in front, side by side
-			VectorMA( cg.refdef.vieworg, 7.0f, fwd, pouch );
+			// low on the chest, inside the server's pouch (VR_CHEST_DROP), side by side
+			VectorMA( cg.refdef.vieworg, 5.0f, fwd, pouch );
 			VectorMA( pouch, ( i - ( spare - 1 ) * 0.5f ) * 2.6f, right, pouch );
-			pouch[2] -= 12.0f;
+			pouch[2] -= 24.0f;
 			BG_VR_ModelDir( ent.axis, geom.magLocal, ent.origin );
 			VectorSubtract( pouch, ent.origin, ent.origin );
 			VectorCopy( ent.origin, ent.oldorigin );

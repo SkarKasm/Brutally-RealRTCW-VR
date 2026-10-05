@@ -32,8 +32,9 @@ the Free Software Foundation, either version 3 of the License, or
 
 #include "g_local.h"
 
-#define VR_CHEST_RADIUS     18.0f   // ~45cm around the chest counts as "the pouch"
-#define VR_CHEST_DROP       12.0f   // chest is this far below the eyes
+#define VR_CHEST_RADIUS     14.0f   // ~35cm around the pouch counts as reaching into it
+#define VR_CHEST_DROP       22.0f   // the pouch is this far below the eyes (low on the chest,
+									// clear of a shouldered rifle's bolt; cgame draws it there)
 #define VR_INSERT_RADIUS    8.0f    // ~20cm around the magazine well / loading port
 #define VR_CHARGE_RADIUS    11.0f   // ~28cm around the slide / bolt / pump
 #define VR_ACTION_RADIUS    9.0f    // ~23cm around the gun hand also reaches the action
@@ -262,6 +263,8 @@ static qboolean G_VR_Reload( gentity_t *ent, const vec3_t offHand, qboolean pres
 
 	// where the gun and its parts are, exactly as cgame draws them
 	BG_VR_WeaponGeom( weapon, trap_Cvar_VariableIntegerValue( "cg_vanilla_guns" ), &geom );
+	geom.scale = gVR->weaponScale > 0 ? gVR->weaponScale : 1.0f;
+	geom.travel *= geom.scale;      // a smaller bolt moves less
 	G_VR_HandWorld( ent, dom, hand );
 	VectorSet( aim, gVR->weaponAngles[PITCH], ps->viewangles[YAW], gVR->weaponAngles[ROLL] );
 	BG_VR_WeaponFrame( &geom, hand, aim, NULL, origin, axis );
@@ -298,7 +301,12 @@ static qboolean G_VR_Reload( gentity_t *ent, const vec3_t offHand, qboolean pres
 	} else {
 		wantsAmmo = *clip < maxclip;
 	}
-	if ( pressed && !vrp.heldItem && wantsAmmo && *reserve > 0 && Distance( offHand, chest ) < VR_CHEST_RADIUS ) {
+	// (a hand on the gun's action works the action: a shouldered rifle's bolt is close to the
+	// pouch, and after a shot the rifle both wants ammo and needs its bolt worked)
+	if ( pressed && !vrp.heldItem && wantsAmmo && *reserve > 0 && Distance( offHand, chest ) < VR_CHEST_RADIUS &&
+		 !( ( cls == VRR_MAG || cls == VRR_BOLT || cls == VRR_PUMP || cls == VRR_SHELLS ) &&
+			( Distance( offHand, chargePoint ) < VR_CHARGE_RADIUS || ( cls != VRR_PUMP && Distance( offHand, hand ) < VR_ACTION_RADIUS ) ) &&
+			( !vrp.chambered[weapon] || Distance( offHand, chargePoint ) < Distance( offHand, chest ) ) ) ) {
 		vrp.heldItem = ( cls == VRR_PUMP || cls == VRR_SHELLS ) ? 2 : 1;
 		G_VR_Haptic( off, 0.4f, 30 );
 		used = qtrue;
