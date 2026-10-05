@@ -112,47 +112,65 @@ def mirrored(surfaces):
     return out
 
 
-VR_MENU_BUTTON = """
-		// VR OPTIONS BUTTON (RealRTCW-VR, added by make_vr_assets.py)
+# (name, text, action, highlighted). HOST GAME starts a game friends can join over Steam,
+# JOIN FRIEND joins a Steam friend's (net_steam.c).
+MENU_BUTTONS = (
+    ("vrhostgame", "HOST GAME", "close main; exec \"hostcoop\"", True),
+    ("vrjoinfriend", "JOIN FRIEND", "exec \"steamjoin\"", True),
+    ("vroptionsmenu", "VR OPTIONS", "close main; open vr_options", False),
+)
+
+
+def ee_button(name, text, action, hot, x, y, w):
+    """Cursed Sands main menu style: small centred text over the bottom bar."""
+    color = ".95 .75 .25 1" if hot else ".9 .9 .9 1"
+    return """
+		// %s (RealRTCW-VR, added by make_vr_assets.py)
 		itemDef
 		{
-			name vroptionsmenu
-			rect 392 378 72 14
+			name %s
+			rect %d %d %d 14
 			style 0
 			type 1
-			text "VR OPTIONS"
+			text "%s"
 			textStyle 6
 			textAlign ITEM_ALIGN_CENTER
 			textScale .25
-			textAlignX 36
+			textAlignX %d
 			textAlignY 14
 			textFont UI_FONT_NORMAL
-			foreColor .9 .9 .9 1
+			foreColor %s
 			visible 1
-			action { close main; open vr_options }
+			action { %s }
 		}
-"""
+""" % (text, name, x, y, w, text, w // 2, color, action)
 
 
-# plain co-op's RealRTCW style main menu: under its QUIT button
-VR_MENU_BUTTON_COOP = """
-	// VR OPTIONS BUTTON (RealRTCW-VR, added by make_vr_assets.py)
+def coop_button(name, text, action, hot, y):
+    """Plain co-op's RealRTCW style main menu: a row under its QUIT button."""
+    color = ".95 .75 .25 1" if hot else "1 1 1 1"
+    return """
+	// %s (RealRTCW-VR, added by make_vr_assets.py)
 	itemDef {
-		name vroptionsmenu
-		text "VR OPTIONS"
+		name %s
+		text "%s"
 		group mainmenus
 		type 1
-		rect 10 309 178 26
+		rect 10 %d 178 26
 		visible 1
 		textfont UI_FONT_NORMAL
 		textscale .3
 		textalign ITEM_ALIGN_LEFT
 		textalignx 6
 		textaligny 19
-		forecolor 1 1 1 1
-		action { close main; open vr_options }
+		forecolor %s
+		action { %s }
 	}
-"""
+""" % (text, name, text, y, color, action)
+
+
+EE_PLACES = ((8, 378, 72), (119, 378, 64), (392, 378, 72))     # above CREATE SERVER, JOIN GAME, OPTIONS
+COOP_ROWS = (309, 342, 375)
 
 
 def vr_menus(paks):
@@ -178,10 +196,12 @@ def vr_menus(paks):
     if "vroptionsmenu" in main:
         pass
     elif m:     # Cursed Sands
-        main = main[:m.start()] + VR_MENU_BUTTON.strip() + "\n\t\t" + main[m.start():]
+        items = "".join(ee_button(*b, *p) for b, p in zip(MENU_BUTTONS, EE_PLACES))
+        main = main[:m.start()] + items.strip() + "\n\t\t" + main[m.start():]
         out["ui/main.menu"] = main.encode()
     elif q:     # plain co-op
-        main = main[:q.end()] + VR_MENU_BUTTON_COOP + main[q.end():]
+        items = "".join(coop_button(*b, y) for b, y in zip(MENU_BUTTONS, COOP_ROWS))
+        main = main[:q.end()] + items + main[q.end():]
         out["ui/main.menu"] = main.encode()
     else:
         print("warning: couldn't place the VR OPTIONS button in ui/main.menu")

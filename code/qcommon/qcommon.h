@@ -167,7 +167,8 @@ typedef enum {
 	NA_IP,
 	NA_IP6,
 	NA_MULTICAST6,
-	NA_UNSPEC
+	NA_UNSPEC,
+	NA_STEAM        // RealRTCW-VR: a Steam user (SteamID64 in ip6[0..7]), see net_steam.c
 } netadrtype_t;
 
 typedef enum {
@@ -1210,6 +1211,15 @@ cpuFeatures_t Sys_GetProcessorFeatures( void );
 void    Sys_SetErrorText( const char *text );
 
 void    Sys_SendPacket( int length, const void *data, netadr_t to );
+
+// net_steam.c (RealRTCW-VR): co-op over Steam
+qboolean NET_Steam_Active( void );
+void    NET_Steam_SetAdr( netadr_t *a, unsigned long long id );
+void    NET_Steam_Send( int length, const void *data, netadr_t to );
+qboolean NET_Steam_FakeReceive( netadr_t *from, msg_t *msg );
+void    NET_Steam_Frame( void );
+void    NET_Steam_Startup( void );
+void    NET_Steam_Shutdown( void );
 
 qboolean	Sys_StringToAdr( const char *s, netadr_t *a, netadrtype_t family );
 //Does NOT parse port numbers, only base addresses.

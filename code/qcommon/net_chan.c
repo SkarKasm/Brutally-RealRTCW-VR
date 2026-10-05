@@ -653,6 +653,16 @@ int NET_StringToAdr( const char *s, netadr_t *a, netadrtype_t family )
 		return 1;
 	}
 
+	// RealRTCW-VR: a Steam user, "steam:<SteamID64>"
+	if ( !Q_stricmpn( s, "steam:", 6 ) ) {
+		unsigned long long id = strtoull( s + 6, NULL, 10 );
+		if ( !id ) {
+			return 0;
+		}
+		NET_Steam_SetAdr( a, id );
+		return 1;
+	}
+
 	Q_strncpyz( base, s, sizeof( base ) );
 
 	if(*base == '[' || Q_CountChar(base, ':') > 1)

@@ -35,20 +35,26 @@ Launchers
   Classic co-op (no VR).bat    the original campaign in co-op, monitor
 
 
-Playing together
-----------------
-Both players must use the same mod: both Cursed Sands, or both classic.
+Playing together (over Steam - nothing to set up)
+-------------------------------------------------
+Keep Steam running and be Steam friends. No IP addresses, port forwarding or VPN:
+the game connects through Steam.
 
-Host:  start a launcher, choose CREATE SERVER, pick the map and start it.
-       The others connect to your IP address on UDP port 27960. On the internet, forward
-       UDP 27960 on your router to your PC, or use a virtual LAN such as Tailscale,
-       ZeroTier or Radmin VPN and give your friend that address.
+Host:  start a launcher and click HOST GAME on the main menu.
+       (CREATE SERVER also works if you want to pick the level.)
 
-Join:  start the same launcher and choose JOIN GAME, or join directly from a
-       command prompt in this folder:
-           "Cursed Sands VR.bat" +connect 192.168.1.20
-       (the host's address), or open the console (~ key) and type
-           connect 192.168.1.20
+Join:  start a launcher and click JOIN FRIEND. That's it.
+       Or, with the game running, right-click the host in your Steam friends list
+       and choose "Join Game".
+
+Start the game from one of these launchers BEFORE using "Join Game" in Steam;
+if the game isn't running, Steam starts the normal RealRTCW instead.
+
+If the host plays Cursed Sands and you started classic co-op (or the other way
+round), the game switches to the host's mod by itself.
+
+The old ways still work too: JOIN GAME lists games on your LAN, and the console
+(~ key) takes "connect <IP address>".
 
 Each player sets their own VR options (main menu, VR OPTIONS), including manual
 reloading and aim accuracy.

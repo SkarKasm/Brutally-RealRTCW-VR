@@ -4575,7 +4575,9 @@ static void UI_RunMenuScript( char **args ) {
 			// You need to use Terminal.app to execute the dedicated binary
 			trap_Cvar_SetValue( "dedicated", 0 );
 #else
-			trap_Cvar_SetValue( "dedicated", Com_Clamp( 0, 2, ui_dedicated.integer ) );
+			// RealRTCW-VR: always a game you play in yourself. A dedicated server closes the
+			// game window and leaves only a server console, which looks like a crash.
+			trap_Cvar_SetValue( "dedicated", 0 );
 #endif
 			trap_Cvar_SetValue( "g_gametype", Com_Clamp( 0, 2, uiInfo.gameTypes[ui_netGameType.integer].gtEnum ) );
 			trap_Cmd_ExecuteText( EXEC_APPEND, va( "wait ; wait ; coopmap %s\n", uiInfo.mapList[ui_currentNetMap.integer].mapLoadName ) );
