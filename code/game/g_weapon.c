@@ -882,6 +882,54 @@ void Bullet_Fire( gentity_t *ent, float spread, int damage ) {
 
 /*
 ==============
+G_VR_Penetrate
+
+RealRTCW-VR: a headset player's bullet goes on through thin wood and glass, weaker for
+it, and leaves a hole on the far side.
+==============
+*/
+static void G_VR_Penetrate( gentity_t *attacker, trace_t *hit, vec3_t end, int damage, int recursion ) {
+	gentity_t *tent;
+	trace_t back;
+	vec3_t dir, probe, out;
+	float depth, thick;
+
+	if ( hit->surfaceFlags & SURF_GLASS ) {
+		depth = 8.0f;
+	} else if ( hit->surfaceFlags & SURF_WOOD ) {
+		depth = 12.0f;
+	} else {
+		return;
+	}
+	if ( !attacker->client || !G_VR_Aiming( attacker ) || recursion > 4 || damage < 6 ) {
+		return;
+	}
+	VectorSubtract( end, hit->endpos, dir );
+	if ( VectorNormalize( dir ) < depth + 1 ) {
+		return;
+	}
+
+	// from beyond, back to where it went in: the far face, unless it's thicker than that
+	VectorMA( hit->endpos, depth, dir, probe );
+	trap_Trace( &back, probe, NULL, NULL, hit->endpos, ENTITYNUM_NONE, MASK_SHOT & ~CONTENTS_BODY );
+	if ( back.startsolid || back.allsolid ) {
+		return;
+	}
+	VectorCopy( back.endpos, out );
+	thick = Distance( out, hit->endpos );
+
+	tent = G_TempEntity( out, EV_BULLET_HIT_WALL );
+	tent->s.eventParm = DirToByte( dir );
+	tent->s.otherEntityNum = attacker->s.number;
+	tent->s.otherEntityNum2 = ENTITYNUM_NONE;
+	tent->s.density = 1;        // the shooter's cgame didn't draw this one
+
+	VectorMA( out, 1.0f, dir, out );
+	Bullet_Fire_Extended( attacker, attacker, out, end, 0, (int)( damage * 0.7f * ( 1.0f - 0.5f * thick / depth ) ), recursion + 1 );
+}
+
+/*
+==============
 Bullet_Fire_Extended
 	A modified Bullet_Fire with more parameters.
 	The original Bullet_Fire still passes through here and functions as it always has.
@@ -1011,6 +1059,12 @@ void Bullet_Fire_Extended( gentity_t *source, gentity_t *attacker, vec3_t start,
 		// done.
 	}
 	tent->s.otherEntityNum = attacker->s.number;
+	if ( recursion > 0 ) {
+		tent->s.density = 1;    // RealRTCW-VR: a carried-on bullet, the shooter's cgame didn't draw it
+	}
+	if ( !traceEnt->takedamage && !reflectBullet ) {
+		G_VR_Penetrate( attacker, &tr, end, damage, recursion );
+	}
 
 	if ( traceEnt->takedamage ) {
 		qboolean reflectBool = qfalse;
@@ -1058,6 +1112,9 @@ void Bullet_Fire_Extended( gentity_t *source, gentity_t *attacker, vec3_t start,
 			} else if ( traceEnt->client ) {
 				if ( traceEnt->health <= 0 ) {
 					Bullet_Fire_Extended( traceEnt, attacker, tr.endpos, end, 0, damage / 2, recursion + 1 ); // halve the damage each player it goes through
+				} else if ( damage >= 30 && G_VR_Aiming( attacker ) ) {
+					// RealRTCW-VR: a rifle round goes clean through
+					Bullet_Fire_Extended( traceEnt, attacker, tr.endpos, end, 0, damage / 2, recursion + 1 );
 				}
 			}
 		}
