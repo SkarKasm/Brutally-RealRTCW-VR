@@ -1084,6 +1084,12 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 
 //	if ( knockback > 200 )
 //		knockback = 200;
+	// RealRTCW-VR: explosions throw the dead around (their ragdolls go with them)
+	if ( targ->client && targ->health <= 0 && ( dflags & DAMAGE_RADIUS ) ) {
+		if ( knockback > 180 ) {
+			knockback = 180;
+		}
+	} else
 	if ( knockback > 60 ) { // /way/ lessened for SP.  keeps dynamite-jumping potential down
 		knockback = 60;
 	}

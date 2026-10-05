@@ -2293,6 +2293,15 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		break;
 	case EV_BULLET_HIT_FLESH:
 		DEBUGNAME( "EV_BULLET_HIT_FLESH" );
+		// RealRTCW-VR: the body is knocked where it was hit (our own shots do it when they're fired)
+		if ( !( es->otherEntityNum == cg.snap->ps.clientNum && !es->density &&
+				CG_VR_PredictsHits( cg.predictedPlayerState.weapon ) ) &&
+			 es->otherEntityNum >= 0 && es->otherEntityNum < MAX_GENTITIES ) {
+			vec3_t shot;
+			VectorSubtract( es->pos.trBase, cg_entities[es->otherEntityNum].lerpOrigin, shot );
+			shot[2] *= 0.3f;
+			CG_Ragdoll_Hit( es->eventParm, es->pos.trBase, shot, 160.0f );
+		}
 		if ( es->otherEntityNum == cg.snap->ps.clientNum && !es->density && CG_VR_PredictsHits( cg.predictedPlayerState.weapon ) ) {
 			break;  // RealRTCW-VR: drawn when the gun fired
 		}

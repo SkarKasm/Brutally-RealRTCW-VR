@@ -4978,7 +4978,24 @@ Caused by an EV_MISSILE_MISS event, or directly by local bullet tracing
 ClientNum is a dummy field used to define what sort of effect to spawn
 =================
 */
+// RealRTCW-VR: explosions throw the bodies around them (cg_ragdoll.c)
+static void CG_VR_ExplosionPush( int weapon, const vec3_t origin ) {
+	switch ( weapon ) {
+	case WP_GRENADE_LAUNCHER:
+	case WP_GRENADE_PINEAPPLE:
+	case WP_PANZERFAUST:
+		CG_Ragdoll_Explosion( origin, 300.0f, 650.0f );
+		break;
+	case WP_DYNAMITE:
+		CG_Ragdoll_Explosion( origin, 450.0f, 900.0f );
+		break;
+	default:
+		break;
+	}
+}
+
 void CG_MissileHitWall( int weapon, int clientNum, vec3_t origin, vec3_t dir, int surfFlags ) { //	(SA) modified to send missilehitwall surface parameters
+	CG_VR_ExplosionPush( weapon, origin );
 	qhandle_t mod;
 	qhandle_t mark;
 	qhandle_t shader;

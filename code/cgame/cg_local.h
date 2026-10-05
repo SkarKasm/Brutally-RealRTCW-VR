@@ -2513,6 +2513,8 @@ void        trap_R_VR_EndScope( void );
 // cg_ragdoll.c (RealRTCW-VR)
 void        CG_Ragdoll_Init( void );
 void        CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body );
+void        CG_Ragdoll_Hit( int entityNum, const vec3_t point, const vec3_t dir, float speed );
+void        CG_Ragdoll_Explosion( const vec3_t origin, float radius, float strength );
 
 // cg_vrbody.c (RealRTCW-VR)
 void        CG_VR_BodyInit( void );
