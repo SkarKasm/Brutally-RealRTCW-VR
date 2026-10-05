@@ -2951,6 +2951,15 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 			weapon = &cg_weapons[ ps->weapon ];
 			CG_VR_WeaponPose( ps->weapon, hand.origin, hand.axis );
 			CG_WeaponAnimation( ps, weapon, &hand.oldframe, &hand.frame, &hand.backlerp );
+			// the flat game's firing animations throw the gun around the hand: hold it
+			// still, the recoil is real now (cg_vrrecoil.c)
+			{
+				int anim = ps->weapAnim & ~ANIM_TOGGLEBIT;
+				if ( anim == WEAP_ATTACK1 || anim == WEAP_ATTACK2 || anim == WEAP_ATTACK_LASTSHOT ) {
+					hand.oldframe = hand.frame = weapon->weapAnimations[WEAP_IDLE1].firstFrame;
+					hand.backlerp = 0;
+				}
+			}
 			VectorCopy( hand.origin, hand.lightingOrigin );
 			hand.hModel = weapon->handsModel;
 			hand.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;
@@ -4607,6 +4616,7 @@ void CG_FireWeapon( centity_t *cent ) {
 	// impact shows straight away
 	if ( cg.snap && ent->number == cg.snap->ps.clientNum && ent->weapon != WP_KNIFE ) {
 		CG_VR_Haptic( CG_VR_DominantHand(), 0.8f, 60 );
+		CG_VR_RecoilKick( ent->weapon );
 		CG_VR_PredictBullet( ent->weapon );
 	}
 

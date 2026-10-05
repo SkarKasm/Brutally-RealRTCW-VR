@@ -1013,6 +1013,7 @@ void G_KnifeHit( gentity_t *ent, trace_t *trp );            // RealRTCW-VR
 // g_vr.c
 qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out );
 qboolean G_VR_Aiming( gentity_t *ent );
+void G_VR_GrenadeThrow( gentity_t *ent, int weapon, vec3_t start, vec3_t dir );
 void G_VR_KnifeStab( gentity_t *ent );
 void G_VR_UpdateWeaponState( gentity_t *ent );
 void G_VR_PlayerThink( gentity_t *ent );

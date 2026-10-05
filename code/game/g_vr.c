@@ -63,6 +63,10 @@ typedef struct {
 
 	int         lastTime;
 	vec3_t      lastHand;
+	vec3_t      domVel;             // the weapon hand's velocity (grenade throws)
+	vec3_t      throwVel;           // its fastest in the last moments: grenades leave a little
+	int         throwVelTime;       // after the trigger is let go, when the hand has stopped
+	vec3_t      lastDom;
 	vec3_t      handVel;
 
 	int         grabbed;            // entity number, -1 none
@@ -599,6 +603,23 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 		dt = 0;
 	}
 	VectorCopy( offHand, vrp->lastHand );
+
+	// the weapon hand's speed too, for throwing grenades
+	{
+		vec3_t domHand, dv;
+		G_VR_HandWorld( ent, dom, domHand );
+		if ( dt > 0.0f ) {
+			VectorSubtract( domHand, vrp->lastDom, dv );
+			VectorScale( dv, 1.0f / dt, dv );
+			VectorScale( vrp->domVel, 0.5f, vrp->domVel );
+			VectorMA( vrp->domVel, 0.5f, dv, vrp->domVel );
+		}
+		VectorCopy( domHand, vrp->lastDom );
+		if ( VectorLength( vrp->domVel ) >= VectorLength( vrp->throwVel ) || now - vrp->throwVelTime > 300 ) {
+			VectorCopy( vrp->domVel, vrp->throwVel );
+			vrp->throwVelTime = now;
+		}
+	}
 	vrp->lastTime = now;
 
 	grip = off == VR_HAND_LEFT ? VRF_GRIP_LEFT : VRF_GRIP_RIGHT;
@@ -840,4 +861,50 @@ void G_VR_Training( gentity_t *ent ) {
 // a headset player: their gun is aimed by their hands, not the flat game's view
 qboolean G_VR_Aiming( gentity_t *ent ) {
 	return G_VR_IsPlayer( ent );
+}
+
+/*
+=================
+G_VR_GrenadeThrow
+
+Grenades, dynamite and the rest leave the hand that threw them, as fast as it was moving
+when the trigger was let go: a real throw carries, a gentle release just drops it.
+=================
+*/
+#define VR_GRENADE_SCALE    1.6f    // a throw carries a little further than the hand moved
+#define VR_GRENADE_MAX      1100.0f
+
+void G_VR_GrenadeThrow( gentity_t *ent, int weapon, vec3_t start, vec3_t dir ) {
+	vec3_t eye, hand, vel;
+	trace_t tr;
+	float speed, top;
+	int dom;
+
+	if ( !ent || !G_VR_IsPlayer( ent ) ) {
+		return;
+	}
+	dom = G_VR_DomHand( ent );
+	if ( !G_VR_HandValid( ent, dom ) ) {
+		return;
+	}
+	G_VR_Eye( ent, eye );
+	G_VR_HandWorld( ent, dom, hand );
+	// from the eye, so a hand through a wall can't throw on the far side
+	trap_Trace( &tr, eye, tv( -4, -4, -4 ), tv( 4, 4, 4 ), hand, ent->s.number, MASK_MISSILESHOT );
+	VectorCopy( tr.endpos, start );
+
+	VectorCopy( vrPlayers[ent - g_entities].throwVel, vel );
+	speed = VectorLength( vel );
+	top = weapon == WP_DYNAMITE ? 600.0f : VR_GRENADE_MAX;
+	if ( speed > VR_THROW_SPEED ) {
+		VectorScale( vel, VR_GRENADE_SCALE, vel );
+		speed *= VR_GRENADE_SCALE;
+		if ( speed > top ) {
+			VectorScale( vel, top / speed, vel );
+		}
+	}
+	VectorCopy( vel, dir );
+	if ( trap_Cvar_VariableIntegerValue( "vr_debug" ) == 5 ) {
+		G_Printf( "VR grenade: hand moving %.0f, thrown at %.0f\n", speed, VectorLength( dir ) );
+	}
 }

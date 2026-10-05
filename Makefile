@@ -2421,6 +2421,7 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_ragdoll.o \
   $(B)/$(BASEGAME)/cgame/cg_vrbody.o \
   $(B)/$(BASEGAME)/cgame/cg_vrscope.o \
+  $(B)/$(BASEGAME)/cgame/cg_vrrecoil.o \
   $(B)/$(BASEGAME)/cgame/bg_pmove.o \
   $(B)/$(BASEGAME)/cgame/bg_slidemove.o \
   $(B)/$(BASEGAME)/cgame/bg_lib.o \
