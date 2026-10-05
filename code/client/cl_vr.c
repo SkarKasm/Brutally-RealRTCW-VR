@@ -1188,6 +1188,7 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_ragdolls", "1", CVAR_ARCHIVE );       // cg_ragdoll.c
 	Cvar_Get( "vr_fullBody", "1", CVAR_ARCHIVE );       // cg_vrbody.c
 	Cvar_Get( "vr_scopes", "1", CVAR_ARCHIVE );         // cg_vrscope.c
+	Cvar_Get( "vr_recoil", "1", CVAR_ARCHIVE );         // cg_vrrecoil.c
 	vr_binoculars = Cvar_Get( "vr_binoculars", "1", CVAR_ARCHIVE );
 
 	Com_Memset( &xr, 0, sizeof( xr ) );
@@ -1340,6 +1341,8 @@ static void VR_UpdateTracking( void ) {
 				com_vr.twoHanded = qtrue;
 			}
 		}
+		// recoil, from cgame (cg_vrrecoil.c): the shots go where the kicked gun points
+		com_vr.weaponAngles[PITCH] += com_vr.recoilPitch;
 	} else {
 		// no controller: aim with the head
 		VectorCopy( com_vr.hmdAngles, com_vr.weaponAngles );

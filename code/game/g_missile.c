@@ -898,6 +898,9 @@ gentity_t *fire_grenade( gentity_t *self, vec3_t start, vec3_t dir, int grenadeW
 	gentity_t   *bolt;
 	qboolean noExplode = qfalse;
 
+	// RealRTCW-VR: thrown from the hand, as hard as it was thrown
+	G_VR_GrenadeThrow( self, grenadeWPID, start, dir );
+
 	bolt = G_Spawn();
 
 	// no self->client for shooter_grenade's

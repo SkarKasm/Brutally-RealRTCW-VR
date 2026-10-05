@@ -74,6 +74,7 @@ void CG_VR_Init( void ) {
 	CG_Ragdoll_Init();
 	CG_VR_BodyInit();
 	CG_VR_ScopeInit();
+	CG_VR_RecoilInit();
 
 	// Fine tuning on top of the measured grip, "forward left up pitch yaw roll" in model
 	// units/degrees. vr_gunOffset_<weapon number> applies to a single weapon.
@@ -209,6 +210,7 @@ CG_VR_BeginFrame
 =================
 */
 void CG_VR_BeginFrame( void ) {
+	CG_VR_RecoilUpdate();
 	cgvr.active = CG_VR_Active();
 
 	if ( !cgvr.active ) {
@@ -319,6 +321,9 @@ void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t axis[3] ) {
 
 	CG_VR_Geom( weapon, &geom );
 	BG_VR_WeaponFrame( &geom, cgvr.handOrigin[CG_VR_DominantHand()], cgvr.weaponAngles, adj, origin, axis );
+	if ( cgVR ) {
+		VectorMA( origin, -cgVR->recoilBack, axis[0], origin );    // the shot's jolt (cg_vrrecoil.c)
+	}
 
 	// remembered for the reload visuals
 	if ( weapon != cgvr.gunWeapon ) {

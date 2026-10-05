@@ -116,6 +116,8 @@ typedef struct vrShared_s {
 	// written by cgame
 	//
 	int     ironSights;         // an eye is lined up behind the gun: steadier aim
+	float   recoilPitch;        // the gun's kick, added to the aim (degrees, negative is up)
+	float   recoilBack;         // and how far it jolts back in the hand (game units)
 } vrShared_t;
 
 #endif // __VR_SHARED_H__
