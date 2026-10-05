@@ -3782,8 +3782,21 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		if ( cgVR->menuPointer || cg.cameraMode ) {
 			return;
 		}
+		cgVR->dualWield = CG_VR_DualSingle( ps->weapon ) != 0;
+		{
+			static int next;
+			char dbg[8];
+			trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
+			if ( atoi( dbg ) == 7 && cg.time >= next ) {
+				next = cg.time + 1000;
+				CG_Printf( "VR gun: weapon %d, dual %d, clips %d %d\n", ps->weapon, cgVR->dualWield,
+						   ps->ammoclip[ps->weapon], ps->ammo[BG_FindAmmoForWeapon( ps->weapon )] );
+			}
+		}
 		if ( ps->weapon <= WP_NONE ) {
 			cgVR->muzzleValid = qfalse;
+		} else if ( cgVR->dualWield ) {
+			CG_VR_AddDualGuns( ps, CG_VR_DualSingle( ps->weapon ) );     // a pistol in each hand
 		} else {
 			memset( &hand, 0, sizeof( hand ) );
 			weapon = &cg_weapons[ ps->weapon ];
@@ -5736,8 +5749,18 @@ void CG_FireWeapon( centity_t *cent, int event ) {
 	// RealRTCW-VR: recoil is felt in the hand instead of kicking the aim, and the bullet's
 	// impact shows straight away
 	if ( cg.snap && ent->number == cg.snap->ps.clientNum && ent->weapon != WP_KNIFE ) {
-		CG_VR_Haptic( CG_VR_DominantHand(), 0.8f, 60 );
-		CG_VR_RecoilKick( ent->weapon );
+		cgvr.lastShotLeft = cgVR && cgVR->dualWield && cgVR->akimboLeft;
+		CG_VR_Haptic( cgvr.lastShotLeft ? !CG_VR_DominantHand() : CG_VR_DominantHand(), 0.8f, 60 );
+		if ( !cgvr.lastShotLeft ) {
+			CG_VR_RecoilKick( ent->weapon );
+		}
+		{
+			char dbg[8];
+			trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
+			if ( atoi( dbg ) == 7 ) {
+				CG_Printf( "VR shot: weapon %d, %s gun\n", ent->weapon, cgvr.lastShotLeft ? "off hand" : "weapon hand" );
+			}
+		}
 		CG_VR_PredictBullet( ent->weapon );
 	}
 

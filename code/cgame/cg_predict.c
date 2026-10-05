@@ -621,6 +621,7 @@ void CG_PredictPlayerState( void ) {
 	if ( cg_pmove.vrAim ) {
 		cg_pmove.vrManualReload = cgVR->manualReload;
 		cg_pmove.vrChambered = cgVR->chambered;
+		cg_pmove.vrAkimbo = cgVR->akimboLeft ? 2 : 1;
 	}
 	cg_pmove.pmove_msec = pmove_msec.integer;
 

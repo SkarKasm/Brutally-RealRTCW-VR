@@ -1230,6 +1230,7 @@ void ClientThink_real( gentity_t *ent ) {
 		G_VR_UpdateWeaponState( ent );
 		pm.vrManualReload = gVR->manualReload;
 		pm.vrChambered = gVR->chambered;
+		pm.vrAkimbo = gVR->akimboLeft ? 2 : 1;
 	}
 	pm.pmove_msec = pmove_msec.integer;
 	pm.pmext = &client->pmext;
