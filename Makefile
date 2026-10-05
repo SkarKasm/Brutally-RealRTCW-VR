@@ -2658,6 +2658,7 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_vrscope.o \
   $(B)/$(BASEGAME)/cgame/cg_vrrecoil.o \
   $(B)/$(BASEGAME)/cgame/cg_vrwrist.o \
+  $(B)/$(BASEGAME)/cgame/cg_vrcomfort.o \
   $(B)/$(BASEGAME)/cgame/cg_weapons.o \
   $(B)/$(BASEGAME)/ui/ui_shared.o \
   \
