@@ -583,3 +583,8 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 		G_VR_FlyBody( dt );
 	}
 }
+
+// a headset player: their gun is aimed by their hands, not the flat game's view
+qboolean G_VR_Aiming( gentity_t *ent ) {
+	return G_VR_IsPlayer( ent );
+}

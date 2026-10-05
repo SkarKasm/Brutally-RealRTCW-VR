@@ -982,7 +982,8 @@ int G_GetEnemyPosition(gentity_t *ent, gentity_t *targ);
 //
 qboolean LogAccuracyHit( gentity_t *target, gentity_t *attacker );
 void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint );
-qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out );   // RealRTCW-VR
+qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out );
+qboolean G_VR_Aiming( gentity_t *ent );   // RealRTCW-VR
 void G_VR_KnifeStab( gentity_t *ent );                      // RealRTCW-VR
 // g_vr.c
 void G_VR_UpdateWeaponState( gentity_t *ent );
