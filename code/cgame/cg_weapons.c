@@ -1991,6 +1991,13 @@ CG_AddWeaponWithPowerups
 ========================
 */
 static void CG_AddWeaponWithPowerups( refEntity_t *gun, int powerups, playerState_t *ps, centity_t *cent ) {
+	// RealRTCW-VR: a gun drawn smaller (vr_weaponScale) has shortened axes
+	{
+		float len = VectorLengthSquared( gun->axis[0] );
+		if ( len < 0.98f || len > 1.02f ) {
+			gun->nonNormalizedAxes = qtrue;
+		}
+	}
 
 	// add powerup effects
 	if ( powerups & ( 1 << PW_INVIS ) ) {

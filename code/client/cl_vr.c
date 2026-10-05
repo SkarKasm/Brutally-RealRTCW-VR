@@ -1170,6 +1170,11 @@ static void VR_SimPoses( void ) {
 				offset[k] += want[k] - handOffset[dom][k];
 			}
 		}
+		// vr_simHand2 "x y z": the other hand on its own
+		Cvar_VariableStringBuffer( "vr_simHand2", buf, sizeof( buf ) );
+		if ( buf[0] && h != ( vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT ) ) {
+			sscanf( buf, "%f %f %f", &offset[0], &offset[1], &offset[2] );
+		}
 		VR_QuatRotate( &yawQ, offset, out );
 		xr.hands[h].grip.orientation = yawQ;
 		xr.hands[h].grip.position.x = xr.head.position.x + out[0];
@@ -1424,6 +1429,8 @@ void CL_VR_Init( void ) {
 	vr_crouchHeight = Cvar_Get( "vr_crouchHeight", "1.1", CVAR_ARCHIVE );
 	Cvar_Get( "vr_vignette", "0", CVAR_ARCHIVE );            // cg_vrcomfort.c
 	Cvar_Get( "vr_wristHud", "1", CVAR_ARCHIVE );           // cg_vrwrist.c
+	Cvar_Get( "vr_pouchMags", "1", CVAR_ARCHIVE );          // spare magazines shown in the pouch
+	Cvar_Get( "vr_weaponScale", "1", CVAR_ARCHIVE );        // guns and hands: 1, 0.7 or 0.42 (life size)
 
 	Com_Memset( &xr, 0, sizeof( xr ) );
 	Com_Memset( &com_vr, 0, sizeof( com_vr ) );
@@ -1943,6 +1950,12 @@ static void VR_WriteCmdTracking( usercmd_t *cmd ) {
 	}
 	if ( com_vr.akimboLeft ) {
 		flags |= VRF_AKIMBO_LEFT;
+	}
+	// which weapon size (the presets of BG_VR_WeaponScale: 1, 0.7, 0.42)
+	if ( com_vr.weaponScale > 0 && com_vr.weaponScale < 0.56f ) {
+		flags |= 2 << VRF_SCALE_SHIFT;
+	} else if ( com_vr.weaponScale > 0 && com_vr.weaponScale < 0.85f ) {
+		flags |= 1 << VRF_SCALE_SHIFT;
 	}
 	cmd->vrFlags = flags;
 }
