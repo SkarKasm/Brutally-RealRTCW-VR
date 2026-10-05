@@ -315,6 +315,8 @@ static struct {
 	int             numHeldCommands;
 	qboolean        rightGripCombo;     // right grip was used as a modifier while held
 	qboolean        attackHeld;         // the trigger fires: goes straight into the usercmd
+	qboolean        attackOffHeld;      // dual pistols: the off hand's trigger
+	qboolean        akimboLastLeft;     // which of the two was pulled last
 	qboolean        steadyLatched;      // off hand grip closed in front of the gun: two handed aim
 } xr;
 
@@ -1167,8 +1169,9 @@ static void VR_SimPoses( void ) {
 
 		// vr_simTrigger <0..1>: the weapon hand's trigger
 		Com_Memcpy( xr.hands[h].wasDown, xr.hands[h].down, sizeof( xr.hands[h].down ) );
+		// (vr_simTrigger2: the other hand's)
 		xr.hands[h].trigger = h == ( vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT ) ?
-							  Cvar_VariableValue( "vr_simTrigger" ) : 0.0f;
+							  Cvar_VariableValue( "vr_simTrigger" ) : Cvar_VariableValue( "vr_simTrigger2" );
 		xr.hands[h].down[VRB_TRIGGER] = xr.hands[h].trigger > ( xr.hands[h].wasDown[VRB_TRIGGER] ? 0.15f : 0.25f );
 	}
 }
@@ -1644,6 +1647,7 @@ static void VR_ButtonCommand( const char *cmd, qboolean down ) {
 
 static void VR_ReleaseAllCommands( void ) {
 	xr.attackHeld = qfalse;
+	xr.attackOffHeld = qfalse;
 	while ( xr.numHeldCommands > 0 ) {
 		VR_ButtonCommand( xr.heldCommands[0], qfalse );
 	}
@@ -1673,6 +1677,7 @@ static void VR_GameControls( void ) {
 			xr.rightGripCombo = qtrue;
 		} else {
 			xr.attackHeld = qtrue;
+			xr.akimboLastLeft = qfalse;
 			if ( vr_debug->integer == 2 ) {
 				Com_Printf( "VR fire: trigger at %d ms\n", Sys_Milliseconds() );
 			}
@@ -1704,7 +1709,21 @@ static void VR_GameControls( void ) {
 	}
 
 	// off hand
-	VR_Hold( "sprint", off, VRB_TRIGGER );          // trigger: sprint
+	if ( com_vr.dualWield ) {
+		// a pistol in this hand too: its trigger fires it
+		if ( VR_Pressed( off, VRB_TRIGGER ) ) {
+			xr.attackOffHeld = qtrue;
+			xr.akimboLastLeft = qtrue;
+		} else if ( !xr.hands[off].down[VRB_TRIGGER] ) {
+			xr.attackOffHeld = qfalse;
+		}
+		if ( VR_Released( off, VRB_TRIGGER ) ) {
+			VR_ButtonCommand( "sprint", qfalse );   // in case it was sprinting before the switch
+		}
+	} else {
+		xr.attackOffHeld = qfalse;
+		VR_Hold( "sprint", off, VRB_TRIGGER );      // trigger: sprint
+	}
 	VR_Hold( "kick", off, VRB_STICK );              // stick click: kick
 
 	if ( VR_Pressed( off, VRB_LOWER ) ) {           // X
@@ -1798,6 +1817,9 @@ static void VR_WriteCmdTracking( usercmd_t *cmd ) {
 	if ( com_vr.ironSights ) {
 		flags |= VRF_SIGHTS;
 	}
+	if ( com_vr.akimboLeft ) {
+		flags |= VRF_AKIMBO_LEFT;
+	}
 	cmd->vrFlags = flags;
 }
 
@@ -1863,6 +1885,16 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 	}
 	if ( !Key_GetCatcher() && VR_BinocularGesture( off ) ) {
 		cmd->wbuttons |= WBUTTON_ZOOM;
+	}
+
+	// dual pistols: the off hand's trigger fires the off hand's gun, aimed where it points
+	com_vr.akimboLeft = 0;
+	if ( com_vr.dualWield && xr.attackOffHeld && ( !xr.attackHeld || xr.akimboLastLeft ) &&
+		 com_vr.handValid[off] && !Key_GetCatcher() ) {
+		cmd->buttons |= BUTTON_ATTACK;
+		com_vr.akimboLeft = 1;
+		cl.viewangles[PITCH] = AngleNormalize180( com_vr.handAngles[off][PITCH] + vr_weaponPitch->value );
+		cl.viewangles[YAW] = com_vr.handAngles[off][YAW];
 	}
 
 	VR_WriteCmdTracking( cmd );

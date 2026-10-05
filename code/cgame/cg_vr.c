@@ -876,3 +876,69 @@ void CG_VR_PredictBullet( int weapon ) {
 		CG_Bullet( tr.endpos, self, reflect, qfalse, ENTITYNUM_WORLD, qfalse, ENTITYNUM_NONE );
 	}
 }
+
+/*
+=================
+CG_VR_DualSingle / CG_VR_AddDualGuns
+
+Two pistols: one in each hand, each fired by its own trigger (cl_vr.c, BG_AkimboFireSequence).
+They're drawn as two of the single pistol, since the pair's model has the left gun fixed
+to the right hand.
+=================
+*/
+int CG_VR_DualSingle( int weapon ) {
+	switch ( weapon ) {
+	case WP_AKIMBO:
+		return WP_COLT;
+	default:
+		return 0;
+	}
+}
+
+void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
+	centity_t *cent = &cg.predictedPlayerEntity;
+	weaponInfo_t *weapon;
+	refEntity_t hand;
+	vrWeaponGeom_t geom;
+	vec3_t angles;
+	float adj[6] = { 0, 0, 0, 0, 0, 0 };
+	char buf[32];
+	int side, savedWeapon = cent->currentState.weapon, savedFlash = cent->muzzleFlashTime;
+	int off = !CG_VR_DominantHand();
+
+	CG_RegisterWeapon( single );
+	weapon = &cg_weapons[single];
+	trap_Cvar_VariableStringBuffer( "vr_weaponPitch", buf, sizeof( buf ) );
+
+	// the off hand's gun first, so the muzzle the server is told about is the weapon hand's
+	for ( side = 0; side < 2; side++ ) {
+		memset( &hand, 0, sizeof( hand ) );
+		if ( side == 1 ) {
+			CG_VR_WeaponPose( single, hand.origin, hand.axis );
+		} else {
+			if ( !cgVR->handValid[off] ) {
+				continue;
+			}
+			VectorCopy( cgvr.handAngles[off], angles );
+			angles[PITCH] += atof( buf );
+			CG_VR_Geom( single, &geom );
+			BG_VR_WeaponFrame( &geom, cgvr.handOrigin[off], angles, adj, hand.origin, hand.axis );
+		}
+		// (runs the animation state the gun's parts read, with this pistol's own table)
+		CG_WeaponAnimation( ps, weapon, &hand.oldframe, &hand.frame, &hand.backlerp );
+		hand.oldframe = hand.frame = weapon->weapAnimations[WEAP_IDLE1].firstFrame;
+		hand.backlerp = 0;
+		VectorCopy( hand.origin, hand.lightingOrigin );
+		hand.hModel = weapon->handsModel;
+		hand.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;
+		if ( CG_VR_DrawHands() ) {
+			hand.renderfx |= RF_VR_NOHANDS;
+		}
+		// only the gun that fired flashes
+		cent->muzzleFlashTime = ( ( side == 0 ) == cgvr.lastShotLeft ) ? savedFlash : 0;
+		cent->currentState.weapon = single;
+		CG_AddPlayerWeapon( &hand, ps, cent );
+	}
+	cent->currentState.weapon = savedWeapon;
+	cent->muzzleFlashTime = savedFlash;
+}

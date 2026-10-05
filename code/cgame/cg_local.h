@@ -1677,6 +1677,7 @@ typedef struct {
 	qhandle_t   handModel[2];       // indexed by VR_HAND_*
 
 	int         gunWeapon;          // first person gun drawn this frame, and its pose
+	qboolean    lastShotLeft;       // dual pistols: the off hand's gun fired last
 	vec3_t      gunOrigin;
 	vec3_t      gunAxis[3];
 	int         lastMagDrop;        // cgVR->magDropCount already handled
@@ -2532,6 +2533,8 @@ void        CG_VR_IronSights( void );
 void        CG_VR_RecoilInit( void );
 void        CG_VR_RecoilKick( int weapon );
 void        CG_VR_RecoilUpdate( void );
+int         CG_VR_DualSingle( int weapon );
+void        CG_VR_AddDualGuns( playerState_t *ps, int single );
 #ifdef VR_NET_HANDS
 qboolean    CG_VR_RemoteBody( centity_t *cent );
 void        CG_VR_BodyApplyRemote( centity_t *cent, refEntity_t *body );

@@ -39,6 +39,9 @@ the Free Software Foundation, either version 3 of the License, or
 // between trap_R_VR_BeginScope and trap_R_VR_EndScope (first person models are left out)
 #define RDF_VRSCOPE     ( 1 << 9 )
 
+// usercmd_t.vrFlags (co-op): dual pistols, the off hand's gun fires
+#define VRF_AKIMBO_LEFT 4096
+
 // usercmd_t.vrFlags
 #define VRF_ACTIVE      1       // the player is in VR: vr* fields are valid
 #define VRF_TWOHANDED   2
@@ -151,6 +154,12 @@ typedef struct vrShared_s {
 	int     ironSights;         // an eye is lined up behind the gun: steadier aim
 	float   recoilPitch;        // the gun's kick, added to the aim (degrees, negative is up)
 	float   recoilBack;         // and how far it jolts back in the hand (game units)
+	int     dualWield;          // a pistol in each hand: the off hand's trigger fires its own
+
+	//
+	// written by the engine
+	//
+	int     akimboLeft;         // with dualWield: this shot is the off hand's gun
 } vrShared_t;
 
 #endif // __VR_SHARED_H__

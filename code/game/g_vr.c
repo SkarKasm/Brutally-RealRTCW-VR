@@ -718,6 +718,9 @@ qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out ) {
 	}
 	cmd = &ent->client->pers.cmd;
 	dom = G_VR_DomHand( ent );
+	if ( ( cmd->vrFlags & VRF_AKIMBO_LEFT ) && ent->client->ps.weapon == WP_AKIMBO ) {
+		dom = !dom;     // dual pistols: the off hand's gun fired
+	}
 	if ( !G_VR_HandValid( ent, dom ) ) {
 		return qfalse;
 	}
@@ -843,7 +846,12 @@ void G_VR_Training( gentity_t *ent ) {
 
 	// as "give all" does it
 	for ( i = 0; i <= WP_DYNAMITE; i++ ) {
-		COM_BitSet( client->ps.weapons, i );
+		if ( !COM_BitCheck( client->ps.weapons, i ) ) {
+			COM_BitSet( client->ps.weapons, i );
+			if ( i > WP_NONE && i < WP_MONSTER_ATTACK1 ) {
+				Add_Ammo( ent, i, 999, qtrue );     // loaded, ready to try
+			}
+		}
 	}
 	client->ps.stats[STAT_KEYS] |= ( 1 << INV_BINOCS );
 

@@ -3639,11 +3639,21 @@ BG_AkimboFireSequence
 ==============
 */
 //qboolean BG_AkimboFireSequence( playerState_t *ps ) {
+int bg_vrAkimbo = -1;   // RealRTCW-VR, set by Pmove: 0 the right gun fires, 1 the left
+
 qboolean BG_AkimboFireSequence( int weapon, int akimboClip, int coltClip ) {
 	// NOTE: this doesn't work when clips are turned off (dmflags 64)
 
 	if ( weapon != WP_AKIMBO ) {
 		return qfalse;
+	}
+
+	// RealRTCW-VR: each hand's trigger fires its own gun, while it has rounds
+	if ( bg_vrAkimbo >= 0 ) {
+		if ( bg_vrAkimbo ) {
+			return akimboClip ? qtrue : qfalse;
+		}
+		return coltClip ? qfalse : ( akimboClip ? qtrue : qfalse );
 	}
 
 	if ( !akimboClip ) {

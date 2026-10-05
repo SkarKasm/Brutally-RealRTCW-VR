@@ -4178,18 +4178,21 @@ Pmove
 Can be called by either the server or the client
 ================
 */
+extern int bg_vrAkimbo;     // bg_misc.c
+
 int Pmove( pmove_t *pmove ) {
 	int finalTime;
 
 	// RealRTCW-VR: a headset player's aim and hand reloading state, the same on the server
 	// and in client prediction (the server keeps vrState up to date before every Pmove)
 	pmove->vrAim = ( pmove->cmd.vrFlags & VRF_ACTIVE ) != 0;
+	pmove->vrAkimbo = !pmove->vrAim ? 0 : ( ( pmove->cmd.vrFlags & VRF_AKIMBO_LEFT ) ? 2 : 1 );
 	pmove->vrManualReload = pmove->vrAim && ( pmove->ps->vrState & VRS_MANUAL );
 	pmove->vrChambered = !pmove->vrManualReload || ( pmove->ps->vrState & VRS_CHAMBERED );
 
 	// Ridah
 	if ( pmove->ps->eFlags & EF_DUMMY_PMOVE ) {
-		PmoveSingle( pmove );
+		bg_vrAkimbo = pmove->vrAkimbo - 1;  PmoveSingle( pmove );  bg_vrAkimbo = -1;
 		return ( 0 );
 	} else if ( pmove->ps->pm_flags & PMF_IGNORE_INPUT || pmove->ps->eFlags & EF_FROZEN ) {
 		pmove->cmd.forwardmove = 0;
@@ -4250,7 +4253,7 @@ int Pmove( pmove_t *pmove ) {
 			}
 		}
 		pmove->cmd.serverTime = pmove->ps->commandTime + msec;
-		PmoveSingle( pmove );
+		bg_vrAkimbo = pmove->vrAkimbo - 1;  PmoveSingle( pmove );  bg_vrAkimbo = -1;
 
 		if ( pmove->ps->pm_flags & PMF_JUMP_HELD ) {
 			pmove->cmd.upmove = 20;

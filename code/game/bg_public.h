@@ -310,6 +310,7 @@ typedef struct {
 	int vrAim;
 	int vrManualReload;     // reloads happen by hand: never start one automatically
 	int vrChambered;        // with vrManualReload: qfalse makes the trigger click
+	int vrAkimbo;           // dual pistols: 0 the usual alternation, 1 right gun, 2 left gun
 
 	// for fixed msec Pmove
 	int pmove_fixed;
