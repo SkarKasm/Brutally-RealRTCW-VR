@@ -1476,6 +1476,16 @@ static void CG_ServerCommand( void ) {
 		return;
 	}
 
+	// RealRTCW-VR: a teammate marked a spot
+	if ( !strcmp( cmd, "vrping" ) ) {
+		vec3_t pos;
+		pos[0] = atoi( CG_Argv( 2 ) );
+		pos[1] = atoi( CG_Argv( 3 ) );
+		pos[2] = atoi( CG_Argv( 4 ) );
+		CG_VR_PingReceived( atoi( CG_Argv( 1 ) ), pos );
+		return;
+	}
+
 	if ( !strcmp( cmd, "cp" ) ) {
 		// NERVE - SMF
 		int args = trap_Argc();

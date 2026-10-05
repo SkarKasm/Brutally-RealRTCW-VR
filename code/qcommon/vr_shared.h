@@ -161,6 +161,7 @@ typedef struct vrShared_s {
 	//
 	int     akimboLeft;         // with dualWield: this shot is the off hand's gun
 	int     teleportAiming;     // the teleport stick is held: cgame shows the arc
+	int     pingCount;          // bumped by the ping button: cgame marks where the gun points
 
 	//
 	// written by cgame

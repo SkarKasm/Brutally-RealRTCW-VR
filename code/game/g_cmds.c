@@ -3602,7 +3602,19 @@ void ClientCommand( int clientNum ) {
 		return;
 	}
 
-	if ( Q_stricmp( cmd, "give" ) == 0 ) {
+	if ( Q_stricmp( cmd, "vrping" ) == 0 ) {
+		// RealRTCW-VR: a spot marked for everyone (cg_vrcomfort.c)
+		static int last[MAX_CLIENTS];
+		int n = ent - g_entities;
+		char x[16], y[16], z[16];
+		if ( n >= 0 && n < MAX_CLIENTS && level.time - last[n] > 400 && trap_Argc() >= 4 ) {
+			last[n] = level.time;
+			trap_Argv( 1, x, sizeof( x ) );
+			trap_Argv( 2, y, sizeof( y ) );
+			trap_Argv( 3, z, sizeof( z ) );
+			trap_SendServerCommand( -1, va( "vrping %d %d %d %d", n, atoi( x ), atoi( y ), atoi( z ) ) );
+		}
+	} else if ( Q_stricmp( cmd, "give" ) == 0 ) {
 		Cmd_Give_f( ent );
 #ifdef MONEY
 	} else if ( Q_stricmp( cmd, "buy" ) == 0 ) {

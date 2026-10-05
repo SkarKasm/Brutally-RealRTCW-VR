@@ -230,6 +230,105 @@ static void CF_Vignette( void ) {
 }
 
 /*
+==============================================================================
+
+Pings (co-op): a tap of Y marks where the gun points, for everyone, for a few seconds.
+Seen through walls, with a blip.
+
+==============================================================================
+*/
+
+#define VP_MAX      8
+#define VP_TIME     6000
+
+static struct {
+	int     time;
+	int     client;
+	vec3_t  pos;
+} vrPings[VP_MAX];
+static int vrPingLastCount = -1;
+static sfxHandle_t vrPingSound;
+
+void CG_VR_PingReceived( int client, const vec3_t pos ) {
+	int i, slot = 0;
+
+	for ( i = 0; i < VP_MAX; i++ ) {
+		if ( vrPings[i].time < vrPings[slot].time ) {
+			slot = i;
+		}
+	}
+	vrPings[slot].time = cg.time;
+	vrPings[slot].client = client;
+	VectorCopy( pos, vrPings[slot].pos );
+	if ( !vrPingSound ) {
+		vrPingSound = trap_S_RegisterSound( "sound/misc/w_pkup.wav" );
+	}
+	trap_S_StartLocalSound( vrPingSound, CHAN_LOCAL_SOUND );
+}
+
+// the ping button: where the gun (or the head) points
+static void CF_SendPing( void ) {
+	vec3_t start, fwd, end;
+	trace_t tr;
+
+	if ( vrPingLastCount < 0 || !cgVR ) {
+		vrPingLastCount = cgVR ? cgVR->pingCount : 0;
+		return;
+	}
+	if ( cgVR->pingCount == vrPingLastCount ) {
+		return;
+	}
+	vrPingLastCount = cgVR->pingCount;
+
+	if ( cgVR->muzzleValid ) {
+		VectorCopy( cgvr.muzzle, start );
+		AngleVectors( cgvr.weaponAngles, fwd, NULL, NULL );
+	} else {
+		VectorCopy( cg.refdef.vieworg, start );
+		VectorCopy( cg.refdef.viewaxis[0], fwd );
+	}
+	VectorMA( start, 4096, fwd, end );
+	CG_Trace( &tr, start, NULL, NULL, end, cg.snap->ps.clientNum, MASK_SHOT );
+	VectorMA( tr.endpos, -4, fwd, end );
+	trap_SendClientCommand( va( "vrping %d %d %d", (int)end[0], (int)end[1], (int)end[2] ) );
+}
+
+static void CF_DrawPings( void ) {
+	static const byte colors[4][4] = {
+		{ 255, 200, 60, 230 }, { 80, 200, 255, 230 }, { 120, 255, 120, 230 }, { 255, 110, 220, 230 }
+	};
+	vec3_t up, side, top, a, b, c, d;
+	int i;
+
+	VectorCopy( cg.refdef.viewaxis[2], up );
+	VectorCopy( cg.refdef.viewaxis[1], side );
+	for ( i = 0; i < VP_MAX; i++ ) {
+		const byte *col = colors[vrPings[i].client & 3];
+		float size;
+
+		if ( !vrPings[i].time || cg.time - vrPings[i].time > VP_TIME || cg.time < vrPings[i].time ) {
+			continue;
+		}
+		// a post up from the spot, and a diamond at its top that stays a readable size
+		VectorMA( vrPings[i].pos, 40, up, top );
+		size = Distance( cg.refdef.vieworg, top ) * 0.012f;
+		if ( size < 2 ) {
+			size = 2;
+		}
+		VectorMA( vrPings[i].pos, size * 0.15f, side, a );
+		VectorMA( vrPings[i].pos, -size * 0.15f, side, b );
+		VectorMA( top, -size * 0.15f, side, c );
+		VectorMA( top, size * 0.15f, side, d );
+		CF_Quad( a, b, c, d, col, col, col, col );
+		VectorMA( top, size, up, a );
+		VectorMA( top, size, side, b );
+		VectorMA( top, -size, up, c );
+		VectorMA( top, -size, side, d );
+		CF_Quad( a, b, c, d, col, col, col, col );
+	}
+}
+
+/*
 ==============
 CG_VR_Comfort
 
@@ -237,9 +336,14 @@ Each eye pass, before the view is rendered.
 ==============
 */
 void CG_VR_Comfort( void ) {
+	// everyone sees the pings, headset or not
+	if ( cfWhite && cg.snap ) {
+		CF_DrawPings();
+	}
 	if ( !cgVR || !cgvr.active ) {
 		return;
 	}
+	CF_SendPing();
 	cgVR->onLadder = ( cg.predictedPlayerState.pm_flags & PMF_LADDER ) != 0;
 	cgVR->yawOffset = cgvr.yawOffset;
 	if ( !CG_VR_EyePass() || !cfWhite ) {

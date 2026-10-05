@@ -700,6 +700,41 @@ static void G_VR_HandUse( gentity_t *ent, const vec3_t hand ) {
 
 /*
 =================
+G_VR_Revive
+
+The off hand on a frozen teammate frees them, like the knife does (g_freeze).
+=================
+*/
+static qboolean G_VR_Revive( gentity_t *ent, const vec3_t hand ) {
+	gentity_t *e;
+	int i, k;
+
+	if ( !g_freeze.integer ) {
+		return qfalse;
+	}
+	for ( i = 0; i < level.maxclients; i++ ) {
+		e = &g_entities[i];
+		if ( e == ent || !e->inuse || !e->client || e->aiCharacter || !( e->client->ps.eFlags & EF_FROZEN ) ) {
+			continue;
+		}
+		for ( k = 0; k < 3; k++ ) {
+			if ( hand[k] < e->r.absmin[k] - VR_GRAB_MARGIN || hand[k] > e->r.absmax[k] + VR_GRAB_MARGIN ) {
+				break;
+			}
+		}
+		if ( k < 3 ) {
+			continue;
+		}
+		e->client->ps.eFlags &= ~EF_FROZEN;
+		e->flags &= ~FL_NOTARGET;
+		e->client->ps.powerups[PW_INVULNERABLE] = level.time + 5000;      // some time to find cover
+		return qtrue;
+	}
+	return qfalse;
+}
+
+/*
+=================
 G_VR_PlayerThink
 
 After every pmove of a headset player.
@@ -786,7 +821,9 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 	} else if ( pressed && !used ) {
 		gentity_t *body = NULL;
 		// an item in the hand, a body, someone alive (takedown or shove), or something to use
-		if ( ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_GrabItem( ent, offHand ) ) {
+		if ( ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_Revive( ent, offHand ) ) {
+			G_VR_Haptic( ent, off, 0.8f, 100 );     // a frozen teammate freed
+		} else if ( ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_GrabItem( ent, offHand ) ) {
 			G_VR_Haptic( ent, off, 0.4f, 40 );
 		} else {
 			body = G_VR_FindBody( ent, offHand );

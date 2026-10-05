@@ -316,6 +316,7 @@ static struct {
 	qboolean        rightGripCombo;     // right grip was used as a modifier while held
 	qboolean        attackHeld;         // the trigger fires: goes straight into the usercmd
 	qboolean        attackOffHeld;      // dual pistols: the off hand's trigger
+	qboolean        yCombo, yTalking;   // the Y button: with grip, or held for push to talk
 	float           headHeight;         // metres above the floor (physical crouch)
 	qboolean        teleportPending;    // a teleport goes in the next usercmd
 	short           teleportMove[2];
@@ -330,6 +331,8 @@ static cvar_t *vr_rightHanded;
 static cvar_t *vr_binoculars;       // off hand to the eyes: binoculars
 static cvar_t *vr_hipNotebook;      // off hand grip at the hip: the notebook
 static cvar_t *vr_teleport;         // move by pointing the off hand stick and letting go
+static cvar_t *vr_voice;            // co-op voice: 0 off, 1 push to talk (hold Y), 2 open mic; heard nearby
+static void VR_VoiceSettings( void );
 static cvar_t *vr_seated;           // playing seated: stand the view up, no physical crouch
 static cvar_t *vr_seatedHeight;     // metres added to the head when seated
 static cvar_t *vr_crouchHeight;     // head below this (metres) crouches, 0 off
@@ -1185,6 +1188,11 @@ static void VR_SimPoses( void ) {
 		xr.hands[h].down[VRB_SQUEEZE] = h != ( vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT ) &&
 										Cvar_VariableIntegerValue( "vr_simGrip2" ) != 0;
 		if ( h != ( vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT ) ) {
+			// vr_simY 1: its upper button
+			xr.hands[h].down[VRB_UPPER] = Cvar_VariableIntegerValue( "vr_simY" ) != 0;
+			if ( xr.hands[h].down[VRB_UPPER] && !xr.hands[h].wasDown[VRB_UPPER] ) {
+				xr.hands[h].downTime[VRB_UPPER] = cls.realtime;
+			}
 			xr.hands[h].stick[0] = xr.hands[h].stick[1] = 0;
 			Cvar_VariableStringBuffer( "vr_simStick2", buf, sizeof( buf ) );
 			sscanf( buf, "%f %f", &xr.hands[h].stick[0], &xr.hands[h].stick[1] );
@@ -1409,6 +1417,8 @@ void CL_VR_Init( void ) {
 	vr_binoculars = Cvar_Get( "vr_binoculars", "1", CVAR_ARCHIVE );
 	vr_hipNotebook = Cvar_Get( "vr_hipNotebook", "1", CVAR_ARCHIVE );
 	vr_teleport = Cvar_Get( "vr_teleport", "0", CVAR_ARCHIVE );
+	vr_voice = Cvar_Get( "vr_voice", "1", CVAR_ARCHIVE );
+	VR_VoiceSettings();
 	vr_seated = Cvar_Get( "vr_seated", "0", CVAR_ARCHIVE );
 	vr_seatedHeight = Cvar_Get( "vr_seatedHeight", "0.5", CVAR_ARCHIVE );
 	vr_crouchHeight = Cvar_Get( "vr_crouchHeight", "1.1", CVAR_ARCHIVE );
@@ -1727,6 +1737,33 @@ static qboolean VR_HandAtHip( int hand ) {
 	return rel[1] < -0.45f && rel[1] > -0.95f && side > 0.10f && ahead < 0.15f && ahead > -0.25f;
 }
 
+/*
+=================
+VR_VoiceSettings
+
+Co-op voice chat, heard from where the speaker stands (the engine's VoIP, sent "spatial":
+each voice plays at its player in 3D, quieter with distance).
+=================
+*/
+static void VR_VoiceSettings( void ) {
+	static int applied = -1;
+	int v = vr_voice ? vr_voice->integer : 0;
+
+	if ( v == applied ) {
+		return;
+	}
+	applied = v;
+	Cvar_Set( "cl_voip", v ? "1" : "0" );
+	if ( v ) {
+		Cvar_Set( "cl_voipSendTarget", "spatial" );
+		Cvar_Set( "cl_voipUseVAD", v == 2 ? "1" : "0" );
+		Cvar_Set( "s_alCapture", "1" );
+		if ( Cvar_VariableIntegerValue( "rate" ) < 25000 ) {
+			Cvar_Set( "rate", "25000" );    // VoIP needs the room
+		}
+	}
+}
+
 // in-game controls, after the RTCWQuest layout
 static void VR_GameControls( void ) {
 	int dom = vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT;
@@ -1805,12 +1842,28 @@ static void VR_GameControls( void ) {
 			Cvar_SetValue( "cg_draw2D", Cvar_VariableIntegerValue( "cg_draw2D" ) ? 0 : 1 );
 		}
 	}
-	if ( VR_Pressed( off, VRB_UPPER ) ) {           // Y
+	// Y: tap to ping (mark a spot for the others), hold to talk (vr_voice 1)
+	if ( VR_Pressed( off, VRB_UPPER ) ) {
 		if ( modifier ) {
 			Cbuf_AddText( "itemnext\n" );
 			xr.rightGripCombo = qtrue;
+			xr.yCombo = qtrue;
 		} else {
-			Cbuf_AddText( "notebook\n" );
+			xr.yCombo = qfalse;
+			xr.yTalking = qfalse;
+		}
+	}
+	if ( xr.hands[off].down[VRB_UPPER] && !xr.yCombo && !xr.yTalking && vr_voice->integer == 1 &&
+		 cls.realtime - xr.hands[off].downTime[VRB_UPPER] > 300 ) {
+		Cbuf_AddText( "+voiprecord\n" );
+		xr.yTalking = qtrue;
+	}
+	if ( VR_Released( off, VRB_UPPER ) && !xr.yCombo ) {
+		if ( xr.yTalking ) {
+			Cbuf_AddText( "-voiprecord\n" );
+			xr.yTalking = qfalse;
+		} else {
+			com_vr.pingCount++;
 		}
 	}
 }
@@ -2248,6 +2301,8 @@ Turns this frame's controller state into game commands or menu input.
 */
 void CL_VR_ProcessInput( void ) {
 	int off;
+
+	VR_VoiceSettings();
 	qboolean menu;
 
 	if ( !com_vr.active || !xr.headValid ) {

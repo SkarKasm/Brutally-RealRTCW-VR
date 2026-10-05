@@ -561,6 +561,7 @@ static void NET_Steam_Host_f( void ) {
 		Cvar_Set( "g_gametype", "2" );      // GT_COOP
 	}
 	Cvar_Set( "dedicated", "0" );       // a game the host plays in, never a bare server
+	Cvar_Set( "sv_voip", "1" );         // RealRTCW-VR: proximity voice
 	Cbuf_AddText( va( "wait ; wait ; coopmap %s\n", map ) );
 }
 
