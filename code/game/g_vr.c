@@ -38,7 +38,7 @@ the Free Software Foundation, either version 3 of the License, or
 #define VR_CHARGE_RADIUS    11.0f   // ~28cm around the slide / bolt / pump
 #define VR_ACTION_RADIUS    9.0f    // ~23cm around the gun hand also reaches the action
 #define VR_CHARGE_PULL      0.6f    // fraction of the travel that counts as racked
-#define VR_GRAB_MARGIN      6.0f    // reach around a body's box
+#define VR_GRAB_MARGIN      18.0f   // reach around a body's box (its ragdoll lies a little off it)
 #define VR_THROW_MAX        600.0f
 
 typedef struct {
@@ -509,14 +509,19 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 	if ( vrp.grabbed >= 0 ) {
 		gentity_t *body = &g_entities[vrp.grabbed];
 		if ( !body->inuse || !body->client || body->health > 0 ) {
+			body->s.dl_intensity = 0;
 			vrp.grabbed = -1;
 		} else if ( !down ) {
 			G_VR_ReleaseBody( body, VectorLength( vrp.handVel ) > 60.0f );
+			body->s.dl_intensity = 0;
 			vrp.grabbed = -1;
 		} else {
 			vec3_t target;
 			VectorAdd( offHand, vrp.grabOffset, target );
 			G_VR_PlaceBody( body, target );
+			// for every player's ragdoll: who holds the body, and where (cg_ragdoll.c)
+			body->s.dl_intensity = ent->s.number + 1;
+			VectorCopy( offHand, body->s.origin2 );
 		}
 	} else if ( pressed && !used ) {
 		gentity_t *body = G_VR_FindBody( offHand );
@@ -525,6 +530,8 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 			VectorSubtract( body->client->ps.origin, offHand, vrp.grabOffset );
 			vrp.grabbedPmType = body->client->ps.pm_type == PM_FREEZE ? PM_DEAD : body->client->ps.pm_type;
 			body->client->ps.pm_type = PM_FREEZE;   // stays put in the hand instead of falling
+			body->s.dl_intensity = ent->s.number + 1;
+			VectorCopy( offHand, body->s.origin2 );
 			if ( vrp.thrown == body->s.number ) {
 				vrp.thrown = -1;
 			}

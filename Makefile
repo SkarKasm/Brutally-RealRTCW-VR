@@ -2652,6 +2652,7 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_trails.o \
   $(B)/$(BASEGAME)/cgame/cg_view.o \
   $(B)/$(BASEGAME)/cgame/cg_vr.o \
+  $(B)/$(BASEGAME)/cgame/cg_ragdoll.o \
   $(B)/$(BASEGAME)/cgame/cg_weapons.o \
   $(B)/$(BASEGAME)/ui/ui_shared.o \
   \

@@ -2725,6 +2725,12 @@ void        trap_R_DrawStretchPicGradient( float x, float y, float w, float h,
 
 void        trap_R_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs );
 int         trap_R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagName, int startIndex );
+int         trap_R_GetSkeleton( const refEntity_t *refent, int maxBones, int *parents, int *flags, char *names, float *bones );
+
+// cg_ragdoll.c (RealRTCW-VR)
+void        CG_Ragdoll_Init( void );
+void        CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body );
+void        CG_Ragdoll_DebugHead( centity_t *cent, const vec3_t headOrigin );
 void        trap_R_RemapShader( const char *oldShader, const char *newShader, const char *timeOffset );
 qboolean    trap_R_inPVS( const vec3_t p1, const vec3_t p2 );
 

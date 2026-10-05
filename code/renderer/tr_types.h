@@ -107,6 +107,8 @@ typedef enum {
 
 #define ZOMBIEFX_FADEOUT_TIME   10000
 
+#define RAGDOLL_MAGIC       0x52414744  // refEntity_t.ragdollMagic, "RAGD"
+
 #define REFLAG_ONLYHAND     1   // only draw hand surfaces
 #define REFLAG_ZOMBIEFX     2   // special post-tesselation processing for zombie skin
 #define REFLAG_ZOMBIEFX2    4   // special post-tesselation processing for zombie skin
@@ -167,6 +169,13 @@ typedef struct {
 	int reFlags;
 
 	int entityNum;                  // currentState.number, so we can attach rendering effects to specific entities (Zombie)
+
+	// RealRTCW-VR: skeletal (MDS) models only. When set, these bones are drawn instead of
+	// the animation's: 12 floats per bone (3x3 matrix rows, translation), model space.
+	// cgame's ragdolls own the memory. Only used when ragdollMagic is RAGDOLL_MAGIC: some
+	// code builds refEntity_t's on the stack without clearing them.
+	const float *ragdollBones;
+	int ragdollMagic;
 
 } refEntity_t;
 

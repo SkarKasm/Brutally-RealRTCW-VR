@@ -193,6 +193,7 @@ void CG_CalcMoveSpeeds( clientInfo_t *ci ) {
 	qboolean isStrafe;
 	orientation_t o[2];
 
+	memset( &refent, 0, sizeof( refent ) );     // RealRTCW-VR: no stray ragdoll pointer
 	refent.hModel = ci->legsModel;
 
 	for ( i = 0, anim = ci->modelInfo->animations; i < ci->modelInfo->numAnimations; i++, anim++ ) {
@@ -4696,6 +4697,9 @@ void CG_Player( centity_t *cent ) {
 		memcpy( legs.torsoAxis, torso.axis, sizeof( torso.axis ) );
 		legs.torsoBacklerp = torso.backlerp;
 
+		// RealRTCW-VR: the dead go limp
+		CG_Ragdoll_Apply( cent, &legs );
+
 		CG_AddRefEntityWithPowerups( &legs, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
 
 		cent->pe.legsRefEnt = legs;
@@ -4723,6 +4727,9 @@ void CG_Player( centity_t *cent ) {
 	VectorCopy( lightorigin, head.lightingOrigin );
 
 	CG_PositionRotatedEntityOnTag( &head, &torso, "tag_head" );
+	if ( torso.ragdollBones && torso.ragdollMagic == RAGDOLL_MAGIC ) {
+		CG_Ragdoll_DebugHead( cent, head.origin );
+	}
 
 	head.shadowPlane = shadowPlane;
 	head.renderfx = renderfx;
