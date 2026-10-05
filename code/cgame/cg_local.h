@@ -2766,6 +2766,7 @@ void        CG_VR_WristHUD( void );
 // cg_vrcomfort.c (RealRTCW-VR)
 void        CG_VR_ComfortInit( void );
 void        CG_VR_Comfort( void );
+void        CG_VR_PingReceived( int client, const vec3_t pos );
 int         CG_VR_DualSingle( int weapon );
 void        CG_VR_AddDualGuns( playerState_t *ps, int single );
 #ifdef VR_NET_HANDS
