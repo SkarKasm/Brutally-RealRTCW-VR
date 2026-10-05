@@ -48,3 +48,4 @@ run_test/
 Makefile.local
 run_test2/
 dist/
+symbols/
