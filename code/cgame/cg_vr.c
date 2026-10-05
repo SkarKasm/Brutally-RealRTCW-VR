@@ -75,6 +75,7 @@ void CG_VR_Init( void ) {
 
 	memset( &cgvr, 0, sizeof( cgvr ) );
 	CG_Ragdoll_Init();
+	CG_VR_BodyInit();
 
 	// Fine tuning on top of the measured grip, "forward left up pitch yaw roll" in model
 	// units/degrees. vr_gunOffset_<weapon number> applies to a single weapon.
@@ -129,6 +130,9 @@ void CG_VR_AddHands( void ) {
 		VectorCopy( ent.origin, ent.lightingOrigin );
 		AnglesToAxis( cgvr.handAngles[h], ent.axis );
 		ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN;
+		if ( CG_VR_BodyDrawn() ) {
+			ent.renderfx |= RF_VR_NOSLEEVES;    // the full body's arms lead up to the hands
+		}
 		trap_R_AddRefEntityToScene( &ent );
 	}
 }

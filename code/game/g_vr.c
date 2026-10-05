@@ -221,6 +221,7 @@ void G_VR_UpdateWeaponState( gentity_t *ent ) {
 	if ( !G_VR_IsPlayer( ent ) ) {
 		ent->client->ps.vrState = 0;
 		ent->client->ps.vrGrab = 0;
+		ent->s.vrFlags = 0;
 		return;
 	}
 	vrp = G_VR_Init( ent );
@@ -651,6 +652,25 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 		}
 	}
 	ent->client->ps.vrGrab = vrp->grabbed + 1;
+
+	// the hands, for the other players' view of this one
+	{
+		int h, flags = VRE_ACTIVE;
+		vec3_t hand;
+
+		if ( dom == VR_HAND_RIGHT ) {
+			flags |= VRE_RIGHTHANDED;
+		}
+		for ( h = 0; h < 2; h++ ) {
+			if ( G_VR_HandValid( ent, h ) ) {
+				flags |= h == VR_HAND_LEFT ? VRE_HAND_LEFT : VRE_HAND_RIGHT;
+				G_VR_HandWorld( ent, h, hand );
+				VectorSubtract( hand, ent->r.currentOrigin, ent->s.vrHand[h] );
+				SnapVector( ent->s.vrHand[h] );     // whole units are plenty, and send small
+			}
+		}
+		ent->s.vrFlags = flags;
+	}
 
 	if ( vrp->thrown >= 0 && dt > 0 ) {
 		G_VR_FlyBody( vrp, dt );

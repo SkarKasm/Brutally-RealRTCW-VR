@@ -1371,6 +1371,7 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_reticle", "1", CVAR_ARCHIVE );        // cg_vr.c
 	Cvar_Get( "vr_drawHands", "1", CVAR_ARCHIVE );      // cg_vr.c
 	Cvar_Get( "vr_ragdolls", "1", CVAR_ARCHIVE );       // cg_ragdoll.c
+	Cvar_Get( "vr_fullBody", "1", CVAR_ARCHIVE );       // cg_vrbody.c
 
 	Com_Memset( &xr, 0, sizeof( xr ) );
 	Com_Memset( &com_vr, 0, sizeof( com_vr ) );

@@ -1480,6 +1480,7 @@ extern vrRenderState_t vrRender;
 
 void     R_VR_SetupViewParms( viewParms_t *parms, int rdflags );
 qboolean R_VR_IsHandSurface( const char *name );
+qboolean R_VR_IsSleeveSurface( const char *name );
 int      RE_GetSkeleton( const refEntity_t *refent, int maxBones, int *parents, int *flags, char *names, float *bones );
 void     RE_VR_SetEye( int eye, const float *fovTangents, const vec3_t eyeOffset );
 void     RE_VR_BeginPass( unsigned int targetFramebuffer, const float *clearColor );

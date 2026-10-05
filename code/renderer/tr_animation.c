@@ -368,6 +368,12 @@ void R_AddAnimSurfaces( trRefEntity_t *ent ) {
 				continue;
 			}
 		}
+
+		// RealRTCW-VR: a VR player's own body: the tracked hands are drawn instead
+		if ( ( ent->e.renderfx & RF_VR_NOHANDS ) && R_VR_IsHandSurface( surface->name ) ) {
+			surface = ( mdsSurface_t * )( (byte *)surface + surface->ofsEnd );
+			continue;
+		}
 //----(SA)	end
 
 

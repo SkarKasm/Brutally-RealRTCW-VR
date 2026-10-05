@@ -1032,6 +1032,13 @@ netField_t entityStateFields[] =
 	{ NETF( effect3Time ), 32},
 	{ NETF( aiState ), 2},
 	{ NETF( animMovetype ), 6},
+	{ NETF( vrFlags ), 8 },         // RealRTCW-VR
+	{ NETF( vrHand[0][0] ), 0 },
+	{ NETF( vrHand[0][1] ), 0 },
+	{ NETF( vrHand[0][2] ), 0 },
+	{ NETF( vrHand[1][0] ), 0 },
+	{ NETF( vrHand[1][1] ), 0 },
+	{ NETF( vrHand[1][2] ), 0 },
 };
 
 

@@ -59,8 +59,17 @@ the Free Software Foundation, either version 3 of the License, or
 #define VRS_PULSE_L_SHIFT 24    // 4 bits: bumped for a buzz in the left controller
 #define VRS_PULSE_R_SHIFT 28    // 4 bits: bumped for a buzz in the right controller
 
+// entityState_t.vrFlags (co-op): a VR player's hands, for everyone else's view of them
+#define VRE_ACTIVE      1
+#define VRE_HAND_LEFT   2       // vrHand[VR_HAND_LEFT] is tracked
+#define VRE_HAND_RIGHT  4
+#define VRE_RIGHTHANDED 8
+#define VR_NET_HANDS    1       // this build sends them
+
 // refEntity renderfx: don't draw hand / arm / sleeve / glove surfaces (first person weapon in VR)
 #define RF_VR_NOHANDS   ( 1 << 12 )
+// refEntity renderfx: don't draw arm / sleeve surfaces, keep the hand (VR hands on a full body)
+#define RF_VR_NOSLEEVES ( 1 << 13 )
 
 typedef struct vrShared_s {
 	//

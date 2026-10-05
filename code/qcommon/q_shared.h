@@ -1735,6 +1735,9 @@ typedef struct entityState_s {
 
 	int animMovetype;       // clients can't derive movetype of other clients for anim scripting system
 
+	// RealRTCW-VR: a VR player's tracked hands, so others see their arms (cg_vrbody.c)
+	int vrFlags;            // VRE_*
+	vec3_t vrHand[2];       // indexed by VR_HAND_*, relative to the origin, world axes
 
 } entityState_t;
 

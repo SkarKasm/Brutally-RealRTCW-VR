@@ -4663,6 +4663,9 @@ void CG_Player( centity_t *cent ) {
 
 	// get the rotation information
 	CG_PlayerAngles( cent, legs.axis, torso.axis, head.axis );
+	if ( CG_VR_FullBody( cent ) ) {
+		CG_VR_BodyAngles( cent, legs.axis, torso.axis );    // RealRTCW-VR: facing the head
+	}
 
 //----(SA)	added
 	// setting the legs axis should pass the scale down through the other parts/tags/etc.
@@ -4814,13 +4817,24 @@ void CG_Player( centity_t *cent ) {
 		memcpy( legs.torsoAxis, torso.axis, sizeof( torso.axis ) );
 		legs.torsoBacklerp = torso.backlerp;
 
-		// RealRTCW-VR: the dead go limp
+		// RealRTCW-VR: the dead go limp; a VR player sees their own body, arms on the controllers
 		CG_Ragdoll_Apply( cent, &legs );
+		if ( CG_VR_FullBody( cent ) ) {
+			CG_VR_BodyApply( cent, &legs );
+		}
+#ifdef VR_NET_HANDS
+		else if ( CG_VR_RemoteBody( cent ) ) {
+			CG_VR_BodyApplyRemote( cent, &legs );     // another VR player's arms
+		}
+#endif
 
 		CG_AddRefEntityWithPowerups( &legs, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
 
 		cent->pe.legsRefEnt = legs;
 		torso = legs;       // so tag calls use the correct values
+		if ( legs.renderfx != renderfx ) {
+			torso.renderfx = renderfx;  // RealRTCW-VR: what hangs off the body stays as it was
+		}
 	}
 
 	cent->pe.torsoRefEnt = torso;
