@@ -79,6 +79,7 @@ void CG_VR_Init( void ) {
 	CG_VR_ScopeInit();
 	CG_VR_RecoilInit();
 	CG_VR_WristInit();
+	CG_VR_ComfortInit();
 
 	// Fine tuning on top of the measured grip, "forward left up pitch yaw roll" in model
 	// units/degrees. vr_gunOffset_<weapon number> applies to a single weapon.

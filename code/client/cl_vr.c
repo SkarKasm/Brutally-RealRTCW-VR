@@ -316,6 +316,9 @@ static struct {
 	qboolean        rightGripCombo;     // right grip was used as a modifier while held
 	qboolean        attackHeld;         // the trigger fires: goes straight into the usercmd
 	qboolean        attackOffHeld;      // dual pistols: the off hand's trigger
+	float           headHeight;         // metres above the floor (physical crouch)
+	qboolean        teleportPending;    // a teleport goes in the next usercmd
+	short           teleportMove[2];
 	qboolean        akimboLastLeft;     // which of the two was pulled last
 	qboolean        steadyLatched;      // off hand grip closed in front of the gun: two handed aim
 } xr;
@@ -326,6 +329,10 @@ static cvar_t *vr_worldScale;
 static cvar_t *vr_rightHanded;
 static cvar_t *vr_binoculars;       // off hand to the eyes: binoculars
 static cvar_t *vr_hipNotebook;      // off hand grip at the hip: the notebook
+static cvar_t *vr_teleport;         // move by pointing the off hand stick and letting go
+static cvar_t *vr_seated;           // playing seated: stand the view up, no physical crouch
+static cvar_t *vr_seatedHeight;     // metres added to the head when seated
+static cvar_t *vr_crouchHeight;     // head below this (metres) crouches, 0 off
 static cvar_t *vr_snapTurn;
 static cvar_t *vr_turnSpeed;
 static cvar_t *vr_walkDirection;
@@ -1174,9 +1181,14 @@ static void VR_SimPoses( void ) {
 		xr.hands[h].trigger = h == ( vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT ) ?
 							  Cvar_VariableValue( "vr_simTrigger" ) : Cvar_VariableValue( "vr_simTrigger2" );
 		xr.hands[h].down[VRB_TRIGGER] = xr.hands[h].trigger > ( xr.hands[h].wasDown[VRB_TRIGGER] ? 0.15f : 0.25f );
-		// vr_simGrip2 1: the other hand's grip
+		// vr_simGrip2 1: the other hand's grip; vr_simStick2 "x y": its thumbstick
 		xr.hands[h].down[VRB_SQUEEZE] = h != ( vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT ) &&
 										Cvar_VariableIntegerValue( "vr_simGrip2" ) != 0;
+		if ( h != ( vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT ) ) {
+			xr.hands[h].stick[0] = xr.hands[h].stick[1] = 0;
+			Cvar_VariableStringBuffer( "vr_simStick2", buf, sizeof( buf ) );
+			sscanf( buf, "%f %f", &xr.hands[h].stick[0], &xr.hands[h].stick[1] );
+		}
 	}
 }
 
@@ -1396,6 +1408,11 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_recoil", "1", CVAR_ARCHIVE );         // cg_vrrecoil.c
 	vr_binoculars = Cvar_Get( "vr_binoculars", "1", CVAR_ARCHIVE );
 	vr_hipNotebook = Cvar_Get( "vr_hipNotebook", "1", CVAR_ARCHIVE );
+	vr_teleport = Cvar_Get( "vr_teleport", "0", CVAR_ARCHIVE );
+	vr_seated = Cvar_Get( "vr_seated", "0", CVAR_ARCHIVE );
+	vr_seatedHeight = Cvar_Get( "vr_seatedHeight", "0.5", CVAR_ARCHIVE );
+	vr_crouchHeight = Cvar_Get( "vr_crouchHeight", "1.1", CVAR_ARCHIVE );
+	Cvar_Get( "vr_vignette", "0", CVAR_ARCHIVE );            // cg_vrcomfort.c
 	Cvar_Get( "vr_wristHud", "1", CVAR_ARCHIVE );           // cg_vrwrist.c
 
 	Com_Memset( &xr, 0, sizeof( xr ) );
@@ -1520,6 +1537,15 @@ static void VR_UpdateTracking( void ) {
 				VR_PoseToPlay( &xr.hands[h].aim, unused, com_vr.handAngles[h] );
 			}
 		}
+	}
+
+	// physical crouch: the head's real height, before seated play stands it up
+	xr.headHeight = com_vr.hmdOrigin[2] / vr_worldScale->value;
+	if ( vr_seated->integer ) {
+		float up = vr_seatedHeight->value * vr_worldScale->value;
+		com_vr.hmdOrigin[2] += up;
+		com_vr.handOrigin[0][2] += up;
+		com_vr.handOrigin[1][2] += up;
 	}
 
 	// weapon aim: the dominant grip pose, optionally steadied by the off hand
@@ -1951,11 +1977,75 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 
 	VR_Turning( frameSeconds );
 
+	// physical crouch: ducking down crouches
+	if ( !vr_seated->integer && vr_crouchHeight->value > 0 && xr.headHeight > 0.2f &&
+		 xr.headHeight < vr_crouchHeight->value && cmd->upmove <= 0 ) {
+		cmd->upmove = -127;
+	}
+
+	// ladders: a hand gripping pulls the body up (or lets it down) as far as it moves
+	{
+		static float lastZ[2];
+		static qboolean had[2];
+		float climb = 0, best = 0;
+		int h;
+
+		for ( h = 0; h < 2; h++ ) {
+			qboolean grip = com_vr.onLadder && com_vr.handValid[h] && xr.hands[h].down[VRB_SQUEEZE];
+			if ( grip && had[h] && frameSeconds > 0 ) {
+				float v = -( com_vr.handOrigin[h][2] - lastZ[h] ) / frameSeconds;    // units/s, up
+				if ( fabs( v ) > fabs( best ) ) {
+					best = v;
+				}
+			}
+			had[h] = grip;
+			lastZ[h] = com_vr.handOrigin[h][2];
+		}
+		if ( best != 0 ) {
+			climb = best / 3.0f;
+			cmd->upmove = ClampChar( (int)climb );
+			cmd->forwardmove = 0;
+		}
+	}
+
+	// teleport: push the off stick forward to aim (cgame draws the arc), let go to go there
+	if ( vr_teleport->integer ) {
+		float stick = xr.hands[off].stick[1];
+
+		if ( stick > 0.6f ) {
+			com_vr.teleportAiming = 1;
+		} else if ( com_vr.teleportAiming && stick < 0.3f ) {
+			com_vr.teleportAiming = 0;
+			if ( com_vr.teleportValid ) {
+				// world -> play space -> the frame of this command's yaw, like room scale
+				float d[2], mx, my;
+				a = DEG2RAD( -com_vr.yawOffset );
+				c = cos( a );
+				s = sin( a );
+				d[0] = com_vr.teleportDelta[0] * c - com_vr.teleportDelta[1] * s;
+				d[1] = com_vr.teleportDelta[0] * s + com_vr.teleportDelta[1] * c;
+				a = DEG2RAD( cl.viewangles[YAW] );
+				c = cos( a );
+				s = sin( a );
+				mx = d[0] * c + d[1] * s;
+				my = -d[0] * s + d[1] * c;
+				xr.teleportMove[0] = (short)( mx * 8.0f );
+				xr.teleportMove[1] = (short)( my * 8.0f );
+				xr.teleportPending = qtrue;
+				if ( vr_debug->integer == 10 ) {
+					Com_Printf( "VR teleport: %.0f forward %.0f left\n", mx, my );
+				}
+			}
+		}
+	} else {
+		com_vr.teleportAiming = 0;
+	}
+
 	// thumbstick locomotion relative to the head (or off hand), rotated into the
-	// frame of the usercmd yaw
+	// frame of the usercmd yaw (not when the stick aims teleports)
 	yaw = vr_walkDirection->integer && com_vr.handValid[off] ? com_vr.handAngles[off][YAW] : com_vr.hmdAngles[YAW];
-	fwd = xr.hands[off].stick[1];
-	side = xr.hands[off].stick[0];
+	fwd = vr_teleport->integer ? 0 : xr.hands[off].stick[1];
+	side = vr_teleport->integer ? 0 : xr.hands[off].stick[0];
 	if ( fwd || side ) {
 		a = DEG2RAD( yaw - cl.viewangles[YAW] );
 		c = cos( a );
@@ -1981,6 +2071,13 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 		}
 	}
 	xr.pendingMove[0] = xr.pendingMove[1] = 0;
+
+	// a teleport goes in as one big step (PM_VRRoomScaleMove tells it apart by its size)
+	if ( xr.teleportPending ) {
+		cmd->vrMove[0] = xr.teleportMove[0];
+		cmd->vrMove[1] = xr.teleportMove[1];
+		xr.teleportPending = qfalse;
+	}
 }
 
 /*

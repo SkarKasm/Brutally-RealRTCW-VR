@@ -3744,6 +3744,10 @@ void PM_LadderMove( void ) {
 	}
 //Com_Printf("wishvel[2] = %i, fwdmove = %i\n", (int)wishvel[2], (int)pm->cmd.forwardmove );
 
+	// RealRTCW-VR: hands pulling on the ladder (cl_vr.c sends how fast as upmove)
+	if ( pm->vrAim && pm->cmd.upmove ) {
+		wishvel[2] = 3.0f * (float)pm->cmd.upmove;
+	}
 	if ( pm->cmd.rightmove ) {
 		// strafe, so we can jump off ladder
 		vec3_t ladder_right, ang;
@@ -3880,6 +3884,35 @@ static void PM_VRRoomScaleMove( void ) {
 	pm->cmd.vrMove[0] = pm->cmd.vrMove[1] = 0;
 
 	if ( pm->ps->pm_type != PM_NORMAL || pm->ps->stats[STAT_HEALTH] <= 0 || pm->ps->viewlocked ) {
+		return;
+	}
+
+	// far bigger than walking around the room: a teleport. Up a little (over steps and
+	// lips), across, then down onto the floor there.
+	if ( VectorLength( delta ) > 48.0f ) {
+		vec3_t up, across;
+
+		VectorCopy( pm->ps->origin, up );
+		up[2] += 40.0f;
+		pm->trace( &trace, pm->ps->origin, pm->mins, pm->maxs, up, pm->ps->clientNum, pm->tracemask );
+		if ( trace.allsolid ) {
+			return;
+		}
+		VectorCopy( trace.endpos, up );
+		VectorAdd( up, delta, across );
+		pm->trace( &trace, up, pm->mins, pm->maxs, across, pm->ps->clientNum, pm->tracemask );
+		if ( trace.allsolid || trace.fraction < 1.0f ) {
+			return;     // something in the way: stay put
+		}
+		VectorCopy( trace.endpos, across );
+		VectorCopy( across, end );
+		end[2] -= 120.0f;
+		pm->trace( &trace, across, pm->mins, pm->maxs, end, pm->ps->clientNum, pm->tracemask );
+		if ( trace.allsolid || trace.fraction == 1.0f ) {
+			return;     // nothing to stand on
+		}
+		VectorCopy( trace.endpos, pm->ps->origin );
+		VectorClear( pm->ps->velocity );
 		return;
 	}
 

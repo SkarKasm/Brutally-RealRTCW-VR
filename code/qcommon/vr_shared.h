@@ -160,6 +160,15 @@ typedef struct vrShared_s {
 	// written by the engine
 	//
 	int     akimboLeft;         // with dualWield: this shot is the off hand's gun
+	int     teleportAiming;     // the teleport stick is held: cgame shows the arc
+
+	//
+	// written by cgame
+	//
+	int     onLadder;           // hands on a ladder climb it (cl_vr.c)
+	int     teleportValid;      // where the arc lands is somewhere to stand
+	vec3_t  teleportDelta;      // from the player's origin to there (world, game units)
+	float   yawOffset;          // play space yaw -> world yaw
 } vrShared_t;
 
 #endif // __VR_SHARED_H__

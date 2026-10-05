@@ -366,6 +366,7 @@ is the same for both), then the eyepiece.
 ==============
 */
 void CG_VR_RenderScope( void ) {
+	CG_VR_Comfort();    // teleport arc, vignette (cg_vrcomfort.c)
 	if ( !CG_VR_EyePass() ) {
 		return;
 	}
