@@ -1144,7 +1144,19 @@ static void VR_SimPoses( void ) {
 	}
 
 	for ( h = 0; h < 2; h++ ) {
-		VR_QuatRotate( &yawQ, handOffset[h], out );
+		// vr_simHand "x y z": the weapon hand somewhere else (metres from the head: right, up,
+		// back), the other hand moves along so the gun keeps its aim
+		float offset[3] = { handOffset[h][0], handOffset[h][1], handOffset[h][2] };
+		Cvar_VariableStringBuffer( "vr_simHand", buf, sizeof( buf ) );
+		if ( buf[0] ) {
+			int dom = vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT, k;
+			float want[3] = { handOffset[dom][0], handOffset[dom][1], handOffset[dom][2] };
+			sscanf( buf, "%f %f %f", &want[0], &want[1], &want[2] );
+			for ( k = 0; k < 3; k++ ) {
+				offset[k] += want[k] - handOffset[dom][k];
+			}
+		}
+		VR_QuatRotate( &yawQ, offset, out );
 		xr.hands[h].grip.orientation = yawQ;
 		xr.hands[h].grip.position.x = xr.head.position.x + out[0];
 		xr.hands[h].grip.position.y = xr.head.position.y + out[1];
@@ -1372,6 +1384,7 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_drawHands", "1", CVAR_ARCHIVE );      // cg_vr.c
 	Cvar_Get( "vr_ragdolls", "1", CVAR_ARCHIVE );       // cg_ragdoll.c
 	Cvar_Get( "vr_fullBody", "1", CVAR_ARCHIVE );       // cg_vrbody.c
+	Cvar_Get( "vr_scopes", "1", CVAR_ARCHIVE );         // cg_vrscope.c
 
 	Com_Memset( &xr, 0, sizeof( xr ) );
 	Com_Memset( &com_vr, 0, sizeof( com_vr ) );
@@ -2283,6 +2296,7 @@ qboolean CL_VR_RenderFrame( void ) {
 		VR_EyeTangents( eye, tangents );
 		VR_EyeOffset( eye, eyeOffset );
 		re.VR_SetEye( eye, tangents, eyeOffset );
+		VectorCopy( eyeOffset, com_vr.eyeOffset );
 		com_vr.pass = VR_PASS_EYE;
 		com_vr.eye = eye;
 

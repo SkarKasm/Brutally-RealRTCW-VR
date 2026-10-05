@@ -2620,6 +2620,9 @@ shader_t *R_FindShader( const char *name, int lightmapIndex, qboolean mipRawImag
 		ri.Printf( PRINT_WARNING, "WARNING: shader '%s' has invalid lightmap index of %d\n", name, lightmapIndex  );
 		lightmapIndex = LIGHTMAP_BY_VERTEX;
 	}
+	if ( R_VR_ScopeShaderName( name ) ) {
+		lightmapIndex = LIGHTMAP_BY_VERTEX;     // RealRTCW-VR: opaque, exact vertex colours
+	}
 
 	COM_StripExtension( name, strippedName, sizeof( strippedName ) );
 
@@ -2698,6 +2701,10 @@ shader_t *R_FindShader( const char *name, int lightmapIndex, qboolean mipRawImag
 			shader.defaultShader = qtrue;
 			return FinishShader();
 		}
+	}
+
+	if ( R_VR_ScopeShaderName( name ) ) {
+		shader.cullType = CT_TWO_SIDED;     // RealRTCW-VR: the eyepiece, seen from either side
 	}
 
 	//

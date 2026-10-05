@@ -1021,6 +1021,11 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		return VM_Alloc( args[1] );
 	case CG_R_GETSKELETON:     // RealRTCW-VR
 		return re.GetSkeleton( VMA( 1 ), args[2], VMA( 3 ), VMA( 4 ), VMA( 5 ), VMA( 6 ) );
+	case CG_R_VR_BEGINSCOPE:
+		return re.VR_BeginScope();
+	case CG_R_VR_ENDSCOPE:
+		re.VR_EndScope();
+		return 0;
 
 	default:
 		Com_Error( ERR_DROP, "Bad cgame system trap: %ld", (long int) args[0] );

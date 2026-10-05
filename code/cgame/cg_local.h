@@ -2506,6 +2506,8 @@ void        trap_R_DrawStretchPicGradient( float x, float y, float w, float h,
 void        trap_R_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs );
 int         trap_R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagName, int startIndex );
 int         trap_R_GetSkeleton( const refEntity_t *refent, int maxBones, int *parents, int *flags, char *names, float *bones );
+int         trap_R_VR_BeginScope( void );
+void        trap_R_VR_EndScope( void );
 
 // cg_ragdoll.c (RealRTCW-VR)
 void        CG_Ragdoll_Init( void );
@@ -2517,6 +2519,13 @@ qboolean    CG_VR_FullBody( centity_t *cent );
 qboolean    CG_VR_BodyDrawn( void );
 void        CG_VR_BodyAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3] );
 void        CG_VR_BodyApply( centity_t *cent, refEntity_t *body );
+void        CG_VR_Geom( int weapon, vrWeaponGeom_t *g );
+
+// cg_vrscope.c (RealRTCW-VR)
+void        CG_VR_ScopeInit( void );
+void        CG_VR_ScopePiece( int weapon, int part, const refEntity_t *ent );
+void        CG_VR_RenderScope( void );
+qboolean    CG_VR_ScopeActive( void );
 #ifdef VR_NET_HANDS
 qboolean    CG_VR_RemoteBody( centity_t *cent );
 void        CG_VR_BodyApplyRemote( centity_t *cent, refEntity_t *body );

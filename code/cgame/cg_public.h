@@ -228,7 +228,9 @@ typedef enum {
 	// New in IORTCW
 	CG_ALLOC = 900,
 
-	CG_R_GETSKELETON = 950      // RealRTCW-VR ragdolls
+	CG_R_GETSKELETON = 950,     // RealRTCW-VR ragdolls
+	CG_R_VR_BEGINSCOPE,         // RealRTCW-VR see-through scopes
+	CG_R_VR_ENDSCOPE
 
 } cgameImport_t;
 

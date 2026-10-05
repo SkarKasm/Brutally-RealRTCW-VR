@@ -350,6 +350,9 @@ typedef struct {
 	vec3_t      charge;         // where to grab it
 	vec3_t      chargeDir;      // way it is pulled
 	float       travel;         // how far
+	int         lensPart;       // scope eyepiece on the gun (0) or its scope attachment (1), -1 none
+	vec3_t      lens;           // its centre in that model
+	float       lensRadius;
 } vrWeaponGeom_t;
 
 int  BG_VR_ReloadClass( int weapon );

@@ -2408,7 +2408,8 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	// don't draw weapon stuff when looking through a scope
 	if ( weaponNum == WP_SNOOPERSCOPE || weaponNum == WP_SNIPERRIFLE || weaponNum == WP_FG42SCOPE ||
 		 weapSelect == WP_SNOOPERSCOPE || weapSelect == WP_SNIPERRIFLE || weapSelect == WP_FG42SCOPE ) {
-		if ( isPlayer && !cg.renderingThirdPerson ) {
+		// RealRTCW-VR: the gun stays in the hand, its scope is looked through (cg_vrscope.c)
+		if ( isPlayer && !cg.renderingThirdPerson && !( ps && cgvr.active ) ) {
 			return;
 		}
 	}
@@ -2515,6 +2516,9 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	if ( drawpart && drawrealweap ) {
 		CG_AddWeaponWithPowerups( &gun, cent->currentState.powerups, ps, cent );
+		if ( ps && cgvr.active ) {
+			CG_VR_ScopePiece( weaponNum, 0, &gun );
+		}
 	}
 
 	if ( isPlayer ) {
@@ -2622,12 +2626,17 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	// add the scope model to the rifle if you've got it
 	if ( isPlayer && !cg.renderingThirdPerson ) {      // (SA) for now just do it on the first person weapons
-		if ( weaponNum == WP_MAUSER ) {
+		// RealRTCW-VR: in VR the scoped rifle is the same rifle, scope on
+		if ( weaponNum == WP_MAUSER || ( weaponNum == WP_SNIPERRIFLE && ps && cgvr.active ) ) {
 			if ( COM_BitCheck( cg.predictedPlayerState.weapons, WP_SNIPERRIFLE ) ) {
-				barrel.hModel = weapon->modModel[0];
+				CG_RegisterWeapon( WP_MAUSER );
+				barrel.hModel = cg_weapons[WP_MAUSER].modModel[0];
 				if ( barrel.hModel ) {
 					CG_PositionEntityOnTag( &barrel, &gun, "tag_scope", 0, NULL );
 					CG_AddWeaponWithPowerups( &barrel, cent->currentState.powerups, ps, cent );
+					if ( ps && cgvr.active ) {
+						CG_VR_ScopePiece( weaponNum, 1, &barrel );
+					}
 				}
 			}
 		}

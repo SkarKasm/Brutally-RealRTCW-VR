@@ -1486,6 +1486,15 @@ void     RE_VR_SetEye( int eye, const float *fovTangents, const vec3_t eyeOffset
 void     RE_VR_BeginPass( unsigned int targetFramebuffer, const float *clearColor );
 void     RE_VR_EndPasses( void );
 void     RE_VR_PresentMirror( unsigned int sourceFramebuffer, int sourceWidth, int sourceHeight );
+void     *R_VR_GLProc( const char *name );
+unsigned int R_VR_CurrentTarget( void );
+
+// tr_vrscope.c
+void     R_VR_CreateScopeImage( void );
+qboolean R_VR_ScopeShaderName( const char *name );
+void     R_VR_ScopeViewParms( viewParms_t *parms, int rdflags );
+int      RE_VR_BeginScope( void );
+void     RE_VR_EndScope( void );
 void	*GLimp_VR_GetProc( const char *name );
 
 void	GLimp_LogComment( char *comment );

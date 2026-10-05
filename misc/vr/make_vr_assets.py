@@ -98,7 +98,8 @@ def weapon_infos(paks):
             if paks.read(path):
                 parts.append((j, "tag_barrel" if j == 0 else "tag_barrel%d" % (j + 1), path))
         out[key] = {"hands": key + "_hand.md3", "model": key + ".md3", "parts": parts,
-                    "config": folder + "/weapon.cfg"}
+                    "config": folder + "/weapon.cfg",
+                    "scope": key + "_scope.md3" if paks.read(key + "_scope.md3") else None}
     return out
 
 
@@ -381,8 +382,10 @@ def main():
 
         def v(x):
             return "%.2f %.2f %.2f" % tuple(x)
-        grips.append("%s  %s %.1f %.1f  %d %s %s %s  %d %s %s %.1f" % (
-            key, v(palm), pitch, yaw, mag, v(mpt), v(mloc), v(mdir), chg, v(cpt), v(cdir), travel))
+        lens = V.scope_lens(paks, info)
+        lens = "  %d %s %.2f" % (lens[0], v(lens[1]), lens[2]) if lens else "  -1 0 0 0 0"
+        grips.append("%s  %s %.1f %.1f  %d %s %s %s  %d %s %s %.1f%s" % (
+            key, v(palm), pitch, yaw, mag, v(mpt), v(mloc), v(mdir), chg, v(cpt), v(cdir), travel, lens))
 
     # free hands: the Luger's grip hand, and its mirror image for the left
     luger = weapon_infos(paks)["models/weapons2/luger/v_luger"]

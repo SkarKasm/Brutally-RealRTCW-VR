@@ -374,6 +374,14 @@ int     trap_R_GetSkeleton( const refEntity_t *refent, int maxBones, int *parent
 	return syscall( CG_R_GETSKELETON, refent, maxBones, parents, flags, names, bones );
 }
 
+int     trap_R_VR_BeginScope( void ) {
+	return syscall( CG_R_VR_BEGINSCOPE );
+}
+
+void    trap_R_VR_EndScope( void ) {
+	syscall( CG_R_VR_ENDSCOPE );
+}
+
 int     trap_R_LerpTag( orientation_t *tag, const refEntity_t *refent, const char *tagName, int startIndex ) {
 	return syscall( CG_R_LERPTAG, tag, refent, tagName, startIndex );
 }

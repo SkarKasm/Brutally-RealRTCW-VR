@@ -91,6 +91,7 @@ static void BG_VR_LoadWeapons( void ) {
 	fileHandle_t f;
 	int len;
 	char *p, *line, *next;
+	int n;
 
 	vrWeaponsLoaded = qtrue;
 	numVRWeaponFiles = 0;
@@ -121,15 +122,20 @@ static void BG_VR_LoadWeapons( void ) {
 		}
 
 		memset( w, 0, sizeof( *w ) );
-		if ( sscanf( line, "%63s %f %f %f %f %f %d %f %f %f %f %f %f %f %f %f %d %f %f %f %f %f %f %f",
+		if ( ( n = sscanf( line, "%63s %f %f %f %f %f %d %f %f %f %f %f %f %f %f %f %d %f %f %f %f %f %f %f %d %f %f %f %f",
 					 name,
 					 &g->grip[0], &g->grip[1], &g->grip[2], &g->pitch, &g->yaw,
 					 &g->magPart, &g->mag[0], &g->mag[1], &g->mag[2],
 					 &g->magLocal[0], &g->magLocal[1], &g->magLocal[2],
 					 &g->magDir[0], &g->magDir[1], &g->magDir[2],
 					 &g->chargePart, &g->charge[0], &g->charge[1], &g->charge[2],
-					 &g->chargeDir[0], &g->chargeDir[1], &g->chargeDir[2], &g->travel ) < 6 ) {
+					 &g->chargeDir[0], &g->chargeDir[1], &g->chargeDir[2], &g->travel,
+					 &g->lensPart, &g->lens[0], &g->lens[1], &g->lens[2], &g->lensRadius ) ) < 6 ) {
 			continue;
+		}
+		if ( n < 29 ) {
+			g->lensPart = -1;       // made before scopes were measured
+			g->lensRadius = 0;
 		}
 		Q_strncpyz( w->weap, name, sizeof( w->weap ) );
 		g->valid = qtrue;
@@ -157,7 +163,7 @@ void BG_VR_WeaponGeom( int weapon, qboolean vanillaGuns, vrWeaponGeom_t *out ) {
 
 	memset( out, 0, sizeof( *out ) );
 	VectorSet( out->grip, 14, -6, -10 );
-	out->magPart = out->chargePart = -1;
+	out->magPart = out->chargePart = out->lensPart = -1;
 
 	// co-op's weapons are keyed by their first person model (world_model[1], no extension)
 	if ( item && item->world_model[1] && item->world_model[1][0] ) {

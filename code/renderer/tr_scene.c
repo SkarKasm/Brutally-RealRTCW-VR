@@ -536,6 +536,12 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 	R_RenderView( &parms );
 
+	// RealRTCW-VR: a scope view shares its scene with the eye view rendered after it
+	if ( fd->rdflags & RDF_VRSCOPE ) {
+		tr.frontEndMsec += ri.Milliseconds() - startTime;
+		return;
+	}
+
 	// the next scene rendered in this frame will tack on after this one
 	r_firstSceneDrawSurf = tr.refdef.numDrawSurfs;
 	r_firstSceneEntity = r_numentities;

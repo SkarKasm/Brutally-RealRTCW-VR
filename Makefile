@@ -1862,6 +1862,7 @@ Q3ROBJ = \
   $(B)/renderer/tr_surface.o \
   $(B)/renderer/tr_world.o \
   $(B)/renderer/tr_vr.o \
+  $(B)/renderer/tr_vrscope.o \
 
 ifeq ($(USE_BLOOM),1)
   Q3ROBJ += $(B)/renderer/tr_bloom.o 
@@ -2419,6 +2420,7 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_vr.o \
   $(B)/$(BASEGAME)/cgame/cg_ragdoll.o \
   $(B)/$(BASEGAME)/cgame/cg_vrbody.o \
+  $(B)/$(BASEGAME)/cgame/cg_vrscope.o \
   $(B)/$(BASEGAME)/cgame/bg_pmove.o \
   $(B)/$(BASEGAME)/cgame/bg_slidemove.o \
   $(B)/$(BASEGAME)/cgame/bg_lib.o \

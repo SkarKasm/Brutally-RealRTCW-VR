@@ -157,6 +157,20 @@ void RE_VR_PresentMirror( unsigned int sourceFramebuffer, int sourceWidth, int s
 
 /*
 ==============
+R_VR_GLProc / R_VR_CurrentTarget
+==============
+*/
+void *R_VR_GLProc( const char *name ) {
+	return GLimp_VR_GetProc( name );
+}
+
+// what the renderer draws into right now: the pass's swapchain image or the window
+unsigned int R_VR_CurrentTarget( void ) {
+	return vrRender.passActive ? vrRender.targetFbo : 0;
+}
+
+/*
+==============
 R_VR_SetupViewParms
 
 Called by RE_RenderScene for every scene. Headset world views get the current eye's
@@ -168,6 +182,7 @@ void R_VR_SetupViewParms( viewParms_t *parms, int rdflags ) {
 	const float *o = vrRender.eyeOffset;
 
 	parms->vrEye = qfalse;
+	R_VR_ScopeViewParms( parms, rdflags );
 
 	if ( vrRender.eye < 0 || !( rdflags & RDF_VRVIEW ) ) {
 		return;

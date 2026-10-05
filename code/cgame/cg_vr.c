@@ -76,6 +76,7 @@ void CG_VR_Init( void ) {
 	memset( &cgvr, 0, sizeof( cgvr ) );
 	CG_Ragdoll_Init();
 	CG_VR_BodyInit();
+	CG_VR_ScopeInit();
 
 	// Fine tuning on top of the measured grip, "forward left up pitch yaw roll" in model
 	// units/degrees. vr_gunOffset_<weapon number> applies to a single weapon.
@@ -94,7 +95,7 @@ void CG_VR_Init( void ) {
 }
 
 // the current weapon's measured geometry (see bg_vr.c)
-static void CG_VR_Geom( int weapon, vrWeaponGeom_t *g ) {
+void CG_VR_Geom( int weapon, vrWeaponGeom_t *g ) {
 	BG_VR_WeaponGeom( weapon, qfalse, g );
 }
 

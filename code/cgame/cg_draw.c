@@ -4217,6 +4217,7 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 		cg.refdef.rdflags &= ~RDF_DRAWSKYBOX;
 	}
 
+	CG_VR_RenderScope();    // RealRTCW-VR: the view through a scope, before the eye's
 	trap_R_RenderScene( &cg.refdef );
 
 	if ( CG_VR_EyePass() ) {
