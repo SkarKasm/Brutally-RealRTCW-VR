@@ -2733,6 +2733,17 @@ int         trap_R_GetSkeleton( const refEntity_t *refent, int maxBones, int *pa
 // cg_ragdoll.c (RealRTCW-VR)
 void        CG_Ragdoll_Init( void );
 void        CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body );
+
+// cg_vrbody.c (RealRTCW-VR)
+void        CG_VR_BodyInit( void );
+qboolean    CG_VR_FullBody( centity_t *cent );
+qboolean    CG_VR_BodyDrawn( void );
+void        CG_VR_BodyAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3] );
+void        CG_VR_BodyApply( centity_t *cent, refEntity_t *body );
+#ifdef VR_NET_HANDS
+qboolean    CG_VR_RemoteBody( centity_t *cent );
+void        CG_VR_BodyApplyRemote( centity_t *cent, refEntity_t *body );
+#endif
 void        CG_Ragdoll_DebugHead( centity_t *cent, const vec3_t headOrigin );
 void        trap_R_RemapShader( const char *oldShader, const char *newShader, const char *timeOffset );
 qboolean    trap_R_inPVS( const vec3_t p1, const vec3_t p2 );

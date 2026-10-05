@@ -182,6 +182,10 @@ Names the view weapon models use for the player's hands and sleeves
 (hqhand, hqarm, b3_lhand, w_hand, shotgun_sleeve, ...).
 ==============
 */
+qboolean R_VR_IsSleeveSurface( const char *name ) {
+	return ( Q_stristr( name, "arm" ) || Q_stristr( name, "sleeve" ) ) && !Q_stristr( name, "hand" );
+}
+
 qboolean R_VR_IsHandSurface( const char *name ) {
 	return Q_stristr( name, "hand" ) || Q_stristr( name, "arm" ) ||
 		   Q_stristr( name, "sleeve" ) || Q_stristr( name, "glove" );

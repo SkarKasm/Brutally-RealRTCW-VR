@@ -36,6 +36,8 @@ the Free Software Foundation, either version 3 of the License, or
 
 // refEntity renderfx: don't draw hand / arm / sleeve / glove surfaces (first person weapon in VR)
 #define RF_VR_NOHANDS   ( 1 << 12 )
+// refEntity renderfx: don't draw arm / sleeve surfaces, keep the hand (VR hands on a full body)
+#define RF_VR_NOSLEEVES ( 1 << 13 )
 
 typedef struct vrShared_s {
 	//
