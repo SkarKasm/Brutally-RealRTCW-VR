@@ -2056,6 +2056,7 @@ Q3ROBJ = \
   $(B)/renderer/tr_extensions.o \
   $(B)/renderer/tr_fbo.o \
   $(B)/renderer/tr_vr.o \
+  $(B)/renderer/tr_vrscope.o \
   $(B)/renderer/tr_flares.o \
   $(B)/renderer/tr_font.o \
   $(B)/renderer/tr_image.o \
@@ -2654,6 +2655,7 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_vr.o \
   $(B)/$(BASEGAME)/cgame/cg_ragdoll.o \
   $(B)/$(BASEGAME)/cgame/cg_vrbody.o \
+  $(B)/$(BASEGAME)/cgame/cg_vrscope.o \
   $(B)/$(BASEGAME)/cgame/cg_weapons.o \
   $(B)/$(BASEGAME)/ui/ui_shared.o \
   \

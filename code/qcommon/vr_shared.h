@@ -34,6 +34,10 @@ the Free Software Foundation, either version 3 of the License, or
 // projection and eye offsets from the renderer
 #define RDF_VRVIEW      ( 1 << 8 )
 
+// refdef flag: the view through a weapon's scope, rendered into the "*vrScope" texture
+// between trap_R_VR_BeginScope and trap_R_VR_EndScope (first person models are left out)
+#define RDF_VRSCOPE     ( 1 << 9 )
+
 // refEntity renderfx: don't draw hand / arm / sleeve / glove surfaces (first person weapon in VR)
 #define RF_VR_NOHANDS   ( 1 << 12 )
 // refEntity renderfx: don't draw arm / sleeve surfaces, keep the hand (VR hands on a full body)
@@ -102,6 +106,11 @@ typedef struct vrShared_s {
 	//
 	float   hapticAmplitude[2]; // 0..1, indexed by VR_HAND_*
 	int     hapticDuration[2];  // msec
+
+	//
+	// written by the engine for every VR_PASS_EYE
+	//
+	vec3_t  eyeOffset;          // this eye from the head centre (forward, left, up; game units)
 } vrShared_t;
 
 #endif // __VR_SHARED_H__

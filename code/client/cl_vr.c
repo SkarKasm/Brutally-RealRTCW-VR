@@ -1186,6 +1186,7 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_drawHands", "1", CVAR_ARCHIVE );      // cg_vr.c
 	Cvar_Get( "vr_ragdolls", "1", CVAR_ARCHIVE );       // cg_ragdoll.c
 	Cvar_Get( "vr_fullBody", "1", CVAR_ARCHIVE );       // cg_vrbody.c
+	Cvar_Get( "vr_scopes", "1", CVAR_ARCHIVE );         // cg_vrscope.c
 
 	Com_Memset( &xr, 0, sizeof( xr ) );
 	Com_Memset( &com_vr, 0, sizeof( com_vr ) );
@@ -2012,6 +2013,7 @@ qboolean CL_VR_RenderFrame( void ) {
 		VR_EyeTangents( eye, tangents );
 		VR_EyeOffset( eye, eyeOffset );
 		re.VR_SetEye( eye, tangents, eyeOffset );
+		VectorCopy( eyeOffset, com_vr.eyeOffset );
 		com_vr.pass = VR_PASS_EYE;
 		com_vr.eye = eye;
 

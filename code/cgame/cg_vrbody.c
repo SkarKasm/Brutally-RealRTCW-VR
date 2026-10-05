@@ -433,6 +433,7 @@ void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 	body->ragdollMagic = RAGDOLL_MAGIC;
 	body->renderfx &= ~RF_THIRD_PERSON;     // seen from the eyes
 	body->renderfx |= RF_VR_NOHANDS;        // the tracked hands are drawn instead
+	body->renderfx |= RF_FIRST_PERSON;      // only for the eyes: not in mirrors or scopes
 	vb.drawnTime = cg.time;
 }
 

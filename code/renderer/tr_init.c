@@ -1687,6 +1687,8 @@ refexport_t *GetRefAPI( int apiVersion, refimport_t *rimp ) {
 	re.VR_BeginPass = RE_VR_BeginPass;
 	re.VR_EndPasses = RE_VR_EndPasses;
 	re.VR_PresentMirror = RE_VR_PresentMirror;
+	re.VR_BeginScope = RE_VR_BeginScope;
+	re.VR_EndScope = RE_VR_EndScope;
 
 	// RF
 	re.ZombieFXAddNewHit = RB_ZombieFXAddNewHit;

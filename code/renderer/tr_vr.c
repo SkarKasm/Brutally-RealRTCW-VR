@@ -24,6 +24,12 @@ the Free Software Foundation, either version 3 of the License, or
 
 #include "tr_local.h"
 
+#ifdef USE_LOCAL_HEADERS
+#	include "SDL3/SDL.h"
+#else
+#	include <SDL3/SDL.h>
+#endif
+
 vrRenderState_t vrRender = { -1 };
 
 /*
@@ -141,6 +147,23 @@ void RE_VR_PresentMirror( unsigned int sourceFramebuffer, int sourceWidth, int s
 
 /*
 ==============
+R_VR_GLProc / R_VR_CurrentTarget
+==============
+*/
+void *R_VR_GLProc( const char *name ) {
+	return SDL_GL_GetProcAddress( name );
+}
+
+// what the renderer draws into right now: tr.mainFbo, or the pass's swapchain image
+unsigned int R_VR_CurrentTarget( void ) {
+	if ( fboEnabled ) {
+		return tr.mainFbo->frameBuffer;
+	}
+	return vrRender.targetFbo;
+}
+
+/*
+==============
 R_VR_SetupViewParms
 
 Called by RE_RenderScene for every scene. Headset world views get the current eye's
@@ -152,6 +175,7 @@ void R_VR_SetupViewParms( viewParms_t *parms, int rdflags ) {
 	const float *o = vrRender.eyeOffset;
 
 	parms->vrEye = qfalse;
+	R_VR_ScopeViewParms( parms, rdflags );
 
 	if ( vrRender.eye < 0 || !( rdflags & RDF_VRVIEW ) ) {
 		return;

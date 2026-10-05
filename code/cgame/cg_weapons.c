@@ -3136,7 +3136,8 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	// don't draw weapon stuff when looking through a scope
 	if ( weaponNum == WP_SNOOPERSCOPE || weaponNum == WP_SNIPERRIFLE || weaponNum == WP_FG42SCOPE || weaponNum == WP_DELISLESCOPE || weaponNum == WP_M1941SCOPE ||
 		 weapSelect == WP_SNOOPERSCOPE || weapSelect == WP_SNIPERRIFLE || weapSelect == WP_FG42SCOPE || weapSelect == WP_DELISLESCOPE || weapSelect == WP_M1941SCOPE ) {
-		if ( isPlayer && !cg.renderingThirdPerson ) {
+		// RealRTCW-VR: the gun stays in the hand, its scope is looked through (cg_vrscope.c)
+		if ( isPlayer && !cg.renderingThirdPerson && !( ps && cgvr.active ) ) {
 			return;
 		}
 	}
@@ -3281,6 +3282,9 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 			}
 		}
 		CG_AddWeaponWithPowerups(&gun, cent->currentState.powerups, ps, cent);
+		if ( ps && cgvr.active ) {
+			CG_VR_ScopePiece( weaponNum, 0, &gun );
+		}
 	}
 
 	if ( isPlayer && ps != NULL ) {
@@ -3413,24 +3417,30 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	// add the scope model to the rifle if you've got it
 	if ( isPlayer && !cg.renderingThirdPerson ) {      // (SA) for now just do it on the first person weapons
-		if ( weaponNum == WP_MAUSER ) {
+		if ( weaponNum == WP_MAUSER || ( weaponNum == WP_SNIPERRIFLE && ps && cgvr.active ) ) {     // RealRTCW-VR: scope on
 			if ( COM_BitCheck( cg.predictedPlayerState.weapons, WP_SNIPERRIFLE ) ) {
 				barrel.hModel = weapon->modModels[0];
 				if ( barrel.hModel ) {
 					CG_PositionEntityOnTag(&barrel, parent, "tag_scope", 0, NULL);
 					CG_AddWeaponWithPowerups( &barrel, cent->currentState.powerups, ps, cent );
+					if ( ps && cgvr.active ) {
+						CG_VR_ScopePiece( weaponNum, 1, &barrel );
+					}
 				}
 			}
 		}
 	}
 
 		if ( isPlayer && !cg.renderingThirdPerson ) {      // (SA) for now just do it on the first person weapons
-		if ( weaponNum == WP_DELISLE ) {
+		if ( weaponNum == WP_DELISLE || ( weaponNum == WP_DELISLESCOPE && ps && cgvr.active ) ) {     // RealRTCW-VR: scope on
 			if ( COM_BitCheck( cg.predictedPlayerState.weapons, WP_DELISLESCOPE ) ) {
 				barrel.hModel = weapon->modModels[0];
 				if ( barrel.hModel ) {
 					CG_PositionEntityOnTag(&barrel, parent, "tag_scope", 0, NULL);
 					CG_AddWeaponWithPowerups( &barrel, cent->currentState.powerups, ps, cent );
+					if ( ps && cgvr.active ) {
+						CG_VR_ScopePiece( weaponNum, 1, &barrel );
+					}
 				}
 			}
 		}
@@ -3438,12 +3448,15 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	
 		if ( isPlayer && !cg.renderingThirdPerson ) {      // (SA) for now just do it on the first person weapons
-		if ( weaponNum == WP_M1941) {
+		if ( weaponNum == WP_M1941 || ( weaponNum == WP_M1941SCOPE && ps && cgvr.active ) ) {     // RealRTCW-VR: scope on
 			if ( COM_BitCheck( cg.predictedPlayerState.weapons, WP_M1941SCOPE ) ) {
 				barrel.hModel = weapon->modModels[0];
 				if ( barrel.hModel ) {
 					CG_PositionEntityOnTag(&barrel, parent, "tag_scope", 0, NULL);
 					CG_AddWeaponWithPowerups( &barrel, cent->currentState.powerups, ps, cent );
+					if ( ps && cgvr.active ) {
+						CG_VR_ScopePiece( weaponNum, 1, &barrel );
+					}
 				}
 			}
 		}

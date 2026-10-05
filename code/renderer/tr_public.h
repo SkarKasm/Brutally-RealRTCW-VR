@@ -131,6 +131,9 @@ typedef struct {
 	void ( *VR_EndPasses )( void );
 	// copy a framebuffer to the window (scaled to fit) and swap
 	void ( *VR_PresentMirror )( unsigned int sourceFramebuffer, int sourceWidth, int sourceHeight );
+	// see-through scopes: render an RDF_VRSCOPE scene between these (size of the view, 0 = no)
+	int ( *VR_BeginScope )( void );
+	void ( *VR_EndScope )( void );
 } refexport_t;
 
 //

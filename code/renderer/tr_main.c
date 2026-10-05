@@ -1636,7 +1636,7 @@ void R_AddEntitySurfaces( void ) {
 		// we don't want the hacked weapon position showing in
 		// mirrors, because the true body position will already be drawn
 		//
-		if ( ( ent->e.renderfx & RF_FIRST_PERSON ) && tr.viewParms.isPortal ) {
+		if ( ( ent->e.renderfx & RF_FIRST_PERSON ) && ( tr.viewParms.isPortal || ( tr.refdef.rdflags & RDF_VRSCOPE ) ) ) {
 			continue;
 		}
 

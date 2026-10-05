@@ -1712,6 +1712,7 @@ void R_CreateBuiltinImages( void ) {
 
 	R_CreateDlightImage();
 	R_CreateFogImage();
+	R_VR_CreateScopeImage();     // RealRTCW-VR
 }
 
 
