@@ -2201,7 +2201,7 @@ void ClientCommand( int clientNum ) {
 		for ( i = 1; i < level.maxclients; i++ ) {
 			e = &g_entities[i];
 			if ( e->inuse && e->client && e->aiCharacter && ( aim ? e->health <= 0 : e->health > 0 ) &&
-				 e->r.linked && !( e->r.svFlags & SVF_NOCLIENT ) &&
+				 e->r.linked && !( e->r.svFlags & SVF_NOCLIENT ) && ( e->takedamage || e->health <= 0 ) && !( e->flags & FL_GODMODE ) &&
 				 ( d = Distance( e->r.currentOrigin, ent->r.currentOrigin ) ) < bestDist ) {
 				best = e;
 				bestDist = d;
