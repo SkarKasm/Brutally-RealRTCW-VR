@@ -2189,6 +2189,44 @@ void ClientCommand( int clientNum ) {
 		return;
 	}
 
+	// RealRTCW-VR test aids (cheats): the nearest enemy dead in front of the player, and
+	// looking at the nearest body
+	if ( ( Q_stricmp( cmd, "vrtestbody" ) == 0 || Q_stricmp( cmd, "vrtestaim" ) == 0 ) && CheatsOk( ent ) ) {
+		qboolean aim = Q_stricmp( cmd, "vrtestaim" ) == 0;
+		gentity_t *e, *best = NULL;
+		float d, bestDist = 1e9f;
+		vec3_t fwd, p, ang;
+		int i;
+
+		for ( i = 1; i < level.maxclients; i++ ) {
+			e = &g_entities[i];
+			if ( e->inuse && e->client && e->aiCharacter && ( aim ? e->health <= 0 : e->health > 0 ) &&
+				 e->r.linked && !( e->r.svFlags & SVF_NOCLIENT ) &&
+				 ( d = Distance( e->r.currentOrigin, ent->r.currentOrigin ) ) < bestDist ) {
+				best = e;
+				bestDist = d;
+			}
+		}
+		if ( best && aim ) {
+			VectorCopy( ent->client->ps.origin, p );
+			p[2] += ent->client->ps.viewheight;
+			VectorSubtract( best->r.currentOrigin, p, fwd );
+			fwd[2] += ( best->r.absmin[2] + best->r.absmax[2] ) * 0.5f - best->r.currentOrigin[2];
+			vectoangles( fwd, ang );
+			SetClientViewAngle( ent, ang );
+		} else if ( best ) {
+			AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
+			fwd[2] = 0;
+			VectorNormalize( fwd );
+			VectorMA( ent->r.currentOrigin, 56, fwd, p );
+			G_SetOrigin( best, p );
+			VectorCopy( p, best->client->ps.origin );
+			trap_LinkEntity( best );
+			G_Damage( best, ent, ent, NULL, NULL, 10000, DAMAGE_NO_PROTECTION, MOD_KNIFE_STEALTH );
+		}
+		return;
+	}
+
 	if ( Q_stricmp( cmd, "give" ) == 0 ) {
 		Cmd_Give_f( ent );
 	} else if ( Q_stricmp( cmd, "god" ) == 0 )  {

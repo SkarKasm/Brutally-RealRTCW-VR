@@ -25,6 +25,8 @@ the Free Software Foundation, either version 3 of the License, or
 cgVRState_t cgvr;
 
 static vmCvar_t vr_drawHands;
+static vmCvar_t vr_grabHint;        // something in reach of the off hand: 0 nothing, 1 a buzz, 2 and a hand sign
+static qboolean vrCanGrab;
 static vmCvar_t vr_reticle;
 static vmCvar_t vr_inspect;
 static vmCvar_t vr_emptySwitch;
@@ -83,6 +85,7 @@ void CG_VR_Init( void ) {
 	trap_Cvar_Register( &dummy, "vr_gunOffset", "0 0 0 0 0 0", CVAR_ARCHIVE );
 	trap_Cvar_Register( &dummy, "vr_laserPointerColor", "1 0.25 0.15", CVAR_ARCHIVE );
 	trap_Cvar_Register( &vr_drawHands, "vr_drawHands", "1", CVAR_ARCHIVE );
+	trap_Cvar_Register( &vr_grabHint, "vr_grabHint", "2", CVAR_ARCHIVE );
 	trap_Cvar_Register( &vr_reticle, "vr_reticle", "1", CVAR_ARCHIVE );
 	trap_Cvar_Register( &vr_inspect, "vr_inspect", "0", 0 );
 	trap_Cvar_Register( &vr_emptySwitch, "vr_emptySwitch", "0", CVAR_ARCHIVE );
@@ -157,6 +160,20 @@ void CG_VR_AddHands( void ) {
 		if ( CG_VR_BodyDrawn() ) {
 			ent.renderfx |= RF_VR_NOSLEEVES;    // the full body's arms lead up to the hands
 		}
+		trap_R_AddRefEntityToScene( &ent );
+	}
+
+	// and a hand sign over the off hand while it's on something it can take
+	h = !CG_VR_DominantHand();
+	if ( vrCanGrab && vr_grabHint.integer >= 2 && cgVR->handValid[h] ) {
+		memset( &ent, 0, sizeof( ent ) );
+		ent.reType = RT_SPRITE;
+		VectorCopy( cgvr.handOrigin[h], ent.origin );
+		ent.origin[2] += 4.0f;
+		ent.radius = 1.6f;
+		ent.customShader = cgs.media.hintShaders[HINT_ACTIVATE];
+		ent.shaderRGBA[0] = ent.shaderRGBA[1] = ent.shaderRGBA[2] = ent.shaderRGBA[3] = 255;
+		ent.renderfx = RF_FIRST_PERSON;
 		trap_R_AddRefEntityToScene( &ent );
 	}
 }
@@ -243,6 +260,13 @@ void CG_VR_BeginFrame( void ) {
 	}
 
 	CG_VR_ReloadSounds();
+
+	// the off hand just came onto something it can take: a light buzz
+	trap_Cvar_Update( &vr_grabHint );
+	if ( cgVR->canGrab && !vrCanGrab && vr_grabHint.integer >= 1 ) {
+		CG_VR_Haptic( !CG_VR_DominantHand(), 0.25f, 25 );
+	}
+	vrCanGrab = cgVR->canGrab != 0;
 
 	cgVR->cutscene = cg.cameraMode;
 	cgVR->twoHandAllowed = !CG_VR_OneHanded( cg.predictedPlayerState.weapon );

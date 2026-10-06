@@ -70,6 +70,9 @@ typedef struct {
 	int         grabbedPmType;
 	vec3_t      grabbedMins, grabbedMaxs;   // the body's own box, while it hangs from the hand
 
+	float       flatDist;           // without a headset: how far in front the body is held
+	qboolean    useWas, attackWas;
+
 	int         thrown;             // body flying after a throw, -1 none
 	vec3_t      thrownVel;
 	int         thrownTime;
@@ -78,6 +81,8 @@ typedef struct {
 static vrPlayer_t vrp;
 static vmCvar_t vr_manualReload;
 static vmCvar_t vr_aimSpread;
+static vmCvar_t g_flatGrab;         // without a headset: hold use on a body to pick it up
+static vmCvar_t g_vrGrabAssist;     // how far hands reach for things: 0 off, 1 normal, 2 strong
 
 static qboolean G_VR_IsPlayer( gentity_t *ent );
 static void G_VR_Init( void );
@@ -114,6 +119,8 @@ static void G_VR_Init( void ) {
 	if ( !vrCvarsRegistered ) {
 		trap_Cvar_Register( &vr_manualReload, "vr_manualReload", "1", CVAR_ARCHIVE );
 		trap_Cvar_Register( &vr_aimSpread, "vr_aimSpread", "0.25", CVAR_ARCHIVE );
+		trap_Cvar_Register( &g_flatGrab, "g_flatGrab", "1", CVAR_ARCHIVE );
+		trap_Cvar_Register( &g_vrGrabAssist, "g_vrGrabAssist", "1", CVAR_ARCHIVE );
 		vrCvarsRegistered = qtrue;
 	}
 	if ( vrp.initialised ) {
@@ -394,25 +401,45 @@ G_VR_FindBody
 A dead body whose box (plus a margin) the hand is in.
 =================
 */
+// grab assist (g_vrGrabAssist): the reach around things, and the nearest one is taken
+static float G_VR_AssistMargin( float base ) {
+	trap_Cvar_Update( &g_vrGrabAssist );
+	switch ( g_vrGrabAssist.integer ) {
+	case 0: return base;
+	case 2: return base * 2.4f + 6.0f;
+	default: return base * 1.6f + 2.0f;
+	}
+}
+
+// how far a point is outside a box (0 inside)
+static float G_VR_BoxDist( const vec3_t p, const vec3_t mins, const vec3_t maxs ) {
+	float d = 0, x;
+	int k;
+
+	for ( k = 0; k < 3; k++ ) {
+		x = p[k] < mins[k] ? mins[k] - p[k] : ( p[k] > maxs[k] ? p[k] - maxs[k] : 0 );
+		d += x * x;
+	}
+	return sqrt( d );
+}
+
 static gentity_t *G_VR_FindBody( const vec3_t hand ) {
-	gentity_t *e;
-	int i, k;
+	gentity_t *e, *best = NULL;
+	float margin = G_VR_AssistMargin( VR_GRAB_MARGIN ), d, bestDist = 1e9f;
+	int i;
 
 	for ( i = 1; i < level.maxclients; i++ ) {
 		e = &g_entities[i];
 		if ( !e->inuse || !e->client || e->health > 0 || !e->r.linked ) {
 			continue;
 		}
-		for ( k = 0; k < 3; k++ ) {
-			if ( hand[k] < e->r.absmin[k] - VR_GRAB_MARGIN || hand[k] > e->r.absmax[k] + VR_GRAB_MARGIN ) {
-				break;
-			}
-		}
-		if ( k == 3 ) {
-			return e;
+		d = G_VR_BoxDist( hand, e->r.absmin, e->r.absmax );
+		if ( d <= margin && d < bestDist ) {
+			best = e;
+			bestDist = d;
 		}
 	}
-	return NULL;
+	return best;
 }
 
 
@@ -590,24 +617,30 @@ or friendly is used the way the use button would, by what the hand is reaching f
 qboolean g_vrHandUse;           // Cmd_Activate_f traces g_vrHandFrom -> g_vrHandTo instead
 vec3_t g_vrHandFrom, g_vrHandTo;
 
-static qboolean G_VR_GrabItem( gentity_t *ent, const vec3_t hand ) {
-	gentity_t *e;
-	trace_t tr;
-	int i, k;
+static gentity_t *G_VR_FindItem( const vec3_t hand ) {
+	gentity_t *e, *best = NULL;
+	float margin = G_VR_AssistMargin( VR_ITEM_MARGIN ), d, bestDist = 1e9f;
+	int i;
 
 	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
 		e = &g_entities[i];
 		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item ) {
 			continue;
 		}
-		for ( k = 0; k < 3; k++ ) {
-			if ( hand[k] < e->r.absmin[k] - VR_ITEM_MARGIN || hand[k] > e->r.absmax[k] + VR_ITEM_MARGIN ) {
-				break;
-			}
+		d = G_VR_BoxDist( hand, e->r.absmin, e->r.absmax );
+		if ( d <= margin && d < bestDist ) {
+			best = e;
+			bestDist = d;
 		}
-		if ( k < 3 ) {
-			continue;
-		}
+	}
+	return best;
+}
+
+static qboolean G_VR_GrabItem( gentity_t *ent, const vec3_t hand ) {
+	gentity_t *e = G_VR_FindItem( hand );
+	trace_t tr;
+
+	if ( e ) {
 		memset( &tr, 0, sizeof( tr ) );
 		e->active = qtrue;      // as if the use button were pressed on it
 		Touch_Item( e, ent, &tr );
@@ -637,6 +670,176 @@ static void G_VR_HandUse( gentity_t *ent, const vec3_t hand ) {
 
 /*
 =================
+G_VR_FlatGrab
+
+Without a headset (g_flatGrab): hold use on a dead body to take hold of it where the
+crosshair is on it (its ragdoll hangs from that limb), it stays that far in front of the
+view while use is held, attack throws it, letting go drops it.
+=================
+*/
+#define VR_FLAT_REACH       80.0f
+
+// the dead body under the crosshair, and where on it
+static gentity_t *G_VR_FlatTarget( gentity_t *ent, vec3_t eye, vec3_t fwd, vec3_t at ) {
+	trace_t tr;
+	vec3_t end;
+	gentity_t *e;
+
+	VectorCopy( ent->client->ps.origin, eye );
+	eye[2] += ent->client->ps.viewheight;
+	AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
+	VectorMA( eye, VR_FLAT_REACH, fwd, end );
+	trap_Trace( &tr, eye, NULL, NULL, end, ent->s.number, MASK_SOLID | CONTENTS_CORPSE | CONTENTS_BODY );
+	if ( tr.entityNum > 0 && tr.entityNum < MAX_CLIENTS ) {
+		e = &g_entities[tr.entityNum];
+		if ( e->inuse && e->client && e->health <= 0 ) {
+			VectorCopy( tr.endpos, at );
+			return e;
+		}
+	}
+	// grab assist: a body close to where the crosshair stops
+	if ( g_vrGrabAssist.integer ) {
+		e = G_VR_FindBody( tr.endpos );
+		if ( e ) {
+			VectorCopy( tr.endpos, at );
+			return e;
+		}
+	}
+	return NULL;
+}
+
+static void G_VR_FlatGrab( gentity_t *ent ) {
+	usercmd_t *cmd = &ent->client->pers.cmd;
+	qboolean use = ( cmd->buttons & BUTTON_ACTIVATE ) != 0;
+	qboolean attack = ( cmd->buttons & BUTTON_ATTACK ) != 0;
+	qboolean usePressed = use && !vrp.useWas, attackPressed = attack && !vrp.attackWas;
+	vec3_t eye, fwd, at, hand;
+	int now = ent->client->ps.commandTime;
+	float dt = ( now - vrp.lastTime ) * 0.001f;
+
+	G_VR_Init();
+	trap_Cvar_Update( &g_flatGrab );
+	vrp.useWas = use;
+	vrp.attackWas = attack;
+
+	if ( vrp.grabbed >= 0 ) {
+		gentity_t *body = &g_entities[vrp.grabbed];
+
+		VectorCopy( ent->client->ps.origin, eye );
+		eye[2] += ent->client->ps.viewheight;
+		AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
+		VectorMA( eye, vrp.flatDist, fwd, hand );
+		if ( hand[2] > eye[2] - 8 ) {
+			hand[2] = eye[2] - 8;       // held in front, not over the head
+		}
+		if ( dt > 0.0f && dt < 0.2f ) {
+			vec3_t v;
+			VectorSubtract( hand, vrp.lastHand, v );
+			VectorScale( v, 1.0f / dt, v );
+			VectorScale( vrp.handVel, 0.5f, vrp.handVel );
+			VectorMA( vrp.handVel, 0.5f, v, vrp.handVel );
+		}
+		VectorCopy( hand, vrp.lastHand );
+		vrp.lastTime = now;
+
+		if ( !body->inuse || !body->client || body->health > 0 || ent->client->ps.stats[STAT_HEALTH] <= 0 || !g_flatGrab.integer ) {
+			if ( body->inuse ) {
+				VectorCopy( vrp.grabbedMins, body->r.mins );
+				VectorCopy( vrp.grabbedMaxs, body->r.maxs );
+				body->client->ps.pm_type = vrp.grabbedPmType;
+			}
+			body->s.dl_intensity = 0;
+			vrp.grabbed = -1;
+		} else if ( attackPressed ) {
+			// a throw, the way the view faces but never down into the floor
+			if ( fwd[2] < 0.15f ) {
+				fwd[2] = 0.15f;
+				VectorNormalize( fwd );
+			}
+			VectorScale( fwd, 420.0f, vrp.handVel );
+			vrp.handVel[2] += 140.0f;
+			G_VR_ReleaseBody( body, qtrue );
+			body->s.dl_intensity = 0;
+			vrp.grabbed = -1;
+		} else if ( !use ) {
+			G_VR_ReleaseBody( body, qfalse );
+			body->s.dl_intensity = 0;
+			vrp.grabbed = -1;
+		} else {
+			G_VR_PlaceBody( body, hand );
+			body->s.dl_intensity = ent->s.number + 1;
+			VectorCopy( hand, body->s.origin2 );
+		}
+	} else if ( usePressed && g_flatGrab.integer && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
+		gentity_t *body = G_VR_FlatTarget( ent, eye, fwd, at );
+
+		if ( body ) {
+			vrp.grabbed = body->s.number;
+			vrp.flatDist = Distance( eye, at );
+			vrp.flatDist = vrp.flatDist < 40 ? 40 : ( vrp.flatDist > 64 ? 64 : vrp.flatDist );
+			VectorClear( vrp.grabOffset );
+			VectorClear( vrp.handVel );
+			VectorCopy( at, vrp.lastHand );
+			vrp.lastTime = now;
+			VectorCopy( body->r.mins, vrp.grabbedMins );
+			VectorCopy( body->r.maxs, vrp.grabbedMaxs );
+			VectorCopy( vrCarryMins, body->r.mins );
+			VectorCopy( vrCarryMaxs, body->r.maxs );
+			vrp.grabbedPmType = body->client->ps.pm_type == PM_FREEZE ? PM_DEAD : body->client->ps.pm_type;
+			body->client->ps.pm_type = PM_FREEZE;
+			// first the point that was grabbed, so the ragdoll takes it by the right limb
+			body->s.dl_intensity = ent->s.number + 1;
+			VectorCopy( at, body->s.origin2 );
+			if ( vrp.thrown == body->s.number ) {
+				vrp.thrown = -1;
+			}
+		}
+	}
+	gVR->flatGrabbed = vrp.grabbed + 1;
+
+	if ( vrp.thrown >= 0 && dt > 0 && dt < 0.2f ) {
+		G_VR_FlyBody( dt );
+	}
+	if ( vrp.grabbed < 0 ) {
+		vrp.lastTime = now;
+	}
+}
+
+/*
+=================
+G_VR_GrabHint
+
+After the cursor hints: without a headset, the hand hint on a body that can be picked up;
+with one, gVR->canGrab while the off hand is on something it can take (the cgame buzzes
+and shows it, vr_grabHint).
+=================
+*/
+void G_VR_GrabHint( gentity_t *ent ) {
+	vec3_t eye, fwd, at, hand;
+
+	if ( !gVR || !ent->client || ent->aiCharacter || ent->s.number != 0 ) {
+		return;
+	}
+	gVR->canGrab = 0;
+	if ( ent->client->ps.stats[STAT_HEALTH] <= 0 ) {
+		return;
+	}
+	G_VR_Init();
+	if ( !G_VR_IsPlayer( ent ) ) {
+		if ( g_flatGrab.integer && vrp.grabbed < 0 && G_VR_FlatTarget( ent, eye, fwd, at ) ) {
+			ent->client->ps.serverCursorHint = HINT_ACTIVATE;
+			ent->client->ps.serverCursorHintVal = 0;
+		}
+		return;
+	}
+	if ( vrp.grabbed < 0 && !vrp.heldItem ) {
+		G_VR_HandWorld( ent, gVR->rightHanded ? VR_HAND_LEFT : VR_HAND_RIGHT, hand );
+		gVR->canGrab = G_VR_FindBody( hand ) || G_VR_FindItem( hand );
+	}
+}
+
+/*
+=================
 G_VR_PlayerThink
 
 After every pmove of the headset player.
@@ -649,9 +852,13 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 	float dt;
 
 	if ( !G_VR_IsPlayer( ent ) ) {
+		if ( gVR && ent->client && !ent->aiCharacter && ent->s.number == 0 ) {
+			G_VR_FlatGrab( ent );       // RealRTCW-VR: bodies picked up without a headset
+		}
 		return;
 	}
 	G_VR_Init();
+	gVR->flatGrabbed = 0;
 
 	dom = gVR->rightHanded ? VR_HAND_RIGHT : VR_HAND_LEFT;
 	off = !dom;

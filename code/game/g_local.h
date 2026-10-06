@@ -991,6 +991,7 @@ void G_VR_KnifeStab( gentity_t *ent );                      // RealRTCW-VR
 // g_vr.c
 void G_VR_UpdateWeaponState( gentity_t *ent );
 void G_VR_PlayerThink( gentity_t *ent );
+void G_VR_GrabHint( gentity_t *ent );
 void G_VR_OnFire( gentity_t *ent );
 void G_VR_Reset( void );
 float G_VR_SpreadScale( gentity_t *ent );

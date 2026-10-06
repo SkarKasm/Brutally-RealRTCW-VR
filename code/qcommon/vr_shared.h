@@ -100,6 +100,8 @@ typedef struct vrShared_s {
 	float   chargePull;         // 0..1, how far it is pulled
 	int     magDropCount;       // bumped whenever a magazine falls out (cgame drops one)
 	int     grabbedEntity;      // body held by the off hand, -1 none
+	int     flatGrabbed;        // without a headset: body held + 1 (attack throws it, so doesn't fire)
+	int     canGrab;            // the off hand is on something it can take (buzz / sign, vr_grabHint)
 
 	//
 	// controller buttons, written by the engine
