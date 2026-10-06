@@ -3663,7 +3663,13 @@ void ClientCommand( int clientNum ) {
 				G_SetOrigin( best, p );
 				VectorCopy( p, best->client->ps.origin );
 				trap_LinkEntity( best );
-				G_Damage( best, ent, ent, NULL, NULL, 10000, DAMAGE_NO_PROTECTION, MOD_KNIFE_STEALTH );
+				{
+					char arg[16];
+					trap_Argv( 1, arg, sizeof( arg ) );
+					if ( Q_stricmp( arg, "alive" ) ) {
+						G_Damage( best, ent, ent, NULL, NULL, 10000, DAMAGE_NO_PROTECTION, MOD_KNIFE_STEALTH );
+					}
+				}
 			}
 		}
 	} else if ( Q_stricmp( cmd, "vrtestaim" ) == 0 ) {

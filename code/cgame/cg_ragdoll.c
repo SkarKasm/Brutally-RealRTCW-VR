@@ -1253,7 +1253,13 @@ static void RD_ApplyPending( ragdoll_t *rd ) {
 			continue;
 		}
 		if ( pd->entityNum == rd->entityNum ) {
-			RD_PushPoints( rd, pd->point, pd->vel );
+			// the shot that killed: thrown by it (shot reactions)
+			vec3_t v;
+			VectorScale( pd->vel, CG_VRX_Knock( qtrue ), v );
+			if ( CG_VRX_Knock( qtrue ) > 1.0f ) {
+				v[2] += 30.0f * CG_VRX_Knock( qtrue );
+			}
+			RD_PushPoints( rd, pd->point, v );
 			pd->time = 0;
 		} else if ( pd->entityNum < 0 ) {
 			RD_Blast( rd, pd->point, pd->radius, pd->strength );
@@ -1281,9 +1287,11 @@ void CG_Ragdoll_Hit( int entityNum, const vec3_t point, const vec3_t dir, float 
 
 	rd = RD_Find( entityNum );
 	if ( rd ) {
+		VectorScale( vel, CG_VRX_Knock( qfalse ), vel );    // shot reactions: bodies knocked harder
 		RD_PushPoints( rd, point, vel );
 		return;
 	}
+	CG_VRX_Flinch( entityNum, point, dir );     // someone alive flinches
 	pd = RD_PendingSlot();
 	pd->time = cg.time;
 	pd->entityNum = entityNum;

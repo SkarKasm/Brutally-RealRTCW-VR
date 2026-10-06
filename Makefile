@@ -2424,6 +2424,7 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_vrrecoil.o \
   $(B)/$(BASEGAME)/cgame/cg_vrwrist.o \
   $(B)/$(BASEGAME)/cgame/cg_vrcomfort.o \
+  $(B)/$(BASEGAME)/cgame/cg_vrextras.o \
   $(B)/$(BASEGAME)/cgame/cg_weaponwheel.o \
   $(B)/$(BASEGAME)/cgame/bg_pmove.o \
   $(B)/$(BASEGAME)/cgame/bg_slidemove.o \
@@ -2502,6 +2503,7 @@ Q3GOBJ_ = \
   $(B)/$(BASEGAME)/game/bg_misc.o \
   $(B)/$(BASEGAME)/game/bg_vr.o \
   $(B)/$(BASEGAME)/game/g_vr.o \
+  $(B)/$(BASEGAME)/game/g_vrextras.o \
   $(B)/$(BASEGAME)/game/bg_pmove.o \
   $(B)/$(BASEGAME)/game/bg_slidemove.o \
   $(B)/$(BASEGAME)/game/bg_lib.o \
