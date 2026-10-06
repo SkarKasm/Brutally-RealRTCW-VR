@@ -427,6 +427,11 @@ CL_MouseEvent
 */
 void CL_MouseEvent( int dx, int dy, int time ) {
 	CL_VR_MouseMoved( dx, dy );     // RealRTCW-VR: keep the laser pointer's cursor in step
+	// RealRTCW-VR: the weapon wheel is open: the mouse picks on it, the view stays put
+	if ( Cvar_VariableIntegerValue( "cg_weaponWheelActive" ) && !Key_GetCatcher() && cgvm ) {
+		VM_Call( cgvm, CG_MOUSE_EVENT, dx, dy );
+		return;
+	}
 	if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
 		// NERVE - SMF - if we just want to pass it along to game
 		if ( cl_bypassMouseInput->integer == 1 ) {

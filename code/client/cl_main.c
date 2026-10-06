@@ -3993,6 +3993,40 @@ static void CL_GenerateQKey(void)
 }
 
 /*
+==================
+CL_RealRTCWControls_f
+
+RealRTCW's own default keys (realrtcwdefault.cfg), minus single player's saving and
+loading. Applied once on the first run (cl_realrtcwControls), again with "realrtcwcontrols".
+==================
+*/
+static const char *realrtcwBinds[][2] = {
+	{ "1", "weaponbank 1" }, { "2", "weaponbank 2" }, { "3", "weaponbank 3" }, { "4", "weaponbank 4" },
+	{ "5", "weaponbank 5" }, { "6", "weaponbank 6" }, { "7", "weaponbank 7" }, { "8", "weaponbank 8" },
+	{ "9", "weaponbank 9" }, { "0", "weaponbank 10" },
+	{ "]", "weapprev" }, { "[", "weapnext" }, { "ENTER", "+activate" }, { "CTRL", "+attack" },
+	{ "ALT", "+strafe" }, { "SHIFT", "+sprint" }, { "CAPSLOCK", "+speed" }, { "-", "zoomout" },
+	{ "=", "zoomin" }, { "F1", "itemprev" }, { "F2", "itemnext" }, { "F3", "+useitem" },
+	{ "SPACE", "+moveup" }, { "a", "+moveleft" }, { "b", "+zoom" }, { "c", "+movedown" },
+	{ "d", "+moveright" }, { "e", "+leanright" }, { "f", "+activate" }, { "TAB", "+weaponwheel" },
+	{ "q", "+leanleft" }, { "r", "+reload" }, { "s", "+back" }, { "w", "+forward" }, { "v", "+kick" },
+	{ "z", "weapalt" }, { "g", "+quickgren" }, { "n", "notebook" },
+	{ "MOUSE1", "+attack" }, { "MOUSE2", "weapalt" }, { "MOUSE3", "+attack2" },
+	{ "MWHEELUP", "weapprev" }, { "MWHEELDOWN", "weapnext" }, { "F4", "+scores" }, { "F11", "screenshot" },
+	{ "UPARROW", "+forward" }, { "DOWNARROW", "+back" }, { "LEFTARROW", "+left" }, { "RIGHTARROW", "+right" },
+};
+
+static void CL_RealRTCWControls_f( void ) {
+	int i;
+
+	for ( i = 0; i < (int)ARRAY_LEN( realrtcwBinds ); i++ ) {
+		Cbuf_AddText( va( "bind \"%s\" \"%s\"\n", realrtcwBinds[i][0], realrtcwBinds[i][1] ) );
+	}
+	Cvar_Set( "cl_realrtcwControls", "1" );
+	Com_Printf( "RealRTCW's controls bound\n" );
+}
+
+/*
 ====================
 CL_Init
 ====================
@@ -4299,6 +4333,12 @@ void CL_Init( void ) {
 	CL_VR_Init();
 	Cmd_AddCommand( "vr_recenter", CL_VR_Recenter_f );
 	Cmd_AddCommand( "vr_key", CL_VR_Key_f );
+	Cmd_AddCommand( "realrtcwcontrols", CL_RealRTCWControls_f );
+	Cvar_Get( "cg_weaponWheelActive", "0", CVAR_ROM );
+	if ( !Cvar_VariableIntegerValue( "cl_realrtcwControls" ) ) {
+		Cvar_Get( "cl_realrtcwControls", "0", CVAR_ARCHIVE );
+		CL_RealRTCWControls_f();    // RealRTCW-VR: the remaster's keys on the first run
+	}
 	Cmd_AddCommand( "vr_cursor", CL_VR_Cursor_f );
 
 	CL_InitRef();

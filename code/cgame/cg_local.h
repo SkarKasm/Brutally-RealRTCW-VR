@@ -742,7 +742,15 @@ typedef struct {
 
 #define MAX_PREDICTED_EVENTS    16
 
+// RealRTCW-VR: the weapon wheel (cg_weaponwheel.c)
 typedef struct {
+	qboolean active;
+	int hoveredWeapon;
+	int openTime;
+} weaponWheel_t;
+
+typedef struct {
+	weaponWheel_t weaponWheel;      // RealRTCW-VR
 	int clientFrame;                // incremented each frame
 
 	int clientNum;
@@ -2543,6 +2551,13 @@ void        CG_VR_WristHUD( void );
 
 // cg_vrcomfort.c (RealRTCW-VR)
 void        CG_VR_ComfortInit( void );
+
+// cg_weaponwheel.c (RealRTCW-VR)
+int         CG_CollectWeaponWheelWeapons( int *visible, int maxWeapons );
+void        CG_WeaponWheelDown_f( void );
+void        CG_WeaponWheelUp_f( void );
+qboolean    CG_WeaponWheelMouse( int x, int y );
+void        CG_DrawWeaponWheel( void );
 void        CG_VR_Comfort( void );
 void        CG_VR_PingReceived( int client, const vec3_t pos );
 int         CG_VR_DualSingle( int weapon );

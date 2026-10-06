@@ -4003,6 +4003,8 @@ static void CG_Draw2D(stereoFrame_t stereoFrame) {
 		CG_DrawWarmup();
 	}
 
+	CG_DrawWeaponWheel();   // RealRTCW-VR
+
 	// don't draw center string if scoreboard is up
 	if ( !CG_DrawScoreboard() ) {
 		CG_DrawNotify();
