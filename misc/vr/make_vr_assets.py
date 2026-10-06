@@ -217,7 +217,7 @@ HOST_RULES = (
     ("g_limbotime", "Respawn delay:", (("1 sec", 1000), ("3 sec", 3000), ("5 sec", 5000),
                                        ("10 sec", 10000), ("20 sec", 20000), ("30 sec", 30000))),
     ("g_spawnInvul", "Spawn protection:", (("Off", 0), ("3 sec", 3), ("5 sec", 5), ("10 sec", 10))),
-    ("g_throwKnives", "Throwing knives:", (("Off", 0), ("On", 1))),
+    ("g_throwKnives", "Throwing knives:", (("Off", 0), ("5", 5), ("10", 10), ("Unlimited", -1))),
     ("g_shove", "Shove teammates:", (("Off", 0), ("On", 1))),
 )
 

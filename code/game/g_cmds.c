@@ -3393,13 +3393,16 @@ void Touch_Knife( gentity_t *ent, gentity_t *other, trace_t *trace ) {
 	if ( other->health < 1 ) {
 		return;
 	}
+	// RealRTCW-VR: not caught straight back by the thrower
+	if ( other == ent->parent && level.time < ent->timestamp + 1000 ) {
+		return;
+	}
 
 	if ( VectorLength( ent->s.pos.trDelta ) != 0 ) {
 		if ( ( g_friendlyFire.integer ) || ( !OnSameTeam( other, ent->parent ) ) ) {
 			int i;
 			int sound;
-			int damage = 20;
-			damage -= rand() % 10;
+			int damage = 50;     // RealRTCW-VR: the remaster's thrown knife
 
 			if ( damage <= 0 ) {
 				damage = 1;
@@ -3459,7 +3462,7 @@ void Cmd_ThrowKnives( gentity_t *ent ) {
 	gentity_t *ent2;
 	gitem_t *item = BG_FindItemForWeapon( WP_KNIFE );
 
-	if ( g_throwKnives.integer == 0 ) {
+	if ( g_throwKnives.integer == 0 || ent->client->ps.stats[STAT_HEALTH] <= 0 ) {
 		return;
 	}
 
@@ -3467,29 +3470,43 @@ void Cmd_ThrowKnives( gentity_t *ent ) {
 		return;
 	}
 
-	// If out of knifes
-	if ( ent->client->ps.ammo[BG_FindAmmoForWeapon( WP_KNIFE )] <= 0 ) {
+	// If out of knifes (-1: unlimited)
+	if ( g_throwKnives.integer > 0 && ent->client->ps.ammo[BG_FindAmmoForWeapon( WP_KNIFE )] <= 0 ) {
 		return;
 	}
 
 	AngleVectors( ent->client->ps.viewangles, velocity, NULL, NULL );
-	VectorScale( velocity, 64, offset );
-	offset[2] += ent->client->ps.viewheight / 2;
-	VectorScale( velocity, 800, velocity );
-	velocity[2] += 50 + random() * 35;
-	VectorAdd( ent->client->ps.origin, offset, org );
 	VectorSet( mins, -ITEM_RADIUS, -ITEM_RADIUS, 0 );
 	VectorSet( maxs, ITEM_RADIUS, ITEM_RADIUS, 2 * ITEM_RADIUS );
-	trap_Trace( &tr, ent->client->ps.origin, mins, maxs, org, ent->s.number, MASK_SOLID );
+	if ( G_VR_WeaponOrigin( ent, org ) ) {
+		// RealRTCW-VR: thrown from the hand, the way it points
+		VectorCopy( ent->client->ps.origin, offset );
+		offset[2] += ent->client->ps.viewheight * 0.5f;
+		trap_Trace( &tr, offset, mins, maxs, org, ent->s.number, MASK_SOLID );
+	} else {
+		VectorScale( velocity, 64, offset );
+		offset[2] += ent->client->ps.viewheight / 2;
+		VectorAdd( ent->client->ps.origin, offset, org );
+		trap_Trace( &tr, ent->client->ps.origin, mins, maxs, org, ent->s.number, MASK_SOLID );
+	}
+	VectorScale( velocity, 800, velocity );
+	velocity[2] += 50 + random() * 35;
 	VectorCopy( tr.endpos, org );
 
-	G_Sound( ent, G_SoundIndex( "sound/weapons/knife/knife_slash1.wav" ) );
+	// RealRTCW-VR: the remaster's throw sound when it's installed
+	G_Sound( ent, G_SoundIndex( "sound/weapons/knife/knife_throw.wav" ) );
 	ent2 = LaunchItem( item, org, velocity, ent->client->ps.clientNum );
 	VectorCopy( ent->client->ps.viewangles, angles );
 	angles[1] += 90;
 	G_SetAngle( ent2, angles );
 	ent2->touch = Touch_Knife;
 	ent2->parent = ent;
+	ent2->timestamp = level.time;
+	// the knife's swing, and a moment before the next attack
+	ent->client->ps.weapAnim = ( ( ent->client->ps.weapAnim & ANIM_TOGGLEBIT ) ^ ANIM_TOGGLEBIT ) | WEAP_ATTACK1;
+	if ( ent->client->ps.weaponTime < 400 ) {
+		ent->client->ps.weaponTime = 400;
+	}
 
 	if ( g_throwKnives.integer > 0 ) {
 		ent->client->ps.ammo[BG_FindAmmoForWeapon( WP_KNIFE )]--;
@@ -3527,6 +3544,14 @@ void ClientCommand( int clientNum ) {
 		return;
 	}
 	// done.
+
+	// RealRTCW-VR: RealRTCW's knife throw (alt fire with the knife out)
+	if ( Q_stricmp( cmd, "throwknife" ) == 0 ) {
+		if ( ent->client->ps.weapon == WP_KNIFE ) {
+			Cmd_ThrowKnives( ent );
+		}
+		return;
+	}
 
 	// RF, client damage commands
 	if ( Q_stricmp( cmd, "cld" ) == 0 ) {

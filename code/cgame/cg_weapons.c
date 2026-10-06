@@ -3750,6 +3750,7 @@ CG_FinishWeaponChange
 ==============
 */
 void CG_FinishWeaponChange( int lastweap, int newweap ) {
+	CG_ResetSimpleZoom();       // RealRTCW-VR
 	int newbank;
 
 	cg.weaponSelectTime = cg.time;  // flash the weapon icon
@@ -3794,6 +3795,70 @@ void CG_FinishWeaponChange( int lastweap, int newweap ) {
 
 /*
 ==============
+RealRTCW's simple zoom (RealRTCW-VR port)
+
+Right click on a weapon with no alternate mode: a quick zoom to cg_simpleZoomFov, no scope.
+Not with a headset (the view is the player's own head), not on the knife or explosives.
+==============
+*/
+static qboolean CG_WeaponSupportsSimpleZoom( int weap ) {
+	switch ( weap ) {
+	case WP_SNIPERRIFLE:
+	case WP_SNOOPERSCOPE:
+	case WP_FG42SCOPE:
+	case WP_GRENADE_LAUNCHER:
+	case WP_GRENADE_PINEAPPLE:
+	case WP_DYNAMITE:
+	case WP_KNIFE:
+	case WP_NONE:
+		return qfalse;
+	default:
+		break;
+	}
+	if ( cg.snap->ps.eFlags & EF_MG42_ACTIVE ) {
+		return qfalse;
+	}
+	return qtrue;
+}
+
+void CG_ResetSimpleZoom( void ) {
+	if ( cg.simpleZoomed ) {
+		cg.simpleZoomed = qfalse;
+		cg.simpleZoomTime = cg.time;
+	}
+}
+
+float CG_ApplySimpleZoomFov( float fov_x ) {
+	float target, f;
+	int t, dt;
+
+	if ( cg_simpleZoomFov.value <= 0 || cg.zoomedBinoc || cg.zoomval ||
+		 ( cg.predictedPlayerState.eFlags & EF_DEAD ) || cg.snap->ps.persistant[PERS_HWEAPON_USE] ) {
+		return fov_x;
+	}
+	if ( !cg.simpleZoomed && cg.time - cg.simpleZoomTime >= cg_simpleZoomTimeMs.integer ) {
+		return fov_x;
+	}
+	target = cg_simpleZoomFov.value;
+	if ( target < 1 ) {
+		target = 1;
+	} else if ( target > 160 ) {
+		target = 160;
+	}
+	t = cg_simpleZoomTimeMs.integer;
+	dt = cg.time - cg.simpleZoomTime;
+	if ( t <= 0 ) {
+		return cg.simpleZoomed ? target : fov_x;
+	}
+	f = dt < 0 ? 0 : (float)dt / (float)t;
+	if ( f > 1 ) {
+		f = 1;
+	}
+	return cg.simpleZoomed ? fov_x + f * ( target - fov_x ) : target + f * ( fov_x - target );
+}
+
+/*
+==============
 CG_AltfireWeapon_f
 	for example, switching between WP_MAUSER and WP_SNIPERRIFLE
 ==============
@@ -3823,7 +3888,24 @@ void CG_AltWeapon_f( void ) {
 
 	original = cg.weaponSelect;
 
+	// RealRTCW-VR: RealRTCW's alt fire: the knife is thrown
+	if ( original == WP_KNIFE && cg.snap->ps.stats[STAT_HEALTH] > 0 ) {
+		trap_SendClientCommand( "throwknife" );
+		return;
+	}
+
 	num = getAltWeapon( original );
+
+	// RealRTCW-VR: no alternate mode: RealRTCW's right-click zoom instead (not in a headset)
+	if ( ( num == WP_NONE || num == original || !CG_WeaponSelectable( num ) ) && !cgvr.active &&
+		 CG_WeaponSupportsSimpleZoom( original ) ) {
+		if ( cg.snap->ps.weaponstate == WEAPON_RAISING || cg.snap->ps.weaponstate == WEAPON_DROPPING ) {
+			return;
+		}
+		cg.simpleZoomed = !cg.simpleZoomed;
+		cg.simpleZoomTime = cg.time;
+		return;
+	}
 
 	if ( CG_WeaponSelectable( num ) ) {   // new weapon is valid
 

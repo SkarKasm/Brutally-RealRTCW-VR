@@ -900,6 +900,32 @@ void ClientThink_real( gentity_t *ent ) {
 		}
 	}
 
+	// RealRTCW-VR: RealRTCW's quick grenade: one thrown without switching weapons (G)
+	if ( ( ucmd->wbuttons & WBUTTON_QUICKGREN ) && level.time >= client->vrQuickGrenTime &&
+		 client->ps.stats[STAT_HEALTH] > 0 && !( ent->r.svFlags & SVF_CASTAI ) &&
+		 !client->ps.persistant[PERS_HWEAPON_USE] && !( client->ps.eFlags & EF_ZOOMING ) && client->ps.leanf == 0 &&
+		 client->ps.weapon != WP_GRENADE_LAUNCHER && client->ps.weapon != WP_GRENADE_PINEAPPLE &&
+		 client->ps.weapon != WP_SNIPERRIFLE && client->ps.weapon != WP_SNOOPERSCOPE && client->ps.weapon != WP_FG42SCOPE ) {
+		int gren = 0;
+
+		client->vrQuickGrenTime = level.time + 2500;
+		if ( client->ps.ammoclip[BG_FindClipForWeapon( WP_GRENADE_LAUNCHER )] > 0 ) {
+			gren = WP_GRENADE_LAUNCHER;
+		} else if ( client->ps.ammoclip[BG_FindClipForWeapon( WP_GRENADE_PINEAPPLE )] > 0 ) {
+			gren = WP_GRENADE_PINEAPPLE;
+		}
+		if ( gren ) {
+			client->ps.ammoclip[BG_FindClipForWeapon( gren )]--;
+			client->ps.grenadeTimeLeft = 0;     // a fresh fuse
+			CalcMuzzlePoints( ent, gren );
+			weapon_grenadelauncher_fire( ent, gren );
+			G_AddEvent( ent, EV_GENERAL_SOUND, G_SoundIndex( "sound/weapons/grenade/grenlf1a.wav" ) );
+		} else {
+			client->vrQuickGrenTime = level.time + 500;
+			trap_SendServerCommand( ent - g_entities, "cp \"No grenades\"" );
+		}
+	}
+
 	// JPW drop button drops secondary weapon so new one can be picked up
 	// TTimo explicit braces to avoid ambiguous 'else'
 	if ( g_gametype.integer <= GT_COOP ) {

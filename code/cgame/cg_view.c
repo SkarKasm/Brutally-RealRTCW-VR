@@ -910,6 +910,9 @@ static int CG_CalcFov( void ) {
 		fov_x = 55;
 	}
 
+	// RealRTCW-VR: RealRTCW's right-click zoom
+	fov_x = CG_ApplySimpleZoomFov( fov_x );
+
 	if ( cg_fixedAspect.integer ) {
 		// Based on LordHavoc's code for Darkplaces
 		// http://www.quakeworld.nu/forum/topic/53/what-does-your-qw-look-like/page/30
@@ -960,6 +963,8 @@ static int CG_CalcFov( void ) {
 				cg.zoomSensitivity = 0.6 * ( cg.zoomval / 90.f );   // NERVE - SMF - changed to get less sensitive as you zoom in
 			}
 //				cg.zoomSensitivity = 0.1;
+		} else if ( cg.simpleZoomed ) {
+			cg.zoomSensitivity = cg.refdef.fov_x / ( cg_fov.value > 1 ? cg_fov.value : 90 );     // RealRTCW-VR
 		} else {
 			cg.zoomSensitivity = 1;
 		}

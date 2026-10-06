@@ -328,7 +328,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_shove, "g_shove", "0", CVAR_ARCHIVE, 0, qtrue},
 	{ &g_vrTraining, "g_vrTraining", "0", CVAR_ARCHIVE | CVAR_SERVERINFO, 0, qtrue},
 	{ &g_shoveAmount, "g_shoveAmount", "0.8", CVAR_ARCHIVE, 0, qtrue}, // Don't give to much...
-	{ &g_throwKnives, "g_throwKnives", "0", CVAR_ARCHIVE, 0, qtrue },
+	{ &g_throwKnives, "g_throwKnives", "5", CVAR_ARCHIVE, 0, qtrue },     // RealRTCW-VR: on, as in the remaster
 
 	{ &g_showMOTD, "g_showMOTD", "0",CVAR_ARCHIVE, 0, qfalse },
 	{ &g_motd1, "g_motd1", "", 0, 0, qfalse},

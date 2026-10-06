@@ -829,6 +829,8 @@ typedef struct {
 	// zoom key
 	qboolean zoomed;
 	qboolean zoomedBinoc;
+	qboolean simpleZoomed;          // RealRTCW-VR: RealRTCW's right-click zoom
+	int simpleZoomTime;
 	int zoomedScope;            //----(SA)	changed to int
 	int zoomTime;
 	float zoomSensitivity;
@@ -1814,6 +1816,8 @@ extern vmCvar_t cg_zoomStepBinoc;
 extern vmCvar_t cg_zoomStepSniper;
 extern vmCvar_t cg_zoomStepSnooper;
 extern vmCvar_t cg_zoomStepFG;
+extern vmCvar_t cg_simpleZoomFov;
+extern vmCvar_t cg_simpleZoomTimeMs;
 extern vmCvar_t cg_reticles;
 extern vmCvar_t cg_reticleBrightness;
 extern vmCvar_t cg_thirdPersonRange;
@@ -2128,6 +2132,8 @@ void CG_LastWeaponUsed_f( void );     //----(SA)	added
 void CG_NextWeaponInBank_f( void );   //----(SA)	added
 void CG_PrevWeaponInBank_f( void );   //----(SA)	added
 void CG_AltWeapon_f( void );
+void CG_ResetSimpleZoom( void );
+float CG_ApplySimpleZoomFov( float fov_x );
 void CG_NextWeapon_f( void );
 void CG_PrevWeapon_f( void );
 void CG_Weapon_f( void );

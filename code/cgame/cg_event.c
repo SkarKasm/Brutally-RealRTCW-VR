@@ -2032,6 +2032,9 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		break;
 	case EV_FILL_CLIP:
 		DEBUGNAME( "EV_FILL_CLIP" );
+		if ( es->number == cg.snap->ps.clientNum ) {
+			CG_ResetSimpleZoom();       // RealRTCW-VR: reloading zooms back out
+		}
 		if ( cg_weapons[es->weapon].reloadSound ) {
 			trap_S_StartSound( NULL, es->number, CHAN_WEAPON, cg_weapons[es->weapon].reloadSound ); // JPW NERVE following sherman's SP fix, should allow killing reload sound when player dies
 		}
@@ -2052,6 +2055,9 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		int newweap = 0;
 
 		DEBUGNAME( "EV_CHANGE_WEAPON" );
+		if ( es->number == cg.snap->ps.clientNum ) {
+			CG_ResetSimpleZoom();
+		}
 
 		// client will get this message if reloading while using an alternate weapon
 		// client should voluntarily switch back to primary at that point

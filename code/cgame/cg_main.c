@@ -190,6 +190,8 @@ vmCvar_t cg_zoomStepBinoc;
 vmCvar_t cg_zoomStepSniper;
 vmCvar_t cg_zoomStepSnooper;
 vmCvar_t cg_zoomStepFG;         //----(SA)	added
+vmCvar_t cg_simpleZoomFov;      // RealRTCW-VR: RealRTCW's right-click zoom
+vmCvar_t cg_simpleZoomTimeMs;
 vmCvar_t cg_zoomDefaultBinoc;
 vmCvar_t cg_zoomDefaultSniper;
 vmCvar_t cg_zoomDefaultSnooper;
@@ -317,6 +319,8 @@ cvarTable_t cvarTable[] = {
 	{ &cg_zoomStepSniper, "cg_zoomStepSniper", "2", CVAR_ARCHIVE },
 	{ &cg_zoomStepSnooper, "cg_zoomStepSnooper", "5", CVAR_ARCHIVE },
 	{ &cg_zoomStepFG, "cg_zoomStepFG", "10", CVAR_ARCHIVE },          //----(SA)	added
+	{ &cg_simpleZoomFov, "cg_simpleZoomFov", "60", CVAR_ARCHIVE },
+	{ &cg_simpleZoomTimeMs, "cg_simpleZoomTimeMs", "120", CVAR_ARCHIVE },
 	{ &cg_fov, "cg_fov", "90", CVAR_ARCHIVE },	// NOTE: there is already a dmflag (DF_FIXED_FOV) to allow server control of this cheat
 	{ &cg_fixedAspect, "cg_fixedAspect", "2", CVAR_ARCHIVE | CVAR_LATCH }, // Essentially the same as setting DF_FIXED_FOV for widescreen aspects
 	{ &cg_fixedAspectFOV, "cg_fixedAspectFOV", "1", CVAR_ARCHIVE },
