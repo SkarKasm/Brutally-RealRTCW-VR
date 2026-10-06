@@ -2305,6 +2305,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 			 es->otherEntityNum >= 0 && es->otherEntityNum < MAX_GENTITIES ) {
 			vec3_t shot;
 			VectorSubtract( es->pos.trBase, cg_entities[es->otherEntityNum].lerpOrigin, shot );
+			CG_VRX_Wound( es->eventParm, es->pos.trBase, shot );     // GORE & EXTRAS
 			shot[2] *= 0.3f;
 			CG_Ragdoll_Hit( es->eventParm, es->pos.trBase, shot, 160.0f );
 		}

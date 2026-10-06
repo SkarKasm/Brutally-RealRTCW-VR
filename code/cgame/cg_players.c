@@ -4835,6 +4835,7 @@ void CG_Player( centity_t *cent ) {
 			CG_VR_BodyApplyRemote( cent, &legs );     // another VR player's arms
 		}
 #endif
+		CG_VRX_AddWounds( cent, &legs );    // RealRTCW-VR: bullet wounds, on the pose being drawn
 
 		CG_AddRefEntityWithPowerups( &legs, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
 

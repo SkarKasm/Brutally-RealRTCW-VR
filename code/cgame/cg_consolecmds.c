@@ -705,6 +705,7 @@ typedef struct {
 } consoleCommand_t;
 
 static consoleCommand_t commands[] = {
+	{ "vrtestwound", CG_VRX_TestWound_f },       // RealRTCW-VR test aid
 	{ "+weaponwheel", CG_WeaponWheelDown_f },      // RealRTCW-VR
 	{ "-weaponwheel", CG_WeaponWheelUp_f },
 	{ "testgun", CG_TestGun_f },

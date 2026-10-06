@@ -951,6 +951,7 @@ void CG_VR_PredictBullet( int weapon ) {
 	if ( tr.entityNum < MAX_CLIENTS && tr.entityNum != self ) {
 		CG_Bullet( tr.endpos, self, tr.plane.normal, qtrue, tr.entityNum, qfalse, ENTITYNUM_NONE );
 		CG_Ragdoll_Hit( tr.entityNum, tr.endpos, forward, 160.0f );     // knocks a body where it's hit
+		CG_VRX_Wound( tr.entityNum, tr.endpos, forward );
 	} else {
 		VectorMA( forward, -2 * DotProduct( forward, tr.plane.normal ), tr.plane.normal, reflect );
 		VectorNormalize( reflect );
