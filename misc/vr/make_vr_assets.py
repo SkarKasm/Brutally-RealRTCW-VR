@@ -89,7 +89,7 @@ def weapon_infos(paks):
     """{model key: info} for every first person weapon (key: v_ model path, no extension)."""
     out = {}
     for name in sorted(paks.names()):
-        m = re.match(r"^(models/(?:weapons2|multiplayer)/[^/]+)/v_([^/]+)_hand\.(md3|mdc)$", name)
+        m = re.match(r"^(models/(?:weapons2|multiplayer|weapons/[^/]+)/[^/]+)/v_([^/]+)_hand\.(md3|mdc)$", name)
         if not m:
             continue
         folder, base = m.group(1), m.group(2)

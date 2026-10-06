@@ -19,6 +19,7 @@ mkdir -p run/EE
 for target in coopmain EE; do
   PK3=run/$target/z_vr_assets.pk3
   DIRS=("$RTCW_MAIN" "$COOP_DIR/coopmain")
+  [ -d "$COOP_DIR/../Main" ] && DIRS+=("$COOP_DIR/../Main")      # RealRTCW's remastered weapons
   [ $target = EE ] && DIRS+=("$COOP_DIR/EE")
   if [ ! -f $PK3 ] || [ misc/vr/make_vr_assets.py -nt $PK3 ] || [ misc/vr/vr_assets_common.py -nt $PK3 ] ||      [ misc/vr/ui/vr_options.menu -nt $PK3 ]; then
     python misc/vr/make_vr_assets.py $PK3 "${DIRS[@]}" || exit 1

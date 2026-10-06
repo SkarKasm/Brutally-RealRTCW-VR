@@ -357,6 +357,7 @@ typedef struct {
 	float       scale;          // drawn this size about the grip (0 or 1: as modelled)
 } vrWeaponGeom_t;
 float BG_VR_WeaponScale( int preset );
+const char *BG_VR_FirstPersonModel( int weapon );
 int BG_VR_ScalePreset( float scale );
 
 int  BG_VR_ReloadClass( int weapon );

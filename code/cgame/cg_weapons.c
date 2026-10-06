@@ -1031,6 +1031,17 @@ void CG_RegisterWeapon( int weaponNum ) {
 	// load cmodel before model so filecache works
 
 	// alternate view weapon
+	// RealRTCW-VR: the remastered first person model, if installed (BG_VR_FirstPersonModel)
+	{
+		static gitem_t hdItem;
+		const char *fp = BG_VR_FirstPersonModel( weaponNum );
+		if ( fp && item && fp != item->world_model[W_FP_MODEL] ) {
+			hdItem = *item;
+			hdItem.world_model[W_FP_MODEL] = (char *)fp;
+			item = &hdItem;
+		}
+	}
+
 	weaponInfo->weaponModel[W_TP_MODEL] = trap_R_RegisterModel( item->world_model[W_TP_MODEL] );
 	weaponInfo->weaponModel[W_FP_MODEL] = trap_R_RegisterModel( item->world_model[W_FP_MODEL] );
 	weaponInfo->weaponModel[W_SKTP_MODEL] = trap_R_RegisterModel( item->world_model[W_SKTP_MODEL] );

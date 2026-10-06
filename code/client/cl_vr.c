@@ -1431,6 +1431,7 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_wristHud", "1", CVAR_ARCHIVE );           // cg_vrwrist.c
 	Cvar_Get( "vr_pouchMags", "1", CVAR_ARCHIVE );          // spare magazines shown in the pouch
 	Cvar_Get( "vr_weaponScale", "1", CVAR_ARCHIVE );        // guns and hands: 1, 0.7 or 0.42 (life size)
+	Cvar_Get( "vr_hdWeapons", "1", CVAR_ARCHIVE | CVAR_LATCH ); // RealRTCW's remastered first person guns
 
 	Com_Memset( &xr, 0, sizeof( xr ) );
 	Com_Memset( &com_vr, 0, sizeof( com_vr ) );

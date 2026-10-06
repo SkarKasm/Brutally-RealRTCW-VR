@@ -165,9 +165,9 @@ void BG_VR_WeaponGeom( int weapon, qboolean vanillaGuns, vrWeaponGeom_t *out ) {
 	VectorSet( out->grip, 14, -6, -10 );
 	out->magPart = out->chargePart = out->lensPart = -1;
 
-	// co-op's weapons are keyed by their first person model (world_model[1], no extension)
-	if ( item && item->world_model[1] && item->world_model[1][0] ) {
-		COM_StripExtension( item->world_model[1], model, sizeof( model ) );
+	// co-op's weapons are keyed by their first person model (no extension)
+	if ( item && BG_VR_FirstPersonModel( weapon ) && BG_VR_FirstPersonModel( weapon )[0] ) {
+		COM_StripExtension( BG_VR_FirstPersonModel( weapon ), model, sizeof( model ) );
 		for ( i = 0; i < numVRWeaponFiles; i++ ) {
 			if ( !Q_stricmp( vrWeaponFiles[i].weap, model ) ) {
 				*out = vrWeaponFiles[i].geom;
@@ -320,4 +320,77 @@ qboolean BG_VR_InstantFire( int weapon ) {
 	default:
 		return qfalse;
 	}
+}
+
+/*
+=================
+BG_VR_FirstPersonModel
+
+The first person model a weapon is drawn with: RealRTCW's remastered one when it's installed
+(co-op adds RealRTCW/Main's art, FS_AddRealRTCWAssets) and vr_hdWeapons is on, else the
+original. The geometry (weapons.cfg) is looked up by the same path, so it always matches.
+=================
+*/
+void trap_Cvar_VariableStringBuffer( const char *var_name, char *buffer, int bufsize );   // both modules have it
+
+static const struct {
+	int weapon;
+	const char *model;
+} vrHDWeapons[] = {
+	{ WP_KNIFE, "models/weapons/melee/knife/v_knife.md3" },
+	{ WP_LUGER, "models/weapons/pistols/luger/v_luger.md3" },
+	{ WP_SILENCER, "models/weapons/pistols/luger_silenced/v_lugers.md3" },
+	{ WP_COLT, "models/weapons/pistols/colt/v_colt.md3" },
+	{ WP_AKIMBO, "models/weapons/pistols/colt2/v_colt2.md3" },
+	{ WP_MP40, "models/weapons/smgs/mp40/v_mp40.md3" },
+	{ WP_THOMPSON, "models/weapons/smgs/thompson/v_thompson.md3" },
+	{ WP_STEN, "models/weapons/smgs/sten/v_sten.md3" },
+	{ WP_MAUSER, "models/weapons/rifles/mauser/v_mauser.md3" },
+	{ WP_SNIPERRIFLE, "models/weapons/rifles/mauser/v_mauser.md3" },
+	{ WP_GARAND, "models/weapons/rifles/snooper/v_snooper.md3" },
+	{ WP_SNOOPERSCOPE, "models/weapons/rifles/snooper/v_snooper.md3" },
+	{ WP_FG42, "models/weapons/assault_rifles/fg42/v_fg42.md3" },
+	{ WP_FG42SCOPE, "models/weapons/assault_rifles/fg42/v_fg42.md3" },
+	{ WP_PANZERFAUST, "models/weapons/heavy/pf/v_pf.md3" },
+	{ WP_VENOM, "models/weapons/secret/venom/v_venom.md3" },
+	{ WP_FLAMETHROWER, "models/weapons/heavy/flame/v_flame.md3" },
+	{ WP_TESLA, "models/weapons/secret/tesla/v_tesla.md3" },
+	{ WP_GRENADE_LAUNCHER, "models/weapons/explosives/grenade/v_grenade.md3" },
+	{ WP_GRENADE_PINEAPPLE, "models/weapons/explosives/pineapple/v_pineapple.md3" },
+	{ WP_DYNAMITE, "models/weapons/explosives/dynamite/v_dynamite.md3" },
+};
+
+const char *BG_VR_FirstPersonModel( int weapon ) {
+	static int checked[WP_NUM_WEAPONS];     // 0 not yet, 1 the remastered one, 2 the original
+	gitem_t *item;
+	char buf[16];
+	int i;
+
+	if ( weapon <= WP_NONE || weapon >= WP_NUM_WEAPONS ) {
+		return NULL;
+	}
+	item = BG_FindItemForWeapon( weapon );
+	trap_Cvar_VariableStringBuffer( "vr_hdWeapons", buf, sizeof( buf ) );
+	if ( buf[0] == '0' ) {
+		return item ? item->world_model[1] : NULL;
+	}
+	if ( !checked[weapon] ) {
+		checked[weapon] = 2;
+		for ( i = 0; i < (int)ARRAY_LEN( vrHDWeapons ); i++ ) {
+			fileHandle_t f;
+			if ( vrHDWeapons[i].weapon == weapon && trap_FS_FOpenFile( vrHDWeapons[i].model, &f, FS_READ ) > 0 ) {
+				trap_FS_FCloseFile( f );
+				checked[weapon] = 1;
+				break;
+			}
+		}
+	}
+	if ( checked[weapon] == 1 ) {
+		for ( i = 0; i < (int)ARRAY_LEN( vrHDWeapons ); i++ ) {
+			if ( vrHDWeapons[i].weapon == weapon ) {
+				return vrHDWeapons[i].model;
+			}
+		}
+	}
+	return item ? item->world_model[1] : NULL;
 }
