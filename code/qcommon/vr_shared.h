@@ -65,6 +65,7 @@ the Free Software Foundation, either version 3 of the License, or
 #define VRS_MAGOUT      0x0004
 #define VRS_HELD_SHIFT  3       // 2 bits: item in the off hand
 #define VRS_CHARGEHELD  0x0020
+#define VRS_CANGRAB     0x0040  // the off hand is on something it can take hold of
 #define VRS_PULL_SHIFT  8       // 8 bits: slide / bolt pull 0..255
 #define VRS_DROP_SHIFT  16      // 8 bits: magazine drop counter
 #define VRS_PULSE_L_SHIFT 24    // 4 bits: bumped for a buzz in the left controller

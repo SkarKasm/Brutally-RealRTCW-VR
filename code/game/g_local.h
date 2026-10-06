@@ -1023,6 +1023,7 @@ void G_VR_GrenadeThrow( gentity_t *ent, int weapon, vec3_t start, vec3_t dir );
 void G_VR_KnifeStab( gentity_t *ent );
 void G_VR_UpdateWeaponState( gentity_t *ent );
 void G_VR_PlayerThink( gentity_t *ent );
+void G_VR_GrabHint( gentity_t *ent );
 void G_VR_Training( gentity_t *ent );
 void G_VR_OnFire( gentity_t *ent );
 void G_VR_Reset( void );
@@ -1336,6 +1337,8 @@ extern vmCvar_t g_votesPerUser;
 extern vmCvar_t g_bannedMSG;
 extern vmCvar_t g_shove;
 extern vmCvar_t g_vrTraining;           // RealRTCW-VR: HOST GAME training mode
+extern vmCvar_t g_flatGrab;
+extern vmCvar_t g_vrGrabAssist;
 extern vmCvar_t g_shoveAmount;
 extern vmCvar_t g_throwKnives;
 

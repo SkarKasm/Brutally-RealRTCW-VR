@@ -3968,6 +3968,12 @@ void PmoveSingle( pmove_t *pmove ) {
 		pm->tracemask &= ~CONTENTS_BODY;    // corpses can fly through bodies
 	}
 
+	// RealRTCW-VR: carrying a body without a headset: attack throws it instead of firing
+	if ( pm->ps->vrGrab && !( pm->cmd.vrFlags & VRF_ACTIVE ) && !pm->ps->aiChar ) {
+		pm->cmd.buttons &= ~BUTTON_ATTACK;
+		pm->cmd.wbuttons &= ~WBUTTON_ATTACK2;
+	}
+
 	// make sure walking button is clear if they are running, to avoid
 	// proxy no-footsteps cheats
 	if ( !pm->ps->aiChar ) {

@@ -1296,6 +1296,7 @@ void ClientThink_real( gentity_t *ent ) {
 
 	// server cursor hints
 	G_CheckForCursorHints( ent ); //----(SA)	added
+	G_VR_GrabHint( ent );       // RealRTCW-VR: something the hand can take
 
 	// get this for the clients
 	ent->s.animMovetype = BG_GetConditionValue( ent->s.number, ANIM_COND_MOVETYPE, qtrue );

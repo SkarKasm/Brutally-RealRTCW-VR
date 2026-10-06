@@ -174,6 +174,8 @@ vmCvar_t g_votesPerUser;    // How many votes can user call each game
 vmCvar_t g_bannedMSG;       // Used to point banned users to desired forum..
 vmCvar_t g_shove;           // Enable - Disable shove
 vmCvar_t g_vrTraining;      // RealRTCW-VR: 1 all weapons, ammo, no harm; 2 and enemies ignore you
+vmCvar_t g_flatGrab;        // RealRTCW-VR: players without a headset pick up bodies (hold use)
+vmCvar_t g_vrGrabAssist;    // RealRTCW-VR: how far hands reach for things: 0 off, 1 normal, 2 strong
 vmCvar_t g_shoveAmount;     // How far one is pushed
 vmCvar_t g_throwKnives;     // 0 = disabled, anything else is the value of knives player gets, alt -1 = unlimited.
 
@@ -327,6 +329,8 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_needpass, "g_needpass", "0", CVAR_ARCHIVE, 0, qfalse },
 	{ &g_shove, "g_shove", "0", CVAR_ARCHIVE, 0, qtrue},
 	{ &g_vrTraining, "g_vrTraining", "0", CVAR_ARCHIVE | CVAR_SERVERINFO, 0, qtrue},
+	{ &g_flatGrab, "g_flatGrab", "1", CVAR_ARCHIVE, 0, qtrue},
+	{ &g_vrGrabAssist, "g_vrGrabAssist", "1", CVAR_ARCHIVE, 0, qtrue},
 	{ &g_shoveAmount, "g_shoveAmount", "0.8", CVAR_ARCHIVE, 0, qtrue}, // Don't give to much...
 	{ &g_throwKnives, "g_throwKnives", "5", CVAR_ARCHIVE, 0, qtrue },     // RealRTCW-VR: on, as in the remaster
 

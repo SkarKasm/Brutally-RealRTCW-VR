@@ -3639,6 +3639,58 @@ void ClientCommand( int clientNum ) {
 			trap_Argv( 3, z, sizeof( z ) );
 			trap_SendServerCommand( -1, va( "vrping %d %d %d %d", n, atoi( x ), atoi( y ), atoi( z ) ) );
 		}
+	} else if ( Q_stricmp( cmd, "vrtestbody" ) == 0 ) {
+		// RealRTCW-VR test aid (cheats): the nearest enemy, dead, lying in front of the player
+		if ( CheatsOk( ent ) ) {
+			gentity_t *e, *best = NULL;
+			float d, bestDist = 1e9f;
+			vec3_t fwd, p;
+			int i;
+
+			for ( i = 0; i < level.maxclients; i++ ) {
+				e = &g_entities[i];
+				if ( e->inuse && e->client && e->aiCharacter && e->health > 0 && e->r.linked && !( e->r.svFlags & SVF_NOCLIENT ) &&
+					 ( d = Distance( e->r.currentOrigin, ent->r.currentOrigin ) ) < bestDist ) {
+					best = e;
+					bestDist = d;
+				}
+			}
+			if ( best ) {
+				AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
+				fwd[2] = 0;
+				VectorNormalize( fwd );
+				VectorMA( ent->r.currentOrigin, 56, fwd, p );
+				G_SetOrigin( best, p );
+				VectorCopy( p, best->client->ps.origin );
+				trap_LinkEntity( best );
+				G_Damage( best, ent, ent, NULL, NULL, 10000, DAMAGE_NO_PROTECTION, MOD_KNIFE_STEALTH );
+			}
+		}
+	} else if ( Q_stricmp( cmd, "vrtestaim" ) == 0 ) {
+		// RealRTCW-VR test aid (cheats): look at the nearest dead body
+		if ( CheatsOk( ent ) ) {
+			gentity_t *e, *best = NULL;
+			float d, bestDist = 1e9f;
+			vec3_t dir, ang, eye;
+			int i;
+
+			for ( i = 0; i < level.maxclients; i++ ) {
+				e = &g_entities[i];
+				if ( e->inuse && e->client && e->aiCharacter && e->health <= 0 &&
+					 ( d = Distance( e->r.currentOrigin, ent->r.currentOrigin ) ) < bestDist ) {
+					best = e;
+					bestDist = d;
+				}
+			}
+			if ( best ) {
+				VectorCopy( ent->client->ps.origin, eye );
+				eye[2] += ent->client->ps.viewheight;
+				VectorSubtract( best->r.currentOrigin, eye, dir );
+				dir[2] += ( best->r.absmin[2] + best->r.absmax[2] ) * 0.5f - best->r.currentOrigin[2];
+				vectoangles( dir, ang );
+				SetClientViewAngle( ent, ang );
+			}
+		}
 	} else if ( Q_stricmp( cmd, "give" ) == 0 ) {
 		Cmd_Give_f( ent );
 #ifdef MONEY
