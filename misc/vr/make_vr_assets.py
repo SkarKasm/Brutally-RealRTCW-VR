@@ -741,6 +741,8 @@ EXTRAS = (
     ("g_shotReactions", "Shot reactions:", (("Off", 0), ("Normal", 1), ("Strong", 2))),
     ("g_woundDecals", "Bullet wounds:", (("Off", 0), ("On", 1))),
     ("g_throatSlit", "Throat cuts and guts:", (("Off", 0), ("On", 1))),
+    ("g_propGrab", "Pick up and throw props:", (("Off", 0), ("On", 1))),
+    ("g_propHit", "Thrown props:", (("Just bounce", 0), ("Stun", 1), ("Stun and hurt", 2))),
     ("g_flatGrab", "Body pickup (flat):", (("Off", 0), ("On", 1))),
     ("g_vrGrabAssist", "Grab assist:", (("Off", 0), ("Normal", 1), ("Strong", 2))),
     ("vr_grabHint", "Can grab (VR):", (("Nothing", 0), ("Buzz", 1), ("Buzz and sign", 2))),

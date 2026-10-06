@@ -2191,6 +2191,10 @@ void ClientCommand( int clientNum ) {
 
 	// RealRTCW-VR test aids (cheats): the nearest enemy dead in front of the player, and
 	// looking at the nearest body
+	if ( Q_stricmp( cmd, "vrtestprop" ) == 0 && CheatsOk( ent ) ) {
+		G_VRX_TestProp( ent );     // RealRTCW-VR test aid
+		return;
+	}
 	if ( ( Q_stricmp( cmd, "vrtestbody" ) == 0 || Q_stricmp( cmd, "vrtestaim" ) == 0 ) && CheatsOk( ent ) ) {
 		qboolean aim = Q_stricmp( cmd, "vrtestaim" ) == 0;
 		gentity_t *e, *best = NULL;
