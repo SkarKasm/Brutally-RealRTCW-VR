@@ -3779,6 +3779,81 @@ static void FS_ReorderPurePaks( void )
 
 /*
 ================
+FS_AddRealRTCWAssets
+
+RealRTCW-VR: co-op lives in RealRTCW's "coop" folder; the remaster's HD characters (with
+their animations), weapons, textures and sounds are in "Main" beside it. Only those art
+paks are taken: its scripts, menus and maps are for its single player code and crash co-op.
+fs_realrtcwAssets 0 leaves them out.
+================
+*/
+static void FS_AddRealRTCWAssets( void ) {
+	static const char *paks[] = {
+		"z_realrtcw_models.pk3", "z_realrtcw_models_hd.pk3",
+		"z_realrtcw_models_characters.pk3", "z_realrtcw_models_characters_hd.pk3",
+		"z_realrtcw_models_weapons.pk3",
+		"z_realrtcw_textures.pk3", "z_realrtcw_textures_hd.pk3",
+		"z_realrtcw_sounds.pk3", "z_realrtcw_sounds_hd.pk3",
+		"z_zperson.pk3", "z_zrealrtcw_de_pack.pk3"
+	};
+	cvar_t *use = Cvar_Get( "fs_realrtcwAssets", "1", CVAR_INIT | CVAR_ARCHIVE );
+	char base[MAX_OSPATH], *slash, *pakfile;
+	searchpath_t *search;
+	pack_t *pak;
+	int i, added = 0;
+
+	if ( !use->integer || !fs_basepath->string[0] ) {
+		return;
+	}
+	// the folder above co-op's
+	Q_strncpyz( base, fs_basepath->string, sizeof( base ) );
+	while ( strlen( base ) && ( base[strlen( base ) - 1] == '/' || base[strlen( base ) - 1] == '\\' ) ) {
+		base[strlen( base ) - 1] = 0;
+	}
+	slash = strrchr( base, '/' );
+	if ( !slash || ( strrchr( base, '\\' ) && strrchr( base, '\\' ) > slash ) ) {
+		slash = strrchr( base, '\\' );
+	}
+	if ( !slash ) {
+		return;
+	}
+	*slash = 0;
+
+	for ( i = 0; i < (int)ARRAY_LEN( paks ); i++ ) {
+		pakfile = FS_BuildOSPath( base, "Main", paks[i] );
+		if ( ( pak = FS_LoadZipFile( pakfile, paks[i] ) ) == 0 ) {
+			continue;
+		}
+		Q_strncpyz( pak->pakPathname, base, sizeof( pak->pakPathname ) );
+		strcpy( pak->pakGamename, BASEGAME );
+		// the remaster's "multi" character script is an unused leftover that doesn't fit
+		// the multiplayer animations co-op players use: keep the original
+		{
+			int h;
+			for ( h = 0; h < pak->hashSize; h++ ) {
+				fileInPack_t **link = &pak->hashTable[h];
+				while ( *link ) {
+					if ( !Q_stricmpn( ( *link )->name, "models/players/multi/", 21 ) ) {
+						*link = ( *link )->next;
+					} else {
+						link = &( *link )->next;
+					}
+				}
+			}
+		}
+		search = Z_Malloc( sizeof( searchpath_t ) );
+		search->pack = pak;
+		search->next = fs_searchpaths;
+		fs_searchpaths = search;
+		added++;
+	}
+	if ( added ) {
+		Com_Printf( "RealRTCW art: %d paks from %s%cMain\n", added, base, PATH_SEP );
+	}
+}
+
+/*
+================
 FS_Startup
 ================
 */
@@ -3855,6 +3930,9 @@ static void FS_Startup( const char *gameName )
 		FS_AddGameDirectory( fs_homepath->string, gameName, qtrue );
 		FS_AddGameDirectory( fs_homepath->string, COOP_BASEGAME, qtrue );
 	}
+
+	// RealRTCW-VR: the remaster's own art next to co-op (above coopmain, below mods)
+	FS_AddRealRTCWAssets();
 
 	// check for additional base game so mods can be based upon other mods
 	if ( fs_basegame->string[0] && Q_stricmp( fs_basegame->string, gameName ) ) {

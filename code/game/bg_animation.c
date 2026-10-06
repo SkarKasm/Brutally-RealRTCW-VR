@@ -398,6 +398,23 @@ int BG_AnimationIndexForString( char *string, int client ) {
 	return -1;  // shutup compiler
 }
 
+// RealRTCW-VR: a character script naming an animation its model lacks (scripts and models
+// from different releases) gets a warning and the first animation, not a dropped level
+static int BG_VR_AnimIndexTolerant( char *string, int client ) {
+	int i, hash;
+	animation_t *anim;
+	animModelInfo_t *modelInfo = BG_ModelInfoForClient( client );
+
+	hash = BG_StringHashValue( string );
+	for ( i = 0, anim = modelInfo->animations; i < modelInfo->numAnimations; i++, anim++ ) {
+		if ( ( hash == anim->nameHash ) && !Q_stricmp( string, anim->name ) ) {
+			return i;
+		}
+	}
+	Com_Printf( S_COLOR_YELLOW "WARNING: animation '%s' missing for model '%s'\n", string, modelInfo->modelname );
+	return 0;
+}
+
 /*
 =================
 BG_AnimationForString
@@ -883,9 +900,14 @@ void BG_ParseConditionBits( char **text_pp, animStringItem_t *stringTable, int c
 					tempBits[1] = defineBits[condIndex][indexFound][1];
 				} else {
 					// convert the string into an index
-					indexFound = BG_IndexForString( currentString, stringTable, qfalse );
+					// RealRTCW-VR: RealRTCW's character scripts name weapons co-op doesn't have
+					// (tt33, mp44...): those match nothing
+					indexFound = BG_IndexForString( currentString, stringTable, qtrue );
 					// convert the index into a bitflag
-					COM_BitSet( tempBits, indexFound );
+					tempBits[0] = tempBits[1] = 0;
+					if ( indexFound >= 0 ) {
+						COM_BitSet( tempBits, indexFound );
+					}
 				}
 			}
 			// perform operation
@@ -1014,7 +1036,7 @@ void BG_ParseCommands( char **input, animScriptItem_t *scriptItem, animModelInfo
 			if ( !token[0] ) {
 				BG_AnimParseError( "BG_ParseCommands: expected animation" );
 			}
-			command->animIndex[partIndex] = BG_AnimationIndexForString( token, parseClient );
+			command->animIndex[partIndex] = BG_VR_AnimIndexTolerant( token, parseClient );
 			command->animDuration[partIndex] = modelInfo->animations[command->animIndex[partIndex]].duration;
 			// if this is a locomotion, set the movetype of the animation so we can reverse engineer the movetype from the animation, on the client
 			if ( parseMovetype != ANIM_MT_UNUSED && command->bodyPart[partIndex] != ANIM_BP_TORSO ) {
