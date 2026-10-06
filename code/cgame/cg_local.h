@@ -2747,6 +2747,7 @@ void        CG_VRX_FlinchAngles( centity_t *cent, vec3_t torsoAngles, vec3_t hea
 void        CG_VRX_Wound( int entityNum, const vec3_t point, const vec3_t dir );
 void        CG_VRX_AddWounds( centity_t *cent, refEntity_t *body );
 void        CG_VRX_TestWound_f( void );
+void        CG_VRX_GoreEvent( entityState_t *es );
 void        CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body );
 void        CG_Ragdoll_Hit( int entityNum, const vec3_t point, const vec3_t dir, float speed );
 void        CG_Ragdoll_Explosion( const vec3_t origin, float radius, float strength );

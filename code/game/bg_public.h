@@ -896,6 +896,7 @@ typedef enum {
 	EV_PLAYER_HIT,  // hitsound event
 	EV_STOP_RELOADING_SOUND,
     EV_EMP_WAVE,
+	EV_VR_GORE,         // RealRTCW-VR: GORE & EXTRAS (bg_vrextras.h)
 	EV_MAX_EVENTS   // just added as an 'endcap'
 } entity_event_t;
 

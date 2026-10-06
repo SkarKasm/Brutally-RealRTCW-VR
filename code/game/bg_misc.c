@@ -8861,6 +8861,7 @@ char *eventnames[] = {
 	"EV_PLAYER_HIT",
 	"EV_STOP_RELOADING_SOUND",
 	"EV_EMP_WAVE",
+	"EV_VR_GORE",
 
 	"EV_MAX_EVENTS"
 };

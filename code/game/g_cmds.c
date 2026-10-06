@@ -2220,12 +2220,23 @@ void ClientCommand( int clientNum ) {
 			VectorNormalize( fwd );
 			VectorMA( ent->r.currentOrigin, 56, fwd, p );
 			G_SetOrigin( best, p );
+			{
+				vec3_t face;
+				VectorSet( face, 0, ent->client->ps.viewangles[YAW] + 180, 0 );
+				SetClientViewAngle( best, face );     // facing the player
+			}
 			VectorCopy( p, best->client->ps.origin );
 			trap_LinkEntity( best );
 			{
 				char arg[16];
 				trap_Argv( 1, arg, sizeof( arg ) );
-				if ( Q_stricmp( arg, "alive" ) ) {
+				if ( !Q_stricmp( arg, "throat" ) || !Q_stricmp( arg, "belly" ) ) {
+					// a knife kill: from behind, or a stab low in the front
+					vec3_t low;
+					VectorCopy( best->r.currentOrigin, low );
+					low[2] += 4;
+					G_Damage( best, ent, ent, fwd, low, 10000, DAMAGE_NO_PROTECTION, Q_stricmp( arg, "throat" ) ? MOD_KNIFE : MOD_KNIFE_STEALTH );
+				} else if ( Q_stricmp( arg, "alive" ) ) {
 					G_Damage( best, ent, ent, NULL, NULL, 10000, DAMAGE_NO_PROTECTION, MOD_KNIFE_STEALTH );
 				}
 			}

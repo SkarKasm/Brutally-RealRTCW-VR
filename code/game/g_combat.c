@@ -1497,6 +1497,7 @@ void G_DamageExt( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			}
 
 			targ->enemy = attacker;
+			G_VRX_Kill( targ, attacker, dir, point, mod );     // RealRTCW-VR: GORE & EXTRAS
 			if ( targ->die ) { // Ridah, mg42 doesn't have die func (FIXME)
 				targ->die( targ, inflictor, attacker, take, mod );
 			}

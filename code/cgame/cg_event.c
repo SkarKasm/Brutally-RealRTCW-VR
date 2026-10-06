@@ -2759,6 +2759,10 @@ case EV_FILL_CLIP_FULL:
 	case EV_EMP_WAVE:
 		CG_SpawnEMPWave(cent);
 		break;
+	case EV_VR_GORE:
+		DEBUGNAME( "EV_VR_GORE" );
+		CG_VRX_GoreEvent( es );     // RealRTCW-VR: GORE & EXTRAS
+		break;
 
 	default:
 		DEBUGNAME( "UNKNOWN" );

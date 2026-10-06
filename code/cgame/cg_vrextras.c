@@ -27,6 +27,8 @@ the Free Software Foundation, either version 3 of the License, or
 #include "cg_local.h"
 #include "../game/bg_vrextras.h"
 
+void CG_AddBloodTrails( vec3_t origin, vec3_t dir, int speed, int duration, int count, float randScale );     // cg_effects.c
+
 #ifndef BONEFLAG_TAG
 #define BONEFLAG_TAG        1       // qfiles.h: this bone is actually a tag
 #endif
@@ -162,12 +164,21 @@ a rough thickness), on the side the shot came from.
 #define VRX_MAX_BONES       128
 #define VRX_MAX_SKELS       8
 
+typedef enum {
+	VRW_BULLET,
+	VRW_THROAT,         // a cut across the front of the neck, bleeding
+	VRW_BELLY           // opened, the guts hanging out, bleeding
+} vrWoundKind_t;
+
 typedef struct {
+	int         kind;
 	int         bone;           // -1: not on a bone yet (placed when the body is next drawn), -2: missed
 	vec3_t      local, localN;  // in that bone's frame
+	vec3_t      localT;         // and which way the wound runs (cuts)
 	vec3_t      hit, dir;       // the shot, while not on a bone
-	float       size, spin;
+	float       size, spin, aspect;
 	int         shader;
+	int         bleedEnd, nextSpurt;
 } vrWound_t;
 
 typedef struct {
@@ -185,12 +196,14 @@ typedef struct {
 	int         parents[VRX_MAX_BONES];
 	int         flags[VRX_MAX_BONES];
 	float       radius[VRX_MAX_BONES];
+	char        names[VRX_MAX_BONES][32];
 } vrSkel_t;
 
 static vrWounded_t vrWounded[VRX_MAX_WOUNDED];
 static vrSkel_t vrSkels[VRX_MAX_SKELS];
 static int vrSkelNext;
 static qhandle_t vrWoundShaders[5];
+static qhandle_t vrGutsModel;
 
 // how thick the limb from this bone to its child is
 static float VRX_LimbRadius( const char *name ) {
@@ -242,6 +255,7 @@ static vrSkel_t *VRX_Skel( refEntity_t *body, float *pose ) {
 		sk->flags[i] = flags[i];
 		sk->radius[i] = ( flags[i] & BONEFLAG_TAG ) || parents[i] < 0 ? 0 :
 						VRX_LimbRadius( names + parents[i] * 32 );
+		Q_strncpyz( sk->names[i], names + i * 32, sizeof( sk->names[i] ) );
 	}
 	return sk;
 }
@@ -278,14 +292,14 @@ CG_VRX_Wound
 A bullet hit this character at point, travelling along dir.
 =================
 */
-void CG_VRX_Wound( int entityNum, const vec3_t point, const vec3_t dir ) {
+static vrWound_t *VRX_NewWound( int entityNum, int kind, const vec3_t point, const vec3_t dir ) {
 	vrWounded_t *wd = NULL, *spare = NULL;
 	vrWound_t *w;
 	int i;
 
-	if ( !CG_VRX_Gore( VRX_WOUNDS ) || entityNum < 0 || entityNum >= MAX_GENTITIES || !cg.snap ||
+	if ( entityNum < 0 || entityNum >= MAX_GENTITIES || !cg.snap ||
 		 entityNum == cg.snap->ps.clientNum || cg_entities[entityNum].currentState.eType != ET_PLAYER ) {
-		return;
+		return NULL;
 	}
 	for ( i = 0; i < VRX_MAX_WOUNDED; i++ ) {
 		if ( vrWounded[i].num && vrWounded[i].entityNum == entityNum ) {
@@ -310,12 +324,93 @@ void CG_VRX_Wound( int entityNum, const vec3_t point, const vec3_t dir ) {
 		wd->num++;
 	}
 	memset( w, 0, sizeof( *w ) );
+	w->kind = kind;
 	w->bone = -1;
 	VectorCopy( point, w->hit );
 	VectorNormalize2( dir, w->dir );
 	w->size = 1.8f + random() * 1.0f;
+	w->aspect = 1.0f;
 	w->spin = random() * 2.0f * M_PI;
 	w->shader = rand() % 5;
+	return w;
+}
+
+void CG_VRX_Wound( int entityNum, const vec3_t point, const vec3_t dir ) {
+	if ( CG_VRX_Gore( VRX_WOUNDS ) ) {
+		VRX_NewWound( entityNum, VRW_BULLET, point, dir );
+	}
+}
+
+/*
+=================
+CG_VRX_GoreEvent
+
+EV_VR_GORE: a killing blow did something gory to a body (g_vrextras.c G_VRX_Kill).
+=================
+*/
+void CG_VRX_GoreEvent( entityState_t *es ) {
+	vrWound_t *w;
+
+	if ( !CG_VRX_Gore( VRX_THROAT ) ) {
+		return;
+	}
+	switch ( es->eventParm ) {
+	case VRG_THROAT:
+		w = VRX_NewWound( es->otherEntityNum, VRW_THROAT, es->pos.trBase, es->origin2 );
+		if ( w ) {
+			w->size = 0.9f;
+			w->aspect = 3.2f;
+		}
+		break;
+	case VRG_BELLY:
+		w = VRX_NewWound( es->otherEntityNum, VRW_BELLY, es->pos.trBase, es->origin2 );
+		if ( w ) {
+			w->size = 3.6f;
+		}
+		break;
+	}
+}
+
+// the first bone whose name has part in it
+static int VRX_FindBone( vrSkel_t *sk, const char *part ) {
+	int i;
+
+	for ( i = 0; i < sk->n; i++ ) {
+		if ( !( sk->flags[i] & BONEFLAG_TAG ) && strstr( sk->names[i], part ) ) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+// a cut or opened belly: on the front of the neck / belly, the way the body faced
+static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t bAxis[][3], vec3_t bPos[] ) {
+	vec3_t ang, fwd, right, c, rel;
+	int b = VRX_FindBone( sk, w->kind == VRW_THROAT ? "Neck" : "Spine" );
+
+	if ( b < 0 ) {
+		w->bone = -2;
+		return;
+	}
+	VectorSet( ang, 0, cent->lerpAngles[YAW], 0 );
+	AngleVectors( ang, fwd, right, NULL );
+	VectorMA( bPos[b], w->kind == VRW_THROAT ? 2.6f : 6.0f, fwd, c );
+	if ( w->kind == VRW_BELLY ) {
+		c[2] -= 3.0f;
+	}
+	VectorSubtract( c, bPos[b], rel );
+	w->local[0] = DotProduct( rel, bAxis[b][0] );
+	w->local[1] = DotProduct( rel, bAxis[b][1] );
+	w->local[2] = DotProduct( rel, bAxis[b][2] );
+	w->localN[0] = DotProduct( fwd, bAxis[b][0] );
+	w->localN[1] = DotProduct( fwd, bAxis[b][1] );
+	w->localN[2] = DotProduct( fwd, bAxis[b][2] );
+	w->localT[0] = DotProduct( right, bAxis[b][0] );
+	w->localT[1] = DotProduct( right, bAxis[b][1] );
+	w->localT[2] = DotProduct( right, bAxis[b][2] );
+	w->bone = b;
+	w->bleedEnd = cg.time + ( w->kind == VRW_THROAT ? 3500 : 2500 );
+	w->nextSpurt = cg.time;
 }
 
 // put a new wound on the limb the shot met
@@ -380,6 +475,66 @@ static void VRX_PlaceWound( vrWound_t *w, vrSkel_t *sk, vec3_t bAxis[][3], vec3_
 	w->localN[1] = DotProduct( n, bAxis[i][1] );
 	w->localN[2] = DotProduct( n, bAxis[i][2] );
 	w->bone = i;
+}
+
+// a throat or belly wound pumps blood for a while after the blow
+static void VRX_Bleed( vrWound_t *w, const vec3_t p, const vec3_t n ) {
+	vec3_t dir;
+
+	if ( cg.time >= w->bleedEnd || cg.time < w->nextSpurt || !cg_blood.integer ) {
+		return;
+	}
+	VectorCopy( n, dir );
+	dir[2] -= 0.4f;
+	VectorNormalize( dir );
+	CG_AddBloodTrails( (float *)p, dir, 60 + rand() % 50, 700, 2, 0.35f );
+	w->nextSpurt = cg.time + 130 + rand() % 150;
+}
+
+// the guts out of an opened belly: a loop of three lengths sagging from it (the gib is
+// about 8 units long, along its x)
+static void VRX_AddGuts( const vec3_t p, const vec3_t n, const vec3_t across ) {
+	static const float bend[3][3] = {     // out, across, down of each length
+		{ 0.6f, 0.0f, 0.8f }, { 0.2f, -0.5f, 0.9f }, { -0.1f, 0.6f, 0.7f }
+	};
+	refEntity_t re;
+	vec3_t at, d;
+	int i;
+
+	if ( !vrGutsModel ) {
+		vrGutsModel = trap_R_RegisterModel( "models/gibs/intestine.mdc" );
+		if ( !vrGutsModel ) {
+			vrGutsModel = -1;
+		}
+	}
+	if ( vrGutsModel <= 0 ) {
+		return;
+	}
+	VectorMA( p, 1.0f, n, at );
+	for ( i = 0; i < 3; i++ ) {
+		VectorScale( n, bend[i][0], d );
+		VectorMA( d, bend[i][1], across, d );
+		d[2] -= bend[i][2];
+		VectorNormalize( d );
+
+		memset( &re, 0, sizeof( re ) );
+		re.hModel = vrGutsModel;
+		VectorMA( at, 4.4f, d, re.origin );
+		VectorCopy( re.origin, re.oldorigin );
+		VectorCopy( re.origin, re.lightingOrigin );
+		VectorCopy( d, re.axis[0] );
+		VectorMA( across, -DotProduct( across, d ), d, re.axis[1] );
+		VectorNormalize( re.axis[1] );
+		CrossProduct( re.axis[0], re.axis[1], re.axis[2] );
+		VectorScale( re.axis[0], 1.1f, re.axis[0] );     // a little longer, and thicker
+		VectorScale( re.axis[1], 1.8f, re.axis[1] );
+		VectorScale( re.axis[2], 1.8f, re.axis[2] );
+		re.nonNormalizedAxes = qtrue;
+		re.renderfx = RF_LIGHTING_ORIGIN;
+		trap_R_AddRefEntityToScene( &re );
+
+		VectorMA( at, 8.2f, d, at );
+	}
 }
 
 /*
@@ -449,7 +604,11 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 		vec3_t p, n, u, s, t;
 
 		if ( w->bone == -1 ) {
-			VRX_PlaceWound( w, sk, bAxis, bPos );
+			if ( w->kind == VRW_BULLET ) {
+				VRX_PlaceWound( w, sk, bAxis, bPos );
+			} else {
+				VRX_PlaceGore( w, cent, sk, bAxis, bPos );
+			}
 		}
 		if ( w->bone < 0 || w->bone >= sk->n ) {
 			continue;
@@ -464,12 +623,28 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 		VectorNormalize( n );
 		VectorMA( p, 0.3f, n, p );      // just off the skin
 
-		// a small turned square, flat on the skin
-		PerpendicularVector( u, n );
-		CrossProduct( n, u, s );
-		VectorScale( u, cos( w->spin ) * w->size, t );
-		VectorMA( t, sin( w->spin ) * w->size, s, t );
-		CrossProduct( n, t, s );
+		if ( w->kind == VRW_BULLET ) {
+			// a small turned square, flat on the skin
+			PerpendicularVector( u, n );
+			CrossProduct( n, u, s );
+			VectorScale( u, cos( w->spin ) * w->size, t );
+			VectorMA( t, sin( w->spin ) * w->size, s, t );
+			CrossProduct( n, t, s );
+		} else {
+			// across the neck / belly
+			VectorScale( bAxis[w->bone][0], w->localT[0], u );
+			VectorMA( u, w->localT[1], bAxis[w->bone][1], u );
+			VectorMA( u, w->localT[2], bAxis[w->bone][2], u );
+			VectorMA( u, -DotProduct( u, n ), n, u );
+			VectorNormalize( u );
+			VectorScale( u, w->size * w->aspect, t );
+			CrossProduct( n, u, s );
+			VectorScale( s, w->size, s );
+			VRX_Bleed( w, p, n );
+			if ( w->kind == VRW_BELLY ) {
+				VRX_AddGuts( p, n, u );
+			}
+		}
 		for ( k = 0; k < 4; k++ ) {
 			float a = ( k == 0 || k == 3 ) ? 1 : -1, b = k < 2 ? 1 : -1;
 			v[k].xyz[0] = p[0] + t[0] * a + s[0] * b;
