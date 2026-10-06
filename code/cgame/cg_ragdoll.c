@@ -47,6 +47,8 @@ the Free Software Foundation, either version 3 of the License, or
 #define RD_SLEEP_MOVE       0.04f       // a point moving less than this per step is at rest
 #define RD_SLEEP_STEPS      45
 #define RD_KILL_PUSH        110.0f      // speed of the fall away from the killer
+#define RD_MAX_TONE         16
+#define RD_GRAB_SPEED       900.0f      // a held point follows the hand this fast (no snapping)
 
 typedef enum {
 	P_PELVIS, P_CHEST, P_NECK, P_HEAD, P_HEADEND,
@@ -134,6 +136,10 @@ typedef struct {
 	int         simTime;            // time simulated up to
 	int         stillSteps;
 	qboolean    asleep;
+
+	int         startTime;          // when it went limp (muscle tone fades from here)
+	int         numTone;
+	rdLink_t    tone[RD_MAX_TONE];  // posture links, fading (RD_Tone)
 
 	int         pinned;             // point held by a hand, -1 none
 	int         grabber;            // client number + 1 holding it, 0 none
@@ -229,6 +235,247 @@ static void RD_TorsoFrame( vec3_t p[P_COUNT], vec3_t f[3] ) {
 	VectorMA( f[1], -DotProduct( f[1], f[0] ), f[0], f[1] );
 	VectorNormalize( f[1] );
 	CrossProduct( f[0], f[1], f[2] );
+}
+
+/*
+==============================================================================
+
+Joints and the body against itself
+
+==============================================================================
+*/
+
+// a direction in the torso's frame: f[0] up, f[1] left, f[2] back
+static void RD_LimitCone( ragdoll_t *rd, int root, int tip, vec3_t f[3], float side,
+						  float backMax, float fwdMax, float inMax, float outMax, qboolean hangsDown ) {
+	vec3_t d, fwd, out, down, nd;
+	float len, a, b, fc, dc, oc, ca, cb;
+
+	if ( !rd->hasPoint[root] || !rd->hasPoint[tip] || tip == rd->pinned ) {
+		return;
+	}
+	VectorSubtract( rd->p[tip], rd->p[root], d );
+	len = VectorNormalize( d );
+	if ( len < 1e-3f ) {
+		return;
+	}
+	VectorNegate( f[2], fwd );
+	VectorScale( f[1], side, out );     // away from the body's middle
+	if ( hangsDown ) {
+		VectorNegate( f[0], down );     // legs rest pointing down
+	} else {
+		VectorCopy( f[0], down );       // the head rests pointing up
+	}
+
+	fc = DotProduct( d, fwd );
+	dc = DotProduct( d, down );
+	oc = DotProduct( d, out );
+	a = RAD2DEG( atan2( fc, dc ) );                     // swing forwards (+) / back (-)
+	b = RAD2DEG( atan2( oc, sqrt( fc * fc + dc * dc ) ) );  // out (+) / across (-)
+	if ( a >= -backMax && a <= fwdMax && b >= -inMax && b <= outMax ) {
+		return;
+	}
+	a = a < -backMax ? -backMax : ( a > fwdMax ? fwdMax : a );
+	b = b < -inMax ? -inMax : ( b > outMax ? outMax : b );
+	ca = DEG2RAD( a );
+	cb = DEG2RAD( b );
+	VectorScale( down, cos( cb ) * cos( ca ), nd );
+	VectorMA( nd, cos( cb ) * sin( ca ), fwd, nd );
+	VectorMA( nd, sin( cb ), out, nd );
+	// half to the limb, half to the body
+	VectorMA( rd->p[root], len, nd, nd );
+	VectorSubtract( nd, rd->p[tip], d );
+	VectorMA( rd->p[tip], 0.5f, d, rd->p[tip] );
+	if ( root != rd->pinned ) {
+		VectorMA( rd->p[root], -0.5f, d, rd->p[root] );
+	}
+}
+
+static void RD_Joints( ragdoll_t *rd ) {
+	vec3_t f[3];
+
+	RD_TorsoFrame( rd->p, f );
+	// hips: well forward, a little back, a little across, further out
+	RD_LimitCone( rd, P_LHIP, P_LKNEE, f, 1, 25, 115, 20, 45, qtrue );
+	RD_LimitCone( rd, P_RHIP, P_RKNEE, f, -1, 25, 115, 20, 45, qtrue );
+	// the head on the neck
+	RD_LimitCone( rd, P_NECK, P_HEAD, f, 1, 50, 60, 45, 45, qfalse );
+	// shoulders: arms go almost anywhere, but not far round behind the back
+	RD_LimitCone( rd, P_LSHOULDER, P_LELBOW, f, 1, 60, 180, 60, 180, qtrue );
+	RD_LimitCone( rd, P_RSHOULDER, P_RELBOW, f, -1, 60, 180, 60, 180, qtrue );
+}
+
+// body parts as capsules: two points and a radius
+typedef struct {
+	int a, b;
+	float r;
+} rdCapsule_t;
+
+static const rdCapsule_t rdCapsules[] = {
+	{ P_PELVIS, P_NECK, 6.5f },         // 0 torso
+	{ P_HEAD, P_HEADEND, 4.5f },        // 1 head
+	{ P_LSHOULDER, P_LELBOW, 3.0f },    // 2
+	{ P_LELBOW, P_LWRIST, 2.6f },       // 3
+	{ P_RSHOULDER, P_RELBOW, 3.0f },    // 4
+	{ P_RELBOW, P_RWRIST, 2.6f },       // 5
+	{ P_LHIP, P_LKNEE, 4.5f },          // 6
+	{ P_LKNEE, P_LANKLE, 3.5f },        // 7
+	{ P_RHIP, P_RKNEE, 4.5f },          // 8
+	{ P_RKNEE, P_RANKLE, 3.5f },        // 9
+};
+#define RD_NUM_CAPSULES ( (int)ARRAY_LEN( rdCapsules ) )
+
+static void RD_Lerp( const vec3_t a, const vec3_t b, float t, vec3_t out ) {
+	out[0] = a[0] + t * ( b[0] - a[0] );
+	out[1] = a[1] + t * ( b[1] - a[1] );
+	out[2] = a[2] + t * ( b[2] - a[2] );
+}
+
+// closest points between segments p1-q1 and p2-q2: parameters s, t
+static float RD_SegmentDist( const vec3_t p1, const vec3_t q1, const vec3_t p2, const vec3_t q2, float *s, float *t ) {
+	vec3_t d1, d2, r, c1, c2;
+	float a, e, f, b, c, denom;
+
+	VectorSubtract( q1, p1, d1 );
+	VectorSubtract( q2, p2, d2 );
+	VectorSubtract( p1, p2, r );
+	a = DotProduct( d1, d1 );
+	e = DotProduct( d2, d2 );
+	f = DotProduct( d2, r );
+	if ( a < 1e-6f && e < 1e-6f ) {
+		*s = *t = 0;
+	} else if ( a < 1e-6f ) {
+		*s = 0;
+		*t = Com_Clamp( 0, 1, f / e );
+	} else {
+		c = DotProduct( d1, r );
+		if ( e < 1e-6f ) {
+			*t = 0;
+			*s = Com_Clamp( 0, 1, -c / a );
+		} else {
+			b = DotProduct( d1, d2 );
+			denom = a * e - b * b;
+			*s = denom > 1e-6f ? Com_Clamp( 0, 1, ( b * f - c * e ) / denom ) : 0;
+			*t = ( b * *s + f ) / e;
+			if ( *t < 0 ) {
+				*t = 0;
+				*s = Com_Clamp( 0, 1, -c / a );
+			} else if ( *t > 1 ) {
+				*t = 1;
+				*s = Com_Clamp( 0, 1, ( b - c ) / a );
+			}
+		}
+	}
+	VectorMA( p1, *s, d1, c1 );
+	VectorMA( p2, *t, d2, c2 );
+	return Distance( c1, c2 );
+}
+
+// push a capsule's two points along n, shared by where the contact is (pinned points don't move)
+static void RD_MoveCapsule( ragdoll_t *rd, const rdCapsule_t *c, float s, const vec3_t n, float amount ) {
+	float wa = c->a == rd->pinned ? 0 : 1 - s, wb = c->b == rd->pinned ? 0 : s, sum = wa * wa + wb * wb;
+
+	if ( sum < 1e-4f ) {
+		return;
+	}
+	VectorMA( rd->p[c->a], amount * wa / sum, n, rd->p[c->a] );
+	VectorMA( rd->p[c->b], amount * wb / sum, n, rd->p[c->b] );
+}
+
+static void RD_SelfCollide( ragdoll_t *rd ) {
+	int i, j;
+
+	for ( i = 0; i < RD_NUM_CAPSULES; i++ ) {
+		const rdCapsule_t *ci = &rdCapsules[i];
+		if ( !rd->hasPoint[ci->a] || !rd->hasPoint[ci->b] ) {
+			continue;
+		}
+		for ( j = i + 1; j < RD_NUM_CAPSULES; j++ ) {
+			const rdCapsule_t *cj = &rdCapsules[j];
+			vec3_t pi, pj, n;
+			float s, t, d, pen;
+
+			if ( !rd->hasPoint[cj->a] || !rd->hasPoint[cj->b] ) {
+				continue;
+			}
+			// joined parts (sharing a point, or a limb's root on the torso) are the joints' business
+			if ( ci->a == cj->a || ci->a == cj->b || ci->b == cj->a || ci->b == cj->b ) {
+				continue;
+			}
+			if ( i == 0 && ( j == 1 || j == 2 || j == 4 || j == 6 || j == 8 ) ) {
+				continue;
+			}
+			d = RD_SegmentDist( rd->p[ci->a], rd->p[ci->b], rd->p[cj->a], rd->p[cj->b], &s, &t );
+			pen = ci->r + cj->r - d;
+			if ( pen <= 0 ) {
+				continue;
+			}
+			RD_Lerp( rd->p[ci->a], rd->p[ci->b], s, pi );
+			RD_Lerp( rd->p[cj->a], rd->p[cj->b], t, pj );
+			VectorSubtract( pi, pj, n );
+			if ( VectorNormalize( n ) < 1e-4f ) {
+				continue;
+			}
+			RD_MoveCapsule( rd, ci, s, n, pen * 0.5f );
+			RD_MoveCapsule( rd, cj, t, n, -pen * 0.5f );
+		}
+	}
+}
+
+/*
+=================
+RD_Tone
+
+Muscle tone just after death: the posture is held, fading, the legs giving out first and
+the body after, so it buckles and folds instead of toppling over stiff.
+=================
+*/
+#define RD_TONE_LEGS_MS     250
+#define RD_TONE_BODY_MS     700
+
+static void RD_Tone( ragdoll_t *rd ) {
+	float age = (float)( rd->simTime - rd->startTime ), k;
+	int i;
+
+	if ( age >= RD_TONE_BODY_MS || age < 0 ) {
+		return;
+	}
+	for ( i = 0; i < rd->numTone; i++ ) {
+		rdLink_t *l = &rd->tone[i];
+		vec3_t v;
+		float len, life = l->max;       // (max holds how long this one lasts)
+
+		if ( age >= life ) {
+			continue;
+		}
+		k = 1.0f - age / life;
+		k = 0.35f * k * k;
+		VectorSubtract( rd->p[l->b], rd->p[l->a], v );
+		len = VectorLength( v );
+		if ( len < 1e-4f ) {
+			continue;
+		}
+		VectorScale( v, k * ( len - l->min ) / len * 0.5f, v );
+		if ( l->a != rd->pinned ) {
+			VectorAdd( rd->p[l->a], v, rd->p[l->a] );
+		}
+		if ( l->b != rd->pinned ) {
+			VectorSubtract( rd->p[l->b], v, rd->p[l->b] );
+		}
+	}
+}
+
+static void RD_AddTone( ragdoll_t *rd, int a, int b, float lifeMs ) {
+	rdLink_t *l;
+
+	if ( !rd->hasPoint[a] || !rd->hasPoint[b] || rd->numTone >= RD_MAX_TONE ) {
+		return;
+	}
+	l = &rd->tone[rd->numTone++];
+	l->a = a;
+	l->b = b;
+	l->min = Distance( rd->p0[a], rd->p0[b] );     // the posture at death
+	l->max = lifeMs;
 }
 
 /*
@@ -417,23 +664,27 @@ static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 	RD_AddLink( rd, P_LKNEE, P_RKNEE, 0.45f, 4.0f, 0 );
 	RD_AddLink( rd, P_LANKLE, P_RANKLE, 0.35f, 6.0f, 0 );
 
-	// self collision: arms, legs and head stay out of the body
+	// self collision: capsules (RD_SelfCollide); the hands and feet ends are kept off the body here
 	{
-		const int arms[] = { P_LELBOW, P_LWRIST, P_LHANDEND, P_RELBOW, P_RWRIST, P_RHANDEND };
-		for ( i = 0; i < (int)ARRAY_LEN( arms ); i++ ) {
-			RD_AddSeparation( rd, arms[i], P_PELVIS, 9.0f );
-			RD_AddSeparation( rd, arms[i], P_CHEST, 9.0f );
+		const int ends[] = { P_LHANDEND, P_RHANDEND };
+		for ( i = 0; i < (int)ARRAY_LEN( ends ); i++ ) {
+			RD_AddSeparation( rd, ends[i], P_PELVIS, 8.0f );
+			RD_AddSeparation( rd, ends[i], P_CHEST, 8.0f );
 		}
 	}
-	RD_AddSeparation( rd, P_LKNEE, P_CHEST, 14.0f );
-	RD_AddSeparation( rd, P_RKNEE, P_CHEST, 14.0f );
-	RD_AddSeparation( rd, P_LANKLE, P_PELVIS, 12.0f );
-	RD_AddSeparation( rd, P_RANKLE, P_PELVIS, 12.0f );
-	RD_AddSeparation( rd, P_LANKLE, P_CHEST, 14.0f );
-	RD_AddSeparation( rd, P_RANKLE, P_CHEST, 14.0f );
-	RD_AddSeparation( rd, P_HEAD, P_PELVIS, 16.0f );
-	RD_AddSeparation( rd, P_HEADEND, P_LHIP, 14.0f );
-	RD_AddSeparation( rd, P_HEADEND, P_RHIP, 14.0f );
+	RD_AddSeparation( rd, P_LTOE, P_PELVIS, 10.0f );
+	RD_AddSeparation( rd, P_RTOE, P_PELVIS, 10.0f );
+
+	// muscle tone: legs give first, then the body and arms
+	RD_AddTone( rd, P_LHIP, P_LANKLE, RD_TONE_LEGS_MS );
+	RD_AddTone( rd, P_RHIP, P_RANKLE, RD_TONE_LEGS_MS );
+	RD_AddTone( rd, P_CHEST, P_LKNEE, RD_TONE_LEGS_MS * 2 );
+	RD_AddTone( rd, P_CHEST, P_RKNEE, RD_TONE_LEGS_MS * 2 );
+	RD_AddTone( rd, P_PELVIS, P_HEADEND, RD_TONE_BODY_MS );
+	RD_AddTone( rd, P_LSHOULDER, P_LWRIST, RD_TONE_BODY_MS );
+	RD_AddTone( rd, P_RSHOULDER, P_RWRIST, RD_TONE_BODY_MS );
+	RD_AddTone( rd, P_CHEST, P_LWRIST, RD_TONE_BODY_MS * 0.7f );
+	RD_AddTone( rd, P_CHEST, P_RWRIST, RD_TONE_BODY_MS * 0.7f );
 	RD_AddLimb( rd, P_LELBOW, P_LWRIST, P_LHANDEND, 0.6f );
 	RD_AddLimb( rd, P_RELBOW, P_RWRIST, P_RHANDEND, 0.6f );
 	RD_AddLimb( rd, P_LKNEE, P_LANKLE, P_LTOE, 0.72f );
@@ -474,6 +725,7 @@ static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 	rd->entityNum = cent->currentState.number;
 	rd->model = body->hModel;
 	rd->simTime = cg.time;
+	rd->startTime = cg.time;
 	rd->inUse = qtrue;
 	RD_ApplyPending( rd );
 	return qtrue;
@@ -503,7 +755,7 @@ static void RD_Collide( ragdoll_t *rd, int k, const vec3_t from ) {
 		VectorSubtract( rd->p[k], rd->old[k], v );
 		VectorScale( tr.plane.normal, DotProduct( v, tr.plane.normal ), vn );
 		VectorSubtract( v, vn, v );
-		VectorMA( rd->p[k], -0.5f, v, rd->old[k] );
+		VectorMA( rd->p[k], -0.7f, v, rd->old[k] );
 	}
 }
 
@@ -549,10 +801,22 @@ static void RD_Step( ragdoll_t *rd, centity_t *cent, const vec3_t grabPoint, qbo
 	}
 
 	if ( grabbed && rd->pinned >= 0 ) {
-		VectorCopy( grabPoint, rd->p[rd->pinned] );
+		// towards the hand, quickly but not in one jump (a snap stretches the whole body)
+		vec3_t to;
+		float dist;
+		VectorSubtract( grabPoint, rd->p[rd->pinned], to );
+		dist = VectorLength( to );
+		if ( dist > RD_GRAB_SPEED * RD_STEP ) {
+			VectorScale( to, RD_GRAB_SPEED * RD_STEP / dist, to );
+		}
+		VectorAdd( rd->p[rd->pinned], to, rd->p[rd->pinned] );
+		VectorCopy( rd->p[rd->pinned], rd->old[rd->pinned] );
 	}
 
-	for ( it = 0; it < RD_ITERATIONS; it++ ) {
+	for ( it = 0; it < ( grabbed ? RD_ITERATIONS * 2 : RD_ITERATIONS ); it++ ) {
+		if ( it == 0 ) {
+			RD_Tone( rd );
+		}
 		for ( i = 0; i < rd->numLinks; i++ ) {
 			rdLink_t *l = &rd->links[i];
 			float len, want, wa, wb;
@@ -584,6 +848,10 @@ static void RD_Step( ragdoll_t *rd, centity_t *cent, const vec3_t grabPoint, qbo
 			VectorNegate( f[2], forward );      // up x left points backwards
 			RD_KneeHinge( rd, P_LHIP, P_LKNEE, P_LANKLE, forward );
 			RD_KneeHinge( rd, P_RHIP, P_RKNEE, P_RANKLE, forward );
+		}
+		RD_Joints( rd );
+		if ( it & 1 ) {
+			RD_SelfCollide( rd );
 		}
 	}
 
