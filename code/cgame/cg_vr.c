@@ -296,6 +296,7 @@ void CG_VR_BeginFrame( void ) {
 
 	CG_VR_UnpackState();
 	CG_VR_ReloadSounds();
+	CG_VRX_KnifeFrame();        // GORE & EXTRAS: the blade through a dead body's neck
 
 	cgVR->cutscene = cg.cameraMode;
 	cgVR->twoHandAllowed = !CG_VR_OneHanded( cg.predictedPlayerState.weapon );

@@ -3683,6 +3683,12 @@ void ClientCommand( int clientNum ) {
 				}
 			}
 		}
+	} else if ( Q_stricmp( cmd, "vrdecap" ) == 0 ) {
+		G_VRX_Decap_f( ent );      // RealRTCW-VR: a knife through a dead body's neck
+	} else if ( Q_stricmp( cmd, "vrtestdecap" ) == 0 ) {
+		if ( CheatsOk( ent ) ) {
+			G_VRX_TestDecap( ent );     // RealRTCW-VR test aid
+		}
 	} else if ( Q_stricmp( cmd, "vrtestprop" ) == 0 ) {
 		if ( CheatsOk( ent ) ) {
 			G_VRX_TestProp( ent );     // RealRTCW-VR test aid

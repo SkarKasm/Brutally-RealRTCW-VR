@@ -4996,7 +4996,9 @@ void CG_Player( centity_t *cent ) {
 	}
 
 
-	CG_AddRefEntityWithPowerups( &head, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
+	if ( !CG_VRX_Headless( cent ) ) {     // RealRTCW-VR: unless it was cut off
+		CG_AddRefEntityWithPowerups( &head, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
+	}
 
 	cent->pe.headRefEnt = head;
 
@@ -5320,6 +5322,9 @@ int parts[] = { 34,
 			}
 		case ACC_MOUTH2:            // hat2
 		case ACC_MOUTH3:            // hat3
+			if ( CG_VRX_Headless( cent ) ) {
+				continue;   // RealRTCW-VR: went with the head
+			}
 			CG_PositionEntityOnTag( &acc,   &head,  "tag_mouth", 0, NULL );
 			break;
 

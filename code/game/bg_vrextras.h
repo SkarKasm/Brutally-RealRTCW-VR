@@ -42,7 +42,21 @@ typedef enum {
 	VRG_NONE,
 	VRG_THROAT,         // throat cut
 	VRG_BELLY,          // disembowelled
+	VRG_DECAP,          // the head cut off a dead body
 	VRG_COUNT
 } vrGore_t;
+
+// our own entities, told apart by s.dmgFlags (ET_GENERAL)
+#define VRX_ENT_GORE    0x56524752      // a body's gore marker: s.otherEntityNum2 the body, s.density VRX_GB_*
+#define VRX_ENT_HEAD    0x56524844      // a cut off head: s.otherEntityNum2 the body it came off
+
+// gore marker bits
+#define VRX_GB_HEAD         1       // head off
+#define VRX_GB_LARM         2       // limbs off (dismemberment)
+#define VRX_GB_RARM         4
+#define VRX_GB_LLEG         8
+#define VRX_GB_RLEG         16
+#define VRX_GB_SCARED       32      // alive, running from a thrown head
+#define VRX_GB_SURRENDER    64      // alive, weapon dropped, hands up
 
 #endif

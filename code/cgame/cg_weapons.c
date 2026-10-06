@@ -4743,6 +4743,10 @@ void CG_FireWeapon( centity_t *cent ) {
 		}
 		CG_VR_PredictBullet( ent->weapon );
 	}
+	// RealRTCW-VR: without a headset, a knife swing can take a dead body's head (GORE & EXTRAS)
+	if ( cg.snap && ent->number == cg.snap->ps.clientNum && ent->weapon == WP_KNIFE && !cgvr.active ) {
+		CG_VRX_KnifeSwing();
+	}
 
 	// Rafael - mg42
 	if ( ( cent->currentState.clientNum == cg.snap->ps.clientNum && cg.snap->ps.persistant[PERS_HWEAPON_USE] ) ||

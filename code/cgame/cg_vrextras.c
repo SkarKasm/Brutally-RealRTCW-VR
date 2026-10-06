@@ -167,7 +167,8 @@ a rough thickness), on the side the shot came from.
 typedef enum {
 	VRW_BULLET,
 	VRW_THROAT,         // a cut across the front of the neck, bleeding
-	VRW_BELLY           // opened, the guts hanging out, bleeding
+	VRW_BELLY,          // opened, the guts hanging out, bleeding
+	VRW_STUMP           // the neck where the head came off, bleeding
 } vrWoundKind_t;
 
 typedef struct {
@@ -368,6 +369,13 @@ void CG_VRX_GoreEvent( entityState_t *es ) {
 			w->size = 3.6f;
 		}
 		break;
+	case VRG_DECAP:
+		w = VRX_NewWound( es->otherEntityNum, VRW_STUMP, es->pos.trBase, es->origin2 );
+		if ( w ) {
+			w->size = 2.6f;
+		}
+		CG_AddBloodTrails( es->pos.trBase, tv( 0, 0, 1 ), 120, 900, 6, 0.6f );
+		break;
 	}
 }
 
@@ -394,7 +402,19 @@ static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t b
 	}
 	VectorSet( ang, 0, cent->lerpAngles[YAW], 0 );
 	AngleVectors( ang, fwd, right, NULL );
-	VectorMA( bPos[b], w->kind == VRW_THROAT ? 2.6f : 6.0f, fwd, c );
+	if ( w->kind == VRW_STUMP ) {
+		int h = VRX_FindBone( sk, "Head" );
+		if ( h < 0 ) {
+			w->bone = -2;
+			return;
+		}
+		VectorSubtract( bPos[h], bPos[b], fwd );        // up the neck
+		VectorNormalize( fwd );
+		VectorCopy( bPos[h], c );
+		PerpendicularVector( right, fwd );
+	} else {
+		VectorMA( bPos[b], w->kind == VRW_THROAT ? 2.6f : 6.0f, fwd, c );
+	}
 	if ( w->kind == VRW_BELLY ) {
 		c[2] -= 3.0f;
 	}
@@ -409,7 +429,7 @@ static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t b
 	w->localT[1] = DotProduct( right, bAxis[b][1] );
 	w->localT[2] = DotProduct( right, bAxis[b][2] );
 	w->bone = b;
-	w->bleedEnd = cg.time + ( w->kind == VRW_THROAT ? 3500 : 2500 );
+	w->bleedEnd = cg.time + ( w->kind == VRW_BELLY ? 2500 : w->kind == VRW_STUMP ? 5000 : 3500 );
 	w->nextSpurt = cg.time;
 }
 
@@ -680,4 +700,156 @@ void CG_VRX_TestWound_f( void ) {
 		CG_VRX_Wound( tr.entityNum, tr.endpos, cg.refdef.viewaxis[0] );
 		CG_Printf( "wound on %d\n", tr.entityNum );
 	}
+}
+
+/*
+==============================================================================
+
+Cut off heads (g_decapitate)
+
+A body's gore marker entity (g_vrextras.c) carries what has been cut off it; a head that
+came off is its own entity, drawn here with the dead man's own head and helmet. The knife
+going through a dead body's neck is seen here, where the ragdoll is, and asked of the
+server ("vrdecap"): a VR blade swept through it, or a knife swing at it without a headset.
+
+==============================================================================
+*/
+
+static int vrxGoreBits[MAX_GENTITIES];      // from the gore markers, by body
+static int vrxDecapAsked[MAX_CLIENTS];      // when we last asked for a body
+
+// a gore marker entity: what's been done to its body (drawn as nothing)
+static void VRX_GoreMarker( centity_t *cent ) {
+	int body = cent->currentState.otherEntityNum2;
+
+	if ( body >= 0 && body < MAX_GENTITIES ) {
+		vrxGoreBits[body] = cent->currentState.density;
+	}
+}
+
+int CG_VRX_GoreBits( centity_t *cent ) {
+	int n = cent->currentState.number;
+
+	if ( !( cent->currentState.eFlags & EF_DEAD ) ) {
+		// alive (a new character in the slot): only being scared or giving up shows
+		vrxGoreBits[n] &= VRX_GB_SCARED | VRX_GB_SURRENDER;
+	}
+	return vrxGoreBits[n];
+}
+
+qboolean CG_VRX_Headless( centity_t *cent ) {
+	return ( CG_VRX_GoreBits( cent ) & VRX_GB_HEAD ) != 0;
+}
+
+// a cut off head: the body's own head model and skin, and its hat
+static void VRX_DrawHead( centity_t *cent ) {
+	int body = cent->currentState.otherEntityNum2;
+	clientInfo_t *ci = body >= 0 && body < MAX_CLIENTS ? &cgs.clientinfo[body] : NULL;
+	refEntity_t head, acc;
+	int i;
+
+	memset( &head, 0, sizeof( head ) );
+	VectorCopy( cent->lerpOrigin, head.origin );
+	VectorCopy( cent->lerpOrigin, head.oldorigin );
+	VectorCopy( cent->lerpOrigin, head.lightingOrigin );
+	AnglesToAxis( cent->lerpAngles, head.axis );
+	head.renderfx = RF_LIGHTING_ORIGIN;
+	if ( ci && ci->infoValid && ci->headModel ) {
+		head.hModel = ci->headModel;
+		head.customSkin = ci->headSkin;
+		trap_R_AddRefEntityToScene( &head );
+		// the helmet / cap stays on
+		for ( i = 0; i < 3; i++ ) {
+			static const int hats[3] = { ACC_HAT, ACC_MOUTH2, ACC_MOUTH3 };
+			if ( !ci->accModels[hats[i]] ) {
+				continue;
+			}
+			memset( &acc, 0, sizeof( acc ) );
+			acc.hModel = ci->accModels[hats[i]];
+			acc.customSkin = ci->accSkins[hats[i]];
+			VectorCopy( head.lightingOrigin, acc.lightingOrigin );
+			acc.renderfx = RF_LIGHTING_ORIGIN;
+			CG_PositionEntityOnTag( &acc, &head, "tag_mouth", 0, NULL );
+			trap_R_AddRefEntityToScene( &acc );
+		}
+		return;
+	}
+	head.hModel = cgs.gameModels[cent->currentState.modelindex];    // no head to draw: a skull
+	trap_R_AddRefEntityToScene( &head );
+}
+
+// CG_General: our entities; qtrue when it was one
+qboolean CG_VRX_General( centity_t *cent ) {
+	switch ( cent->currentState.dmgFlags ) {
+	case VRX_ENT_GORE:
+		VRX_GoreMarker( cent );
+		return qtrue;
+	case VRX_ENT_HEAD:
+		VRX_DrawHead( cent );
+		return qtrue;
+	}
+	return qfalse;
+}
+
+// the blade went from a to b: through a dead body's neck?
+static void VRX_TryDecap( const vec3_t a, const vec3_t b, float radius ) {
+	centity_t *cent;
+	vec3_t ab, ap, c, neck;
+	float t, len2;
+	int i;
+
+	if ( !CG_VRX_Gore( VRX_DECAP ) || !cg.snap ) {
+		return;
+	}
+	VectorSubtract( b, a, ab );
+	len2 = DotProduct( ab, ab );
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		cent = &cg_entities[i];
+		if ( !cent->currentValid || i == cg.snap->ps.clientNum || cent->currentState.eType != ET_PLAYER ||
+			 !( cent->currentState.eFlags & EF_DEAD ) || CG_VRX_Headless( cent ) || !cent->pe.headRefEnt.hModel ||
+			 cg.time - vrxDecapAsked[i] < 1000 ) {
+			continue;
+		}
+		VectorCopy( cent->pe.headRefEnt.origin, neck );     // tag_head: the top of the neck
+		VectorSubtract( neck, a, ap );
+		t = len2 > 0.001f ? DotProduct( ap, ab ) / len2 : 0;
+		t = t < 0 ? 0 : ( t > 1 ? 1 : t );
+		VectorMA( a, t, ab, c );
+		if ( Distance( c, neck ) <= radius ) {
+			trap_SendClientCommand( va( "vrdecap %i %.0f %.0f %.0f", i, neck[0], neck[1], neck[2] ) );
+			vrxDecapAsked[i] = cg.time;
+			return;
+		}
+	}
+}
+
+// without a headset: a knife swing at a body's neck
+void CG_VRX_KnifeSwing( void ) {
+	vec3_t end;
+
+	VectorMA( cg.refdef.vieworg, 72, cg.refdef.viewaxis[0], end );
+	VRX_TryDecap( cg.refdef.vieworg, end, 8.0f );
+}
+
+// with one: the blade swept through it, fast enough to cut
+void CG_VRX_KnifeFrame( void ) {
+	static vec3_t lastTip;
+	static int lastTime;
+	vec3_t fwd, tip;
+	int dom;
+
+	if ( !cgvr.active || cg.predictedPlayerState.weapon != WP_KNIFE ||
+		 cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 ) {
+		lastTime = 0;
+		return;
+	}
+	dom = CG_VR_DominantHand();
+	AngleVectors( cgvr.weaponAngles, fwd, NULL, NULL );
+	VectorMA( cgvr.handOrigin[dom], 18.0f, fwd, tip );     // as the server's G_VR_KnifeStab
+	if ( lastTime && cg.time > lastTime && cg.time - lastTime < 200 &&
+		 Distance( tip, lastTip ) / ( ( cg.time - lastTime ) * 0.001f ) > 40.0f ) {
+		VRX_TryDecap( lastTip, tip, 5.0f );
+	}
+	VectorCopy( tip, lastTip );
+	lastTime = cg.time;
 }

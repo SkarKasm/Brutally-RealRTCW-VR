@@ -38,6 +38,7 @@ static const char *vrxNames[VRX_COUNT] = {
 static qboolean vrxRegistered;
 
 static void G_VRX_PropsFrame( void );
+static void G_VRX_MarkersFrame( void );
 
 static void G_VRX_Register( void ) {
 	char def[2] = { 0, 0 };
@@ -72,6 +73,7 @@ void G_VRX_Frame( void ) {
 	}
 
 	G_VRX_PropsFrame();
+	G_VRX_MarkersFrame();
 }
 
 // one of the settings, for game code
@@ -176,6 +178,8 @@ typedef struct {
 static vrxHeld_t vrxHeld[MAX_CLIENTS];
 static vrxThrown_t vrxThrown[VRX_MAX_THROWN];
 static qboolean vrxPropsReady;
+
+static void G_VRX_Launch( vrxThrown_t *t, gentity_t *e, gentity_t *ent, const vec3_t vel, const vrxPropState_t *saved );
 
 static void G_VRX_PropsInit( void ) {
 	int i;
@@ -406,10 +410,15 @@ void G_VRX_PropRelease( gentity_t *ent, const vec3_t vel ) {
 		G_VRX_RestoreProp( e, &h->saved );      // too much flying: just put down
 		return;
 	}
+	G_VRX_Launch( t, e, ent, vel, &h->saved );
+}
+
+// something set flying from ent, with its state to settle back to
+static void G_VRX_Launch( vrxThrown_t *t, gentity_t *e, gentity_t *ent, const vec3_t vel, const vrxPropState_t *saved ) {
 	memset( t, 0, sizeof( *t ) );
 	t->prop = e->s.number;
 	t->thrower = ent->s.number;
-	t->saved = h->saved;
+	t->saved = *saved;
 	t->time = level.time;
 	VectorCopy( e->r.currentOrigin, t->lastPos );
 	VectorCopy( vel, t->lastVel );
@@ -553,4 +562,226 @@ void G_VRX_TestProp( gentity_t *ent ) {
 	p[2] += ent->client->ps.viewheight - ( best->r.maxs[2] + best->r.mins[2] ) * 0.5f;
 	G_SetOrigin( best, p );
 	trap_LinkEntity( best );
+}
+
+// held or flying
+static qboolean G_VRX_PropBusy( gentity_t *e ) {
+	int i;
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		if ( vrxHeld[i].prop == e->s.number ) {
+			return qtrue;
+		}
+	}
+	for ( i = 0; i < VRX_MAX_THROWN; i++ ) {
+		if ( vrxThrown[i].prop == e->s.number ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+// set a prop dropping / flying from by, settling back to how it is now
+static void G_VRX_LaunchProp( gentity_t *e, gentity_t *by, const vec3_t vel ) {
+	vrxPropState_t st;
+	int i;
+
+	G_VRX_PropsInit();
+	G_VRX_SaveProp( e, &st );
+	for ( i = 0; i < VRX_MAX_THROWN; i++ ) {
+		if ( vrxThrown[i].prop < 0 ) {
+			G_VRX_Launch( &vrxThrown[i], e, by, vel, &st );
+			return;
+		}
+	}
+}
+
+/*
+==============================================================================
+
+Bodies cut up (g_decapitate), and what's cut off
+
+What has been done to a body travels in a small broadcast entity of its own, a gore
+marker (bits in s.density, VRX_GB_*), since a dead character's entity state is rebuilt
+from its player state every frame. A head that comes off is a prop of its own
+(props_vrhead): picked up and thrown like any other, drawn by every cgame with the
+dead man's own head (s.otherEntityNum2 is the body).
+
+==============================================================================
+*/
+
+#define VRX_MAX_HEADS       16
+
+static gentity_t *G_VRX_Marker( gentity_t *body, qboolean create ) {
+	gentity_t *e;
+	int i;
+
+	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
+		e = &g_entities[i];
+		if ( e->inuse && e->s.dmgFlags == VRX_ENT_GORE && e->s.otherEntityNum2 == body->s.number ) {
+			return e;
+		}
+	}
+	if ( !create ) {
+		return NULL;
+	}
+	e = G_Spawn();
+	e->classname = "vr_gore";
+	e->s.eType = ET_GENERAL;
+	e->s.modelindex = 0;                    // nothing drawn
+	e->s.dmgFlags = VRX_ENT_GORE;
+	e->s.otherEntityNum2 = body->s.number;
+	e->s.density = 0;
+	e->r.svFlags |= SVF_BROADCAST;
+	G_SetOrigin( e, body->r.currentOrigin );
+	trap_LinkEntity( e );
+	return e;
+}
+
+int G_VRX_GoreBits( gentity_t *body ) {
+	gentity_t *m = G_VRX_Marker( body, qfalse );
+	return m ? m->s.density : 0;
+}
+
+void G_VRX_AddGoreBits( gentity_t *body, int bits ) {
+	gentity_t *m = G_VRX_Marker( body, qtrue );
+	m->s.density |= bits;
+}
+
+// markers follow their bodies, and go when the body does (or is alive again)
+static void G_VRX_MarkersFrame( void ) {
+	gentity_t *e, *body;
+	int i;
+
+	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
+		e = &g_entities[i];
+		if ( !e->inuse || e->s.dmgFlags != VRX_ENT_GORE ) {
+			continue;
+		}
+		body = &g_entities[e->s.otherEntityNum2];
+		if ( !body->inuse || !body->client ||
+			 ( body->health > 0 && !( e->s.density & ( VRX_GB_SCARED | VRX_GB_SURRENDER ) ) ) ) {
+			G_FreeEntity( e );
+			continue;
+		}
+		if ( Distance( e->r.currentOrigin, body->r.currentOrigin ) > 1.0f ) {
+			G_SetOrigin( e, body->r.currentOrigin );
+			trap_LinkEntity( e );
+		}
+	}
+}
+
+// a head off a body, at pos, dropping
+static gentity_t *G_VRX_SpawnHead( gentity_t *body, const vec3_t pos, gentity_t *by ) {
+	gentity_t *e, *oldest = NULL;
+	vec3_t vel, angles;
+	int i, heads = 0;
+
+	// not too many lying about: the oldest goes
+	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
+		e = &g_entities[i];
+		if ( e->inuse && e->s.dmgFlags == VRX_ENT_HEAD ) {
+			heads++;
+			if ( !oldest || e->timestamp < oldest->timestamp ) {
+				oldest = e;
+			}
+		}
+	}
+	if ( heads >= VRX_MAX_HEADS && oldest && !G_VRX_PropBusy( oldest ) ) {
+		G_FreeEntity( oldest );
+	}
+
+	e = G_Spawn();
+	e->classname = "props_vrhead";
+	e->s.eType = ET_GENERAL;
+	e->s.modelindex = G_ModelIndex( "models/gibs/skull.mdc" );    // drawn as the man's own head
+	e->s.dmgFlags = VRX_ENT_HEAD;
+	e->s.otherEntityNum2 = body->s.number;
+	VectorSet( e->r.mins, -5, -5, -1 );      // the origin is the bottom of the neck
+	VectorSet( e->r.maxs, 5, 5, 11 );
+	e->r.contents = CONTENTS_CORPSE;
+	e->clipmask = MASK_SOLID;
+	e->timestamp = level.time;
+	G_SetOrigin( e, (float *)pos );
+	VectorSet( angles, 0, body->r.currentAngles[YAW], 0 );
+	G_SetAngle( e, angles );
+	trap_LinkEntity( e );
+
+	VectorSet( vel, crandom() * 40, crandom() * 40, 60 );
+	G_VRX_LaunchProp( e, by, vel );
+	return e;
+}
+
+/*
+=================
+G_VRX_Decap_f
+
+"vrdecap <body> <x> <y> <z>": the player's cgame saw their knife go through a dead
+body's neck at x y z (it knows where the ragdoll is, the server doesn't). Checked here
+before anything happens.
+=================
+*/
+void G_VRX_Decap_f( gentity_t *ent ) {
+	char arg[MAX_TOKEN_CHARS];
+	gentity_t *body, *te;
+	vec3_t neck;
+	int n, i;
+
+	if ( !G_VRX_Gore( VRX_DECAP ) || !ent->client || ent->client->ps.stats[STAT_HEALTH] <= 0 ||
+		 ent->client->ps.weapon != WP_KNIFE || trap_Argc() < 5 ) {
+		return;
+	}
+	trap_Argv( 1, arg, sizeof( arg ) );
+	n = atoi( arg );
+	if ( n < 0 || n >= MAX_CLIENTS ) {
+		return;
+	}
+	body = &g_entities[n];
+	if ( !body->inuse || !body->client || !body->aiCharacter || body->health > 0 ||
+		 ( G_VRX_GoreBits( body ) & VRX_GB_HEAD ) ) {
+		return;
+	}
+	for ( i = 0; i < 3; i++ ) {
+		trap_Argv( 2 + i, arg, sizeof( arg ) );
+		neck[i] = atof( arg );
+	}
+	// within reach of the player, and on (near) the body
+	if ( Distance( neck, ent->r.currentOrigin ) > 120 || Distance( neck, body->r.currentOrigin ) > 80 ) {
+		return;
+	}
+	G_VRX_AddGoreBits( body, VRX_GB_HEAD );
+	G_VRX_SpawnHead( body, neck, ent );
+
+	te = G_TempEntity( neck, EV_VR_GORE );
+	te->s.eventParm = VRG_DECAP;
+	te->s.otherEntityNum = body->s.number;
+	te->s.otherEntityNum2 = ent->s.number;
+	G_AddEvent( body, EV_GENERAL_SOUND, G_SoundIndex( "sound/weapons/knife/knife_hit3.wav" ) );
+}
+
+// vrtestdecap (test aid, cheats): the nearest dead body's head off, as a knife would
+void G_VRX_TestDecap( gentity_t *ent ) {
+	gentity_t *e, *best = NULL, *te;
+	float d, bestDist = 1e9f;
+	vec3_t neck;
+	int i;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		e = &g_entities[i];
+		if ( e->inuse && e->client && e->aiCharacter && e->health <= 0 && !( G_VRX_GoreBits( e ) & VRX_GB_HEAD ) &&
+			 ( d = Distance( e->r.currentOrigin, ent->r.currentOrigin ) ) < bestDist ) {
+			best = e;
+			bestDist = d;
+		}
+	}
+	if ( !best ) {
+		return;
+	}
+	VectorCopy( best->r.currentOrigin, neck );
+	neck[2] += 8;
+	G_VRX_AddGoreBits( best, VRX_GB_HEAD );
+	G_VRX_SpawnHead( best, neck, ent );
+	te = G_TempEntity( neck, EV_VR_GORE );
+	te->s.eventParm = VRG_DECAP;
+	te->s.otherEntityNum = best->s.number;
 }
