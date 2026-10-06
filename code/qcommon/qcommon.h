@@ -289,7 +289,7 @@ You or the server may be running older versions of the game. Press the auto-upda
 
 // RealRTCW-VR: usercmds and player states carry VR data, so VR builds must not talk to
 // the official co-op build (14)
-#define	PROTOCOL_VERSION	115     // RealRTCW-VR: 114 usercmd VR data, 115 hands in entityState
+#define	PROTOCOL_VERSION	116     // RealRTCW-VR: 114 usercmd VR data, 115 hands in entityState
 #define PROTOCOL_LEGACY_VERSION	13
 //#define	PROTOCOL_VERSION	43	// (SA) bump this up
 

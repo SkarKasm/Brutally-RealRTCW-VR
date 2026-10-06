@@ -2549,6 +2549,7 @@ int         CG_VR_DualSingle( int weapon );
 void        CG_VR_AddDualGuns( playerState_t *ps, int single );
 #ifdef VR_NET_HANDS
 qboolean    CG_VR_RemoteBody( centity_t *cent );
+void        CG_VR_RemoteAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], vec3_t headAxis[3] );
 void        CG_VR_BodyApplyRemote( centity_t *cent, refEntity_t *body );
 #endif
 void        CG_Ragdoll_DebugHead( centity_t *cent, const vec3_t headOrigin );

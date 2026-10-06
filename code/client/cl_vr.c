@@ -1944,6 +1944,8 @@ static void VR_WriteCmdTracking( usercmd_t *cmd ) {
 	eye = com_vr.eyeHeight > 0 ? com_vr.eyeHeight + 64.0f : 0;
 	cmd->vrEyeHeight = (byte)( eye > 255.0f ? 255 : ( eye < 0 ? 0 : eye ) );
 	cmd->vrRoll = ANGLE2SHORT( com_vr.weaponAngles[ROLL] );
+	cmd->vrHead[0] = ANGLE2SHORT( com_vr.hmdAngles[PITCH] );
+	cmd->vrHead[1] = ANGLE2SHORT( com_vr.hmdAngles[YAW] );
 	cmd->vrEject = (byte)com_vr.ejectCount;
 	if ( com_vr.ironSights ) {
 		flags |= VRF_SIGHTS;

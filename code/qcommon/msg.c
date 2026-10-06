@@ -637,7 +637,8 @@ usercmd_t communication
 static qboolean MSG_VRCmdChanged( const usercmd_t *a, const usercmd_t *b ) {
 	return memcmp( a->vrMove, b->vrMove, sizeof( a->vrMove ) ) || a->vrFlags != b->vrFlags ||
 		   a->vrEject != b->vrEject || a->vrEyeHeight != b->vrEyeHeight || a->vrRoll != b->vrRoll ||
-		   memcmp( a->vrHand, b->vrHand, sizeof( a->vrHand ) ) || memcmp( a->vrMuzzle, b->vrMuzzle, sizeof( a->vrMuzzle ) );
+		   memcmp( a->vrHand, b->vrHand, sizeof( a->vrHand ) ) || memcmp( a->vrMuzzle, b->vrMuzzle, sizeof( a->vrMuzzle ) ) ||
+		   memcmp( a->vrHead, b->vrHead, sizeof( a->vrHead ) );
 }
 
 static void MSG_VRCmdCopy( const usercmd_t *from, usercmd_t *to ) {
@@ -648,6 +649,7 @@ static void MSG_VRCmdCopy( const usercmd_t *from, usercmd_t *to ) {
 	to->vrRoll = from->vrRoll;
 	memcpy( to->vrHand, from->vrHand, sizeof( to->vrHand ) );
 	memcpy( to->vrMuzzle, from->vrMuzzle, sizeof( to->vrMuzzle ) );
+	memcpy( to->vrHead, from->vrHead, sizeof( to->vrHead ) );
 }
 
 /*
@@ -714,6 +716,9 @@ void MSG_WriteDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *
 		for ( j = 0; j < 3; j++ ) {
 			MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrMuzzle[j], (unsigned short)to->vrMuzzle[j], 16 );
 		}
+		for ( j = 0; j < 2; j++ ) {
+			MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrHead[j], (unsigned short)to->vrHead[j], 16 );
+		}
 	} else {
 		MSG_WriteBits( msg, 0, 1 );
 	}
@@ -769,6 +774,9 @@ void MSG_ReadDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *t
 			}
 			for ( j = 0; j < 3; j++ ) {
 				to->vrMuzzle[j] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrMuzzle[j], 16 );
+			}
+			for ( j = 0; j < 2; j++ ) {
+				to->vrHead[j] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrHead[j], 16 );
 			}
 		} else {
 			MSG_VRCmdCopy( from, to );
@@ -1039,6 +1047,8 @@ netField_t entityStateFields[] =
 	{ NETF( vrHand[1][0] ), 0 },
 	{ NETF( vrHand[1][1] ), 0 },
 	{ NETF( vrHand[1][2] ), 0 },
+	{ NETF( vrHead[0] ), 0 },
+	{ NETF( vrHead[1] ), 0 },
 };
 
 

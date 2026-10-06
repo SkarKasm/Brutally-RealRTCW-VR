@@ -884,6 +884,12 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 			}
 		}
 		ent->s.vrFlags = flags;
+
+		// and where the head looks (the usercmd's yaw space, like the aim)
+		ent->s.vrHead[PITCH] = SHORT2ANGLE( ent->client->pers.cmd.vrHead[0] );
+		ent->s.vrHead[YAW] = AngleNormalize360( SHORT2ANGLE( ent->client->pers.cmd.vrHead[1] ) +
+												SHORT2ANGLE( ent->client->ps.delta_angles[YAW] ) );
+		ent->s.vrHead[ROLL] = 0;
 	}
 
 	if ( vrp->thrown >= 0 && dt > 0 ) {

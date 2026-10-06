@@ -4666,6 +4666,11 @@ void CG_Player( centity_t *cent ) {
 	if ( CG_VR_FullBody( cent ) ) {
 		CG_VR_BodyAngles( cent, legs.axis, torso.axis );    // RealRTCW-VR: facing the head
 	}
+#ifdef VR_NET_HANDS
+	else if ( CG_VR_RemoteBody( cent ) ) {
+		CG_VR_RemoteAngles( cent, legs.axis, torso.axis, head.axis );     // another VR player's head
+	}
+#endif
 
 //----(SA)	added
 	// setting the legs axis should pass the scale down through the other parts/tags/etc.

@@ -562,6 +562,7 @@ static void NET_Steam_Host_f( void ) {
 	}
 	Cvar_Set( "dedicated", "0" );       // a game the host plays in, never a bare server
 	Cvar_Set( "sv_voip", "1" );         // RealRTCW-VR: proximity voice
+	Cvar_Set( "sv_pure", "0" );         // each player's z_vr_assets.pk3 is built from their own install
 	Cbuf_AddText( va( "wait ; wait ; coopmap %s\n", map ) );
 }
 

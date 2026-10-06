@@ -1626,6 +1626,7 @@ typedef struct usercmd_s {
 	short vrRoll;               // gun roll, ANGLE2SHORT
 	short vrHand[2][3];         // hands relative to the head, play space (Quake axes)
 	short vrMuzzle[3];          // gun muzzle relative to the gun hand, in the aim frame
+	short vrHead[2];            // head pitch, yaw (ANGLE2SHORT, play space like the angles)
 } usercmd_t;
 
 //===================================================================
@@ -1738,6 +1739,7 @@ typedef struct entityState_s {
 	// RealRTCW-VR: a VR player's tracked hands, so others see their arms (cg_vrbody.c)
 	int vrFlags;            // VRE_*
 	vec3_t vrHand[2];       // indexed by VR_HAND_*, relative to the origin, world axes
+	vec3_t vrHead;          // where the head looks: pitch, yaw (world)
 
 } entityState_t;
 
