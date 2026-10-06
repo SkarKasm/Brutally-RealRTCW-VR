@@ -450,6 +450,56 @@ animation and hands, and its gun hangs from the hand that holds it.
 
 static float vbRemote[MAX_CLIENTS][VB_MAX_BONES * 12];
 
+/*
+=================
+CG_VR_RemoteAngles
+
+Another VR player: the head turns where their head looks, the body follows it the way
+our own does (VB_NECK_SLACK, turning to catch up), instead of everything facing the gun.
+=================
+*/
+static float vbRemoteYaw[MAX_CLIENTS];
+static int vbRemoteTime[MAX_CLIENTS];
+
+void CG_VR_RemoteAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], vec3_t headAxis[3] ) {
+	entityState_t *es = &cent->currentState;
+	int n = es->clientNum;
+	float head, diff, step, speed;
+	vec3_t angles;
+
+	if ( n < 0 || n >= MAX_CLIENTS ) {
+		return;
+	}
+	head = es->vrHead[YAW];
+	if ( cent->interpolate && ( cent->nextState.vrFlags & VRE_ACTIVE ) ) {
+		head += cg.frameInterpolation * AngleNormalize180( cent->nextState.vrHead[YAW] - head );
+	}
+
+	if ( vbRemoteTime[n] <= 0 || cg.time < vbRemoteTime[n] || cg.time - vbRemoteTime[n] > 500 ) {
+		vbRemoteYaw[n] = head;
+	} else if ( cg.time > vbRemoteTime[n] ) {
+		diff = AngleNormalize180( head - vbRemoteYaw[n] );
+		if ( diff > VB_NECK_SLACK ) {
+			vbRemoteYaw[n] += diff - VB_NECK_SLACK;
+		} else if ( diff < -VB_NECK_SLACK ) {
+			vbRemoteYaw[n] += diff + VB_NECK_SLACK;
+		}
+		diff = AngleNormalize180( head - vbRemoteYaw[n] );
+		speed = VectorLength( es->pos.trDelta ) > 20.0f ? VB_TURN_SPEED_MOVE : VB_TURN_SPEED;
+		step = speed * ( cg.time - vbRemoteTime[n] ) * 0.001f;
+		vbRemoteYaw[n] += diff > step ? step : ( diff < -step ? -step : diff );
+		vbRemoteYaw[n] = AngleNormalize360( vbRemoteYaw[n] );
+	}
+	vbRemoteTime[n] = cg.time;
+
+	VectorSet( angles, 0, vbRemoteYaw[n], 0 );
+	AnglesToAxis( angles, legs );
+	AxisClear( torso );
+	// the head, relative to the body
+	VectorSet( angles, es->vrHead[PITCH], AngleNormalize180( head - vbRemoteYaw[n] ), 0 );
+	AnglesToAxis( angles, headAxis );
+}
+
 qboolean CG_VR_RemoteBody( centity_t *cent ) {
 	trap_Cvar_Update( &vr_fullBody );
 	return vr_fullBody.integer && ( cent->currentState.vrFlags & VRE_ACTIVE ) &&
