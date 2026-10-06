@@ -147,6 +147,7 @@ Pickup_Treasure
 int Pickup_Treasure( gentity_t *ent, gentity_t *other ) {
 	level.numTreasureFound++;
 	G_SendMissionStats();
+	G_VR_CheckCompletion();     // RealRTCW-VR: everything found?
 
 	if ( g_gametype.integer == GT_COOP ) {
 		other->client->ps.persistant[PERS_SCORE] += 120;

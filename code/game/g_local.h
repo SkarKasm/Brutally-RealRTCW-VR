@@ -779,6 +779,7 @@ typedef struct {
 
 	int numSecretsFound;
 	int numTreasureFound;
+	qboolean vrAllFound;            // RealRTCW-VR: every secret and treasure was found (G_VR_CheckCompletion)
 //----(SA)	end
 
 	int knifeSound[4];
@@ -1013,6 +1014,8 @@ void G_KnifeHit( gentity_t *ent, trace_t *trp );            // RealRTCW-VR
 // g_vr.c
 qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out );
 qboolean G_VR_Aiming( gentity_t *ent );
+void G_VR_CheckCompletion( void );
+int G_VR_BonusHealth( void );
 extern qboolean g_vrHandUse;            // RealRTCW-VR: Cmd_Activate_f from a hand (g_vr.c)
 extern vec3_t g_vrHandFrom, g_vrHandTo;
 void G_VR_GrenadeThrow( gentity_t *ent, int weapon, vec3_t start, vec3_t dir );

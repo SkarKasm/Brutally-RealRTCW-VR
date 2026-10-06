@@ -1115,3 +1115,61 @@ void G_VR_GrenadeThrow( gentity_t *ent, int weapon, vec3_t start, vec3_t dir ) {
 		G_Printf( "VR grenade: hand moving %.0f, thrown at %.0f\n", speed, VectorLength( dir ) );
 	}
 }
+
+/*
+=================
+G_VR_CheckCompletion / G_VR_BonusHealth
+
+Everything found: every secret and every piece of treasure in the level. Everyone is
+healed, armoured and restocked, and from then on has 25 more health for the rest of the
+session (it adds up, level after level, to 100 more). Called whenever a secret or a
+treasure is found.
+=================
+*/
+#define VR_BONUS_HEALTH     25
+#define VR_BONUS_MAX        100
+
+int G_VR_BonusHealth( void ) {
+	int b = trap_Cvar_VariableIntegerValue( "g_vrBonusHealth" );
+	return b < 0 ? 0 : ( b > VR_BONUS_MAX ? VR_BONUS_MAX : b );
+}
+
+void G_VR_CheckCompletion( void ) {
+	gentity_t *e;
+	int i, w, bonus;
+
+	if ( level.vrAllFound || ( level.numSecrets <= 0 && level.numTreasure <= 0 ) ) {
+		return;
+	}
+	if ( level.numSecretsFound < level.numSecrets || level.numTreasureFound < level.numTreasure ) {
+		return;
+	}
+	level.vrAllFound = qtrue;
+
+	bonus = G_VR_BonusHealth() + VR_BONUS_HEALTH;
+	if ( bonus > VR_BONUS_MAX ) {
+		bonus = VR_BONUS_MAX;
+	}
+	trap_Cvar_Set( "g_vrBonusHealth", va( "%d", bonus ) );
+
+	trap_SendServerCommand( -1, "mu_play sound/misc/bonus.wav 0\n" );
+	trap_SendServerCommand( -1, va( "cp \"^3EVERYTHING FOUND!\n^7All secrets and treasure: full health, armour and ammo\n^2+%d max health^7 for the rest of the session\"", VR_BONUS_HEALTH ) );
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		e = &g_entities[i];
+		if ( !e->inuse || !e->client || ( e->r.svFlags & SVF_CASTAI ) || e->aiCharacter ) {
+			continue;
+		}
+		e->client->pers.maxHealth = e->client->pers.maxHealth > 0 ? e->client->pers.maxHealth : 100;
+		e->client->ps.stats[STAT_MAX_HEALTH] = e->client->pers.maxHealth + bonus;
+		if ( e->health > 0 ) {
+			e->health = e->client->ps.stats[STAT_HEALTH] = e->client->ps.stats[STAT_MAX_HEALTH];
+		}
+		e->client->ps.stats[STAT_ARMOR] = 100;
+		for ( w = 1; w < WP_MONSTER_ATTACK1; w++ ) {
+			if ( COM_BitCheck( e->client->ps.weapons, w ) ) {
+				Add_Ammo( e, w, 999, qtrue );
+			}
+		}
+	}
+}

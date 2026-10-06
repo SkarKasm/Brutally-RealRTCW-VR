@@ -2881,6 +2881,7 @@ qboolean AICast_ScriptAction_FoundSecret( cast_state_t *cs, char *params ) {
 	gentity_t *ent;
 
 	level.numSecretsFound++;
+	G_VR_CheckCompletion();     // RealRTCW-VR: everything found?
 #ifdef LOCALISATION
 	trap_SendServerCommand( cs->entityNum, "cp \"You found a secret area\"" );
 #else

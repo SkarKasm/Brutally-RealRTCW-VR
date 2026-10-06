@@ -2030,6 +2030,9 @@ void ClientSpawn( gentity_t *ent ) {
 
 	// clear entity values
 	client->ps.stats[STAT_MAX_HEALTH] = client->pers.maxHealth;
+	if ( !( ent->r.svFlags & SVF_CASTAI ) ) {
+		client->ps.stats[STAT_MAX_HEALTH] += G_VR_BonusHealth();     // RealRTCW-VR: earned by finding everything
+	}
 	client->ps.eFlags = flags;
 	// MrE: use capsules for AI and player
 	client->ps.eFlags |= EF_CAPSULE;
