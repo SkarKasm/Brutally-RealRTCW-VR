@@ -83,3 +83,47 @@ int G_VRX( int which ) {
 qboolean G_VRX_Gore( int which ) {
 	return G_VRX( VRX_GORE ) && G_VRX( which );
 }
+
+/*
+=================
+G_VRX_Kill
+
+From G_Damage, as a blow kills a character (before its die function): the gory ones are
+sent to every cgame (EV_VR_GORE). Only ever killing blows, never someone alive.
+
+A knife kill from behind, or one that lands high, cuts the throat; one that goes in low
+(a stab to the belly in VR, from a crouch without a headset) disembowels.
+=================
+*/
+void G_VRX_Kill( gentity_t *targ, gentity_t *attacker, const vec3_t dir, const vec3_t point, int mod ) {
+	gentity_t *te;
+	int gore = VRG_NONE;
+	float neck;
+
+	if ( !targ->client || !targ->aiCharacter || !G_VRX_Gore( VRX_THROAT ) ) {
+		return;
+	}
+	if ( mod == MOD_KNIFE || mod == MOD_KNIFE2 || mod == MOD_KNIFE_STEALTH ) {
+		neck = targ->r.currentOrigin[2] + targ->client->ps.viewheight - 12.0f;
+		if ( mod == MOD_KNIFE_STEALTH || !point || point[2] > neck - 6.0f ) {
+			gore = VRG_THROAT;
+		} else {
+			gore = VRG_BELLY;
+		}
+		// without a headset a knife reaches about neck high: a crouching attacker goes low
+		if ( mod != MOD_KNIFE_STEALTH && attacker && attacker->client &&
+			 ( attacker->client->ps.pm_flags & PMF_DUCKED ) ) {
+			gore = VRG_BELLY;
+		}
+	}
+	if ( gore == VRG_NONE ) {
+		return;
+	}
+	te = G_TempEntity( targ->r.currentOrigin, EV_VR_GORE );
+	te->s.eventParm = gore;
+	te->s.otherEntityNum = targ->s.number;
+	te->s.otherEntityNum2 = attacker ? attacker->s.number : ENTITYNUM_WORLD;
+	if ( dir ) {
+		VectorCopy( dir, te->s.origin2 );
+	}
+}

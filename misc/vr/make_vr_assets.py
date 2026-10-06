@@ -294,6 +294,7 @@ HOST_EXTRAS = (
     ("g_gore", "Extra gore:", (("Off", 0), ("On", 1))),
     ("g_shotReactions", "Shot reactions:", (("Off", 0), ("Normal", 1), ("Strong", 2))),
     ("g_woundDecals", "Bullet wounds:", (("Off", 0), ("On", 1))),
+    ("g_throatSlit", "Throat cuts and guts:", (("Off", 0), ("On", 1))),
     ("g_flatGrab", "Body pickup (flat):", (("Off", 0), ("On", 1))),
     ("g_vrGrabAssist", "Grab assist:", (("Off", 0), ("Normal", 1), ("Strong", 2))),
 )

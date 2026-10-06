@@ -4372,6 +4372,7 @@ char *eventnames[] = {
 	"EV_POPUPBOOK",
 	"EV_GIVEPAGE",
 	"EV_CLOSEMENU",
+	"EV_VR_GORE",
 
 	"EV_MAX_EVENTS"
 };

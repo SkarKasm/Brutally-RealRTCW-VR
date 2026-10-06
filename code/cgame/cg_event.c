@@ -2756,6 +2756,10 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 	case EV_SPAWN_SPIRIT:
 		CG_SpawnSpirit( cent );
 		break;
+	case EV_VR_GORE:
+		DEBUGNAME( "EV_VR_GORE" );
+		CG_VRX_GoreEvent( es );     // RealRTCW-VR: GORE & EXTRAS
+		break;
 	case EV_DBG_AABB:
 		if ( !cgs.localServer ) {
 			return;

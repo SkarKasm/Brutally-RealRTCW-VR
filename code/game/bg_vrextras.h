@@ -37,4 +37,12 @@ typedef enum {
 
 #define VRX_DEFAULTS    "111112212"     // a digit per setting, in that order
 
+// EV_VR_GORE (eventParm): what happened to the body otherEntityNum, the blow along origin2
+typedef enum {
+	VRG_NONE,
+	VRG_THROAT,         // throat cut
+	VRG_BELLY,          // disembowelled
+	VRG_COUNT
+} vrGore_t;
+
 #endif

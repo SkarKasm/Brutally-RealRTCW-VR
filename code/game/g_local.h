@@ -1029,6 +1029,7 @@ void G_VR_GrabHint( gentity_t *ent );
 void G_VRX_Frame( void );
 int G_VRX( int which );
 qboolean G_VRX_Gore( int which );
+void G_VRX_Kill( gentity_t *targ, gentity_t *attacker, const vec3_t dir, const vec3_t point, int mod );
 void G_VR_Training( gentity_t *ent );
 void G_VR_OnFire( gentity_t *ent );
 void G_VR_Reset( void );

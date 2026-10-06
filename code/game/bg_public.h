@@ -886,6 +886,8 @@ typedef enum {
 	// debug rendering
 	EV_DBG_AABB,
 
+	EV_VR_GORE,         // RealRTCW-VR: GORE & EXTRAS (bg_vrextras.h)
+
 	EV_MAX_EVENTS   // just added as an 'endcap'
 
 } entity_event_t;
