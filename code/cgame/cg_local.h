@@ -179,6 +179,8 @@ typedef struct {
 	int painTime;
 	int painDuration;
 	int painDirection;              // flip from 0 to 1
+	int vrFlinchTime;               // RealRTCW-VR shot reactions: hit by a bullet then (cg_vrextras.c)
+	vec3_t vrFlinchDir, vrFlinchPoint;
 	int painAnimTorso;
 	int painAnimLegs;
 	int lightningFiring;
@@ -2735,6 +2737,13 @@ void        trap_R_VR_EndScope( void );
 
 // cg_ragdoll.c (RealRTCW-VR)
 void        CG_Ragdoll_Init( void );
+
+// cg_vrextras.c (RealRTCW-VR: GORE & EXTRAS)
+int         CG_VRX( int which );
+qboolean    CG_VRX_Gore( int which );
+float       CG_VRX_Knock( qboolean killing );
+void        CG_VRX_Flinch( int entityNum, const vec3_t point, const vec3_t dir );
+void        CG_VRX_FlinchAngles( centity_t *cent, vec3_t torsoAngles, vec3_t headAngles );
 void        CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body );
 void        CG_Ragdoll_Hit( int entityNum, const vec3_t point, const vec3_t dir, float speed );
 void        CG_Ragdoll_Explosion( const vec3_t origin, float radius, float strength );

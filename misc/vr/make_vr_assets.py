@@ -737,6 +737,8 @@ def menu_button(name, text, x, w, action):
 # GORE & EXTRAS (main menu, and a button on VR OPTIONS): the optional mechanics, flat or VR.
 # (cvar, label, choices) as in the co-op host page.
 EXTRAS = (
+    ("g_gore", "Extra gore:", (("Off", 0), ("On", 1))),
+    ("g_shotReactions", "Shot reactions:", (("Off", 0), ("Normal", 1), ("Strong", 2))),
     ("g_flatGrab", "Body pickup (flat):", (("Off", 0), ("On", 1))),
     ("g_vrGrabAssist", "Grab assist:", (("Off", 0), ("Normal", 1), ("Strong", 2))),
     ("vr_grabHint", "Can grab (VR):", (("Nothing", 0), ("Buzz", 1), ("Buzz and sign", 2))),

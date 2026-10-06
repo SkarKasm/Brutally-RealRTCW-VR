@@ -2594,6 +2594,9 @@ static void CG_PlayerAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 	// RF, add the head movement if flag is set for looking around
 	CG_IdleHeadMovement( cent, torsoAngles, headAngles );
 
+	// RealRTCW-VR: flinching from a bullet (shot reactions)
+	CG_VRX_FlinchAngles( cent, torsoAngles, headAngles );
+
 	// pull the angles back out of the hierarchial chain
 	AnglesSubtract( headAngles, torsoAngles, headAngles );
 	AnglesSubtract( torsoAngles, legsAngles, torsoAngles );

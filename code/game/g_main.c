@@ -2701,6 +2701,7 @@ void G_RunFrame( int levelTime ) {
 	level.framenum++;
 	level.previousTime = level.time;
 	level.time = levelTime;
+	G_VRX_Frame();     // RealRTCW-VR: GORE & EXTRAS settings to every cgame
 
 	msec = level.time - level.previousTime;
 
