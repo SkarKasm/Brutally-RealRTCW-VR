@@ -260,6 +260,7 @@ void CG_VR_BeginFrame( void ) {
 	}
 
 	CG_VR_ReloadSounds();
+	CG_VRX_KnifeFrame();        // GORE & EXTRAS: the blade through a dead body's neck
 
 	// the off hand just came onto something it can take: a light buzz
 	trap_Cvar_Update( &vr_grabHint );

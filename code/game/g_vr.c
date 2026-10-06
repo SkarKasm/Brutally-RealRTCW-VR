@@ -757,6 +757,10 @@ static void G_VR_FlatGrab( gentity_t *ent ) {
 		VectorMA( eye, vrp.flatDist, fwd, hand );
 		if ( attackPressed ) {
 			vec3_t vel;
+			if ( fwd[2] < 0.15f ) {     // the way the view faces, but never down into the floor
+				fwd[2] = 0.15f;
+				VectorNormalize( fwd );
+			}
 			VectorScale( fwd, 650.0f, vel );
 			vel[2] += 120.0f;
 			G_VRX_PropRelease( ent, vel );

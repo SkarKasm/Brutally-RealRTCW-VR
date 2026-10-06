@@ -2191,6 +2191,14 @@ void ClientCommand( int clientNum ) {
 
 	// RealRTCW-VR test aids (cheats): the nearest enemy dead in front of the player, and
 	// looking at the nearest body
+	if ( Q_stricmp( cmd, "vrdecap" ) == 0 ) {
+		G_VRX_Decap_f( ent );      // RealRTCW-VR: a knife through a dead body's neck
+		return;
+	}
+	if ( Q_stricmp( cmd, "vrtestdecap" ) == 0 && CheatsOk( ent ) ) {
+		G_VRX_TestDecap( ent );     // RealRTCW-VR test aid
+		return;
+	}
 	if ( Q_stricmp( cmd, "vrtestprop" ) == 0 && CheatsOk( ent ) ) {
 		G_VRX_TestProp( ent );     // RealRTCW-VR test aid
 		return;

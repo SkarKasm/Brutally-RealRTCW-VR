@@ -584,6 +584,11 @@ static void CG_General( centity_t *cent ) {
 
 	s1 = &cent->currentState;
 
+	// RealRTCW-VR: GORE & EXTRAS' own entities (cut off heads, gore markers)
+	if ( CG_VRX_General( cent ) ) {
+		return;
+	}
+
 	// if set to invisible, skip
 	if ( !s1->modelindex ) {
 		return;
