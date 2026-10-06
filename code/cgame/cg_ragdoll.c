@@ -228,6 +228,16 @@ static void RD_Align( const vec3_t u, const vec3_t v, vec3_t out[3] ) {
 	out[2][0] = t * x * z + s * y; out[2][1] = t * y * z - s * x; out[2][2] = t * z * z + c;
 }
 
+// rotation by angle (radians) about a unit axis
+static void RD_AxisAngle( const vec3_t axis, float angle, vec3_t out[3] ) {
+	float s = sin( angle ), c = cos( angle ), t = 1 - c;
+	float x = axis[0], y = axis[1], z = axis[2];
+
+	out[0][0] = t * x * x + c;     out[0][1] = t * x * y + s * z; out[0][2] = t * x * z - s * y;
+	out[1][0] = t * x * y - s * z; out[1][1] = t * y * y + c;     out[1][2] = t * y * z + s * x;
+	out[2][0] = t * x * z + s * y; out[2][1] = t * y * z - s * x; out[2][2] = t * z * z + c;
+}
+
 static void RD_TorsoFrame( vec3_t p[P_COUNT], vec3_t f[3] ) {
 	VectorSubtract( p[P_NECK], p[P_PELVIS], f[0] );
 	VectorNormalize( f[0] );
@@ -291,6 +301,87 @@ static void RD_LimitCone( ragdoll_t *rd, int root, int tip, vec3_t f[3], float s
 	}
 }
 
+// the bend at b between a-b and b-c stays within maxDev degrees of how it was at death
+static void RD_LimitBend( ragdoll_t *rd, int a, int b, int c, float maxDev ) {
+	vec3_t u, v, u0, v0, axis, nd;
+	float ang, ang0, want, len, s, co;
+
+	if ( !rd->hasPoint[a] || !rd->hasPoint[b] || !rd->hasPoint[c] || c == rd->pinned ) {
+		return;
+	}
+	VectorSubtract( rd->p[b], rd->p[a], u );
+	VectorSubtract( rd->p[c], rd->p[b], v );
+	VectorSubtract( rd->p0[b], rd->p0[a], u0 );
+	VectorSubtract( rd->p0[c], rd->p0[b], v0 );
+	if ( VectorNormalize( u ) < 1e-3f || VectorNormalize( u0 ) < 1e-3f || VectorNormalize( v0 ) < 1e-3f ) {
+		return;
+	}
+	len = VectorNormalize( v );
+	if ( len < 1e-3f ) {
+		return;
+	}
+	ang = RAD2DEG( acos( Com_Clamp( -1, 1, DotProduct( u, v ) ) ) );
+	ang0 = RAD2DEG( acos( Com_Clamp( -1, 1, DotProduct( u0, v0 ) ) ) );
+	if ( ang <= ang0 + maxDev && ang >= ang0 - maxDev ) {
+		return;
+	}
+	want = ang > ang0 + maxDev ? ang0 + maxDev : ang0 - maxDev;
+	if ( want < 0 ) {
+		want = 0;
+	}
+	// turn v in the plane of u and v to the allowed bend
+	CrossProduct( u, v, axis );
+	if ( VectorNormalize( axis ) < 1e-4f ) {
+		return;
+	}
+	CrossProduct( axis, u, nd );        // perpendicular to u, towards v
+	s = sin( DEG2RAD( want ) );
+	co = cos( DEG2RAD( want ) );
+	VectorScale( u, co, v );
+	VectorMA( v, s, nd, v );
+	VectorMA( rd->p[b], len, v, rd->p[c] );
+}
+
+// knees only bend backwards: the calf stays off the thigh's front and mostly out of its sides
+static void RD_LimitKnee( ragdoll_t *rd, int hip, int knee, int ankle, vec3_t f[3] ) {
+	vec3_t t, h, fwd, c, nd;
+	float len, cf, ch;
+
+	if ( !rd->hasPoint[hip] || !rd->hasPoint[knee] || !rd->hasPoint[ankle] || ankle == rd->pinned ) {
+		return;
+	}
+	VectorSubtract( rd->p[knee], rd->p[hip], t );
+	if ( VectorNormalize( t ) < 1e-3f ) {
+		return;
+	}
+	VectorMA( f[1], -DotProduct( f[1], t ), t, h );     // the hinge axis: the body's left, square to the thigh
+	if ( VectorNormalize( h ) < 0.3f ) {
+		return;     // leg flung out sideways: no clear hinge
+	}
+	CrossProduct( t, h, fwd );      // the way a knee can't go
+	VectorSubtract( rd->p[ankle], rd->p[knee], c );
+	len = VectorNormalize( c );
+	if ( len < 1e-3f ) {
+		return;
+	}
+	cf = DotProduct( c, fwd );
+	ch = DotProduct( c, h );
+	if ( cf <= 0.1f && ch <= 0.35f && ch >= -0.35f ) {
+		return;
+	}
+	VectorCopy( c, nd );
+	if ( cf > 0.1f ) {
+		VectorMA( nd, 0.1f - cf, fwd, nd );
+	}
+	if ( ch > 0.35f || ch < -0.35f ) {
+		VectorMA( nd, ( ch > 0 ? 0.35f : -0.35f ) - ch, h, nd );
+	}
+	if ( VectorNormalize( nd ) < 1e-3f ) {
+		return;
+	}
+	VectorMA( rd->p[knee], len, nd, rd->p[ankle] );
+}
+
 static void RD_Joints( ragdoll_t *rd ) {
 	vec3_t f[3];
 
@@ -298,8 +389,17 @@ static void RD_Joints( ragdoll_t *rd ) {
 	// hips: well forward, a little back, a little across, further out
 	RD_LimitCone( rd, P_LHIP, P_LKNEE, f, 1, 25, 115, 20, 45, qtrue );
 	RD_LimitCone( rd, P_RHIP, P_RKNEE, f, -1, 25, 115, 20, 45, qtrue );
-	// the head on the neck
+	// the head on the neck, and the top of the head (which way the face can turn)
 	RD_LimitCone( rd, P_NECK, P_HEAD, f, 1, 50, 60, 45, 45, qfalse );
+	RD_LimitCone( rd, P_HEAD, P_HEADEND, f, 1, 45, 60, 40, 40, qfalse );
+	RD_LimitBend( rd, P_NECK, P_HEAD, P_HEADEND, 50 );
+	// hands on the wrists, feet on the ankles
+	RD_LimitBend( rd, P_LELBOW, P_LWRIST, P_LHANDEND, 70 );
+	RD_LimitBend( rd, P_RELBOW, P_RWRIST, P_RHANDEND, 70 );
+	RD_LimitBend( rd, P_LKNEE, P_LANKLE, P_LTOE, 40 );
+	RD_LimitBend( rd, P_RKNEE, P_RANKLE, P_RTOE, 40 );
+	RD_LimitKnee( rd, P_LHIP, P_LKNEE, P_LANKLE, f );
+	RD_LimitKnee( rd, P_RHIP, P_RKNEE, P_RANKLE, f );
 	// shoulders: arms go almost anywhere, but not far round behind the back
 	RD_LimitCone( rd, P_LSHOULDER, P_LELBOW, f, 1, 60, 180, 60, 180, qtrue );
 	RD_LimitCone( rd, P_RSHOULDER, P_RELBOW, f, -1, 60, 180, 60, 180, qtrue );
@@ -924,6 +1024,54 @@ Points -> bones
 ==============================================================================
 */
 
+/*
+The smallest turn from the parent leaves an upper arm or thigh free to roll: swung right round
+(an arm from hanging to overhead) it flips, and the forearm and hand spin with it. The bend
+at the elbow or knee says which way the limb faces, so the roll is taken from that, as much
+as the joint is bent (a straight limb keeps the smallest turn).
+*/
+static void RD_LimbRoll( ragdoll_t *rd, int s, const vec3_t d0, const vec3_t d, vec3_t r[3] ) {
+	vec3_t w0, w, rw0, cr, m[3], out[3];
+	float l0, l, n0, n, weight, ang;
+	int to, child;
+
+	switch ( s ) {
+	case S_LUPPER: child = P_LWRIST; break;
+	case S_RUPPER: child = P_RWRIST; break;
+	case S_LTHIGH: child = P_LANKLE; break;
+	case S_RTHIGH: child = P_RANKLE; break;
+	default: return;
+	}
+	to = rdSegments[s].to;
+	if ( !rd->hasPoint[child] ) {
+		return;
+	}
+	VectorSubtract( rd->p0[child], rd->p0[to], w0 );
+	VectorSubtract( rd->p[child], rd->p[to], w );
+	l0 = VectorLength( w0 );
+	l = VectorLength( w );
+	if ( l0 < 1e-3f || l < 1e-3f ) {
+		return;
+	}
+	VectorMA( w0, -DotProduct( w0, d0 ), d0, w0 );     // the bend, square to the limb
+	VectorMA( w, -DotProduct( w, d ), d, w );
+	n0 = VectorNormalize( w0 ) / l0;                    // sine of the bend
+	n = VectorNormalize( w ) / l;
+	weight = ( ( n0 < n ? n0 : n ) - 0.15f ) / 0.25f;
+	if ( weight <= 0 ) {
+		return;
+	}
+	if ( weight > 1 ) {
+		weight = 1;
+	}
+	RD_MatVec( r, w0, rw0 );        // where the bend points now, by the smallest turn
+	CrossProduct( rw0, w, cr );
+	ang = atan2( DotProduct( cr, d ), DotProduct( rw0, w ) ) * weight;
+	RD_AxisAngle( d, ang, m );
+	RD_MatMul( m, r, out );
+	memcpy( r, out, sizeof( out ) );
+}
+
 static void RD_Pose( ragdoll_t *rd ) {
 	vec3_t segR[S_COUNT][3], f[3], d0, d, u;
 	int s, i, k, anchor;
@@ -947,6 +1095,7 @@ static void RD_Pose( ragdoll_t *rd ) {
 		}
 		RD_Align( u, d, f );
 		RD_MatMul( f, segR[rdSegments[s].parent], segR[s] );
+		RD_LimbRoll( rd, s, d0, d, segR[s] );
 	}
 
 	VectorCopy( rd->p[P_PELVIS], rd->outOrigin );
