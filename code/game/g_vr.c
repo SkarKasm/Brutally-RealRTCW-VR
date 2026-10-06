@@ -859,7 +859,11 @@ static void G_VR_FlatGrab( gentity_t *ent ) {
 			body->s.dl_intensity = 0;
 			vrp->grabbed = -1;
 		} else if ( attackPressed ) {
-			// a throw, the way the view faces
+			// a throw, the way the view faces but never down into the floor
+			if ( fwd[2] < 0.15f ) {
+				fwd[2] = 0.15f;
+				VectorNormalize( fwd );
+			}
 			VectorScale( fwd, 420.0f, vrp->handVel );
 			vrp->handVel[2] += 140.0f;
 			G_VR_ReleaseBody( vrp, body, qtrue );
