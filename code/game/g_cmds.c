@@ -3683,6 +3683,10 @@ void ClientCommand( int clientNum ) {
 				}
 			}
 		}
+	} else if ( Q_stricmp( cmd, "vrtestprop" ) == 0 ) {
+		if ( CheatsOk( ent ) ) {
+			G_VRX_TestProp( ent );     // RealRTCW-VR test aid
+		}
 	} else if ( Q_stricmp( cmd, "vrtestaim" ) == 0 ) {
 		// RealRTCW-VR test aid (cheats): look at the nearest dead body
 		if ( CheatsOk( ent ) ) {

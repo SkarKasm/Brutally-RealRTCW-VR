@@ -231,6 +231,9 @@ void G_VR_UpdateWeaponState( gentity_t *ent ) {
 		ent->client->ps.vrState = 0;
 		ent->client->ps.vrGrab = ( ent->s.number < MAX_CLIENTS && vrPlayers[ent->s.number].initialised ) ?
 								 vrPlayers[ent->s.number].grabbed + 1 : 0;
+		if ( !ent->client->ps.vrGrab && ent->s.number < MAX_CLIENTS ) {
+			ent->client->ps.vrGrab = G_VRX_PropHeld( ent ) + 1;    // a prop held up front
+		}
 		ent->s.vrFlags = 0;
 		return;
 	}
@@ -536,6 +539,15 @@ static void G_VR_PlaceBody( gentity_t *e, const vec3_t target ) {
 	trap_LinkEntity( e );
 }
 
+// how a let-go hand sends something: a throw carries a little further, a let-go just drops
+static void G_VR_ThrowVelocity( const vec3_t handVel, vec3_t out ) {
+	VectorScale( handVel, VectorLength( handVel ) > VR_THROW_SPEED ? VR_THROW_SCALE : 0.5f, out );
+	if ( VectorLength( out ) > VR_THROW_MAX ) {
+		VectorNormalize( out );
+		VectorScale( out, VR_THROW_MAX, out );
+	}
+}
+
 static void G_VR_ReleaseBody( vrPlayer_t *vrp, gentity_t *e, qboolean thrown ) {
 	trace_t tr;
 	int up;
@@ -817,6 +829,26 @@ static gentity_t *G_VR_FlatTarget( gentity_t *ent, vec3_t eye, vec3_t fwd, vec3_
 	return NULL;
 }
 
+// the prop under the crosshair, and where on it
+static gentity_t *G_VR_FlatProp( gentity_t *ent, vec3_t eye, vec3_t fwd, vec3_t at ) {
+	trace_t tr;
+	vec3_t end;
+	gentity_t *e;
+
+	VectorCopy( ent->client->ps.origin, eye );
+	eye[2] += ent->client->ps.viewheight;
+	AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
+	VectorMA( eye, VR_FLAT_REACH, fwd, end );
+	trap_Trace( &tr, eye, NULL, NULL, end, ent->s.number, MASK_SHOT );
+	VectorCopy( tr.endpos, at );
+	if ( tr.entityNum >= MAX_CLIENTS && tr.entityNum < ENTITYNUM_MAX_NORMAL &&
+		 G_VRX_FindProp( tr.endpos, 2.0f ) == &g_entities[tr.entityNum] ) {
+		return &g_entities[tr.entityNum];
+	}
+	e = G_VRX_FindProp( tr.endpos, g_vrGrabAssist.integer ? G_VR_AssistMargin( VR_ITEM_MARGIN ) : 2.0f );
+	return e;
+}
+
 static void G_VR_FlatGrab( gentity_t *ent ) {
 	vrPlayer_t *vrp = G_VR_Init( ent );
 	usercmd_t *cmd = &ent->client->pers.cmd;
@@ -829,6 +861,35 @@ static void G_VR_FlatGrab( gentity_t *ent ) {
 
 	vrp->useWas = use;
 	vrp->attackWas = attack;
+
+	// a prop held in front (GORE & EXTRAS): attack throws it, letting go puts it down
+	if ( G_VRX_PropHeld( ent ) >= 0 ) {
+		VectorCopy( ent->client->ps.origin, eye );
+		eye[2] += ent->client->ps.viewheight;
+		AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
+		VectorMA( eye, vrp->flatDist, fwd, hand );
+		if ( attackPressed ) {
+			vec3_t vel;
+			VectorScale( fwd, 650.0f, vel );
+			vel[2] += 120.0f;
+			G_VRX_PropRelease( ent, vel );
+		} else if ( !use || ent->client->ps.stats[STAT_HEALTH] <= 0 ) {
+			G_VRX_PropRelease( ent, vec3_origin );
+		} else {
+			G_VRX_PropHold( ent, hand, NULL );
+		}
+		ent->client->ps.vrGrab = G_VRX_PropHeld( ent ) + 1;
+		return;
+	}
+	if ( usePressed && vrp->grabbed < 0 && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
+		gentity_t *prop = G_VR_FlatProp( ent, eye, fwd, at );
+		if ( prop && G_VRX_PropGrab( ent, prop, at ) ) {
+			vrp->flatDist = Distance( eye, at );
+			vrp->flatDist = vrp->flatDist < 32 ? 32 : ( vrp->flatDist > 56 ? 56 : vrp->flatDist );
+			ent->client->ps.vrGrab = prop->s.number + 1;
+			return;
+		}
+	}
 
 	if ( vrp->grabbed >= 0 ) {
 		gentity_t *body = &g_entities[vrp->grabbed];
@@ -932,7 +993,8 @@ void G_VR_GrabHint( gentity_t *ent ) {
 	}
 	vrp = G_VR_Init( ent );
 	if ( !G_VR_IsPlayer( ent ) ) {
-		if ( g_flatGrab.integer && vrp->grabbed < 0 && G_VR_FlatTarget( ent, eye, fwd, at ) ) {
+		if ( g_flatGrab.integer && vrp->grabbed < 0 && G_VRX_PropHeld( ent ) < 0 &&
+			 ( G_VR_FlatTarget( ent, eye, fwd, at ) || G_VR_FlatProp( ent, eye, fwd, at ) ) ) {
 			ent->client->ps.serverCursorHint = HINT_ACTIVATE;
 			ent->client->ps.serverCursorHintVal = 0;
 		}
@@ -940,7 +1002,8 @@ void G_VR_GrabHint( gentity_t *ent ) {
 	}
 	if ( vrp->grabbed < 0 && !vrp->heldItem ) {
 		G_VR_HandWorld( ent, !G_VR_DomHand( ent ), hand );
-		can = G_VR_FindBody( ent, hand ) || G_VR_FindItem( hand );
+		can = G_VR_FindBody( ent, hand ) || G_VR_FindItem( hand ) ||
+			  ( G_VRX_PropHeld( ent ) < 0 && G_VRX_FindProp( hand, G_VR_AssistMargin( VR_ITEM_MARGIN ) ) );
 	}
 	if ( can ) {
 		ent->client->ps.vrState |= VRS_CANGRAB;
@@ -1014,6 +1077,22 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 	vrp->gripWas = down;
 
 	used = ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_Reload( ent, vrp, offHand, pressed, released, dom );
+
+	// a prop in the hand (GORE & EXTRAS): carried, then dropped or thrown
+	if ( G_VRX_PropHeld( ent ) >= 0 ) {
+		if ( down && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
+			G_VRX_PropHold( ent, offHand, NULL );
+		} else {
+			vec3_t vel;
+			G_VR_ThrowVelocity( vrp->handVel, vel );
+			G_VRX_PropRelease( ent, vel );
+		}
+		used = qtrue;
+	} else if ( pressed && !used && ent->client->ps.stats[STAT_HEALTH] > 0 &&
+				G_VRX_PropGrab( ent, G_VRX_FindProp( offHand, G_VR_AssistMargin( VR_ITEM_MARGIN ) ), offHand ) ) {
+		G_VR_Haptic( ent, off, 0.5f, 40 );
+		used = qtrue;
+	}
 
 	// bodies
 	if ( vrp->grabbed >= 0 ) {
