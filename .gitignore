@@ -46,3 +46,4 @@ profile
 /.vs
 run/
 run_test/
+dist/
