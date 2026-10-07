@@ -28,6 +28,7 @@ the Free Software Foundation, either version 3 of the License, or
 #include "../game/bg_vrextras.h"
 
 void CG_AddBloodTrails( vec3_t origin, vec3_t dir, int speed, int duration, int count, float randScale );     // cg_effects.c
+void CG_LaunchGib( centity_t *cent, vec3_t origin, vec3_t angles, vec3_t velocity, qhandle_t hModel, float sizeScale, int breakCount );
 
 #ifndef BONEFLAG_TAG
 #define BONEFLAG_TAG        1       // qfiles.h: this bone is actually a tag
@@ -168,7 +169,8 @@ typedef enum {
 	VRW_BULLET,
 	VRW_THROAT,         // a cut across the front of the neck, bleeding
 	VRW_BELLY,          // opened, the guts hanging out, bleeding
-	VRW_STUMP           // the neck where the head came off, bleeding
+	VRW_STUMP,          // the neck where the head came off, bleeding
+	VRW_LIMB            // where an arm / leg came off (limb: which), bleeding, the limb flying off
 } vrWoundKind_t;
 
 typedef struct {
@@ -180,6 +182,7 @@ typedef struct {
 	float       size, spin, aspect;
 	int         shader;
 	int         bleedEnd, nextSpurt;
+	int         limb, high;     // VRW_LIMB: which (VRX_GB_*), and cut at the shoulder / hip
 } vrWound_t;
 
 typedef struct {
@@ -205,6 +208,7 @@ static vrSkel_t vrSkels[VRX_MAX_SKELS];
 static int vrSkelNext;
 static qhandle_t vrWoundShaders[5];
 static qhandle_t vrGutsModel;
+static float vrxPoses[MAX_CLIENTS][VRX_MAX_BONES * 12];     // poses we draw with: the renderer reads them at the end of the frame
 
 // how thick the limb from this bone to its child is
 static float VRX_LimbRadius( const char *name ) {
@@ -369,6 +373,23 @@ void CG_VRX_GoreEvent( entityState_t *es ) {
 			w->size = 3.6f;
 		}
 		break;
+	case VRG_LIMBS:
+		{
+			int b;
+			for ( b = VRX_GB_LARM; b <= VRX_GB_RLEG; b <<= 1 ) {
+				if ( !( es->density & b ) ) {
+					continue;
+				}
+				w = VRX_NewWound( es->otherEntityNum, VRW_LIMB, es->pos.trBase, es->origin2 );
+				if ( w ) {
+					w->size = 2.4f;
+					w->limb = b;
+					w->high = ( es->frame & b ) != 0;
+				}
+			}
+			CG_AddBloodTrails( es->pos.trBase, tv( 0, 0, 1 ), 140, 900, 8, 0.8f );
+		}
+		break;
 	case VRG_DECAP:
 		w = VRX_NewWound( es->otherEntityNum, VRW_STUMP, es->pos.trBase, es->origin2 );
 		if ( w ) {
@@ -391,6 +412,34 @@ static int VRX_FindBone( vrSkel_t *sk, const char *part ) {
 	return -1;
 }
 
+// the first bone of what comes off with a limb
+static const char *VRX_LimbRoot( int limb, qboolean high ) {
+	switch ( limb ) {
+	case VRX_GB_LARM: return high ? "L UpperArm" : "L Forearm";
+	case VRX_GB_RARM: return high ? "R UpperArm" : "R Forearm";
+	case VRX_GB_LLEG: return high ? "L Thigh" : "L Calf";
+	default: return high ? "R Thigh" : "R Calf";
+	}
+}
+
+// the limb flying off (RTCW's own gibs)
+static void VRX_LimbGib( vrWound_t *w, centity_t *cent, const vec3_t at, const vec3_t along ) {
+	static qhandle_t arm, leg;
+	vec3_t vel, ang;
+
+	if ( !arm ) {
+		arm = trap_R_RegisterModel( "models/gibs/forearm.mdc" );
+		leg = trap_R_RegisterModel( "models/gibs/leg.mdc" );
+	}
+	VectorScale( along, 120, vel );
+	VectorMA( vel, 160, w->dir, vel );
+	vel[0] += crandom() * 80;
+	vel[1] += crandom() * 80;
+	vel[2] += 180 + random() * 120;
+	VectorSet( ang, random() * 360, random() * 360, random() * 360 );
+	CG_LaunchGib( cent, (float *)at, ang, vel, ( w->limb & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) ? leg : arm, 1.0f, 0 );
+}
+
 // a cut or opened belly: on the front of the neck / belly, the way the body faced
 static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t bAxis[][3], vec3_t bPos[] ) {
 	vec3_t ang, fwd, right, c, rel;
@@ -402,7 +451,21 @@ static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t b
 	}
 	VectorSet( ang, 0, cent->lerpAngles[YAW], 0 );
 	AngleVectors( ang, fwd, right, NULL );
-	if ( w->kind == VRW_STUMP ) {
+	if ( w->kind == VRW_LIMB ) {
+		// on the stump of the limb, facing down the limb; the rest of it flies off
+		int root = VRX_FindBone( sk, VRX_LimbRoot( w->limb, w->high ) ), p;
+		if ( root < 0 || sk->parents[root] < 0 ) {
+			w->bone = -2;
+			return;
+		}
+		p = sk->parents[root];
+		VectorSubtract( bPos[root], bPos[p], fwd );
+		VectorNormalize( fwd );
+		VectorCopy( bPos[root], c );
+		PerpendicularVector( right, fwd );
+		VRX_LimbGib( w, cent, bPos[root], fwd );
+		b = p;
+	} else if ( w->kind == VRW_STUMP ) {
 		int h = VRX_FindBone( sk, "Head" );
 		if ( h < 0 ) {
 			w->bone = -2;
@@ -429,7 +492,7 @@ static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t b
 	w->localT[1] = DotProduct( right, bAxis[b][1] );
 	w->localT[2] = DotProduct( right, bAxis[b][2] );
 	w->bone = b;
-	w->bleedEnd = cg.time + ( w->kind == VRW_BELLY ? 2500 : w->kind == VRW_STUMP ? 5000 : 3500 );
+	w->bleedEnd = cg.time + ( w->kind == VRW_BELLY ? 2500 : w->kind == VRW_THROAT ? 3500 : 5000 );
 	w->nextSpurt = cg.time;
 }
 
@@ -716,6 +779,7 @@ server ("vrdecap"): a VR blade swept through it, or a knife swing at it without 
 */
 
 static int vrxGoreBits[MAX_GENTITIES];      // from the gore markers, by body
+static int vrxGoreHigh[MAX_GENTITIES];      // and which limbs were cut high
 static int vrxDecapAsked[MAX_CLIENTS];      // when we last asked for a body
 
 // a gore marker entity: what's been done to its body (drawn as nothing)
@@ -724,6 +788,7 @@ static void VRX_GoreMarker( centity_t *cent ) {
 
 	if ( body >= 0 && body < MAX_GENTITIES ) {
 		vrxGoreBits[body] = cent->currentState.density;
+		vrxGoreHigh[body] = cent->currentState.frame;
 	}
 }
 
@@ -919,7 +984,7 @@ static void VRX_Turn( const vec3_t u, const vec3_t v, float f, vec3_t r[3] ) {
 }
 
 void CG_VRX_Surrender( centity_t *cent, refEntity_t *body ) {
-	static float pose[VRX_MAX_BONES * 12];
+	float *pose;
 	static const char *arms[2][3] = { { "L UpperArm", "L Forearm", "L Hand" }, { "R UpperArm", "R Forearm", "R Hand" } };
 	int n = cent->currentState.number, side, b[3], k;
 	vrSkel_t *sk;
@@ -938,6 +1003,7 @@ void CG_VRX_Surrender( centity_t *cent, refEntity_t *body ) {
 	}
 	f = ( cg.time - vrxGaveUp[n] ) / 500.0f;
 	f = f > 1 ? 1 : f;
+	pose = vrxPoses[n];
 	sk = VRX_Skel( body, pose );
 	if ( !sk ) {
 		return;
@@ -963,6 +1029,66 @@ void CG_VRX_Surrender( centity_t *cent, refEntity_t *body ) {
 		VectorNormalize( want );
 		VRX_Turn( d, want, f, r );
 		VRX_RotateSubtree( pose, sk, b[1], r, pose + b[1] * 12 + 9 );
+	}
+	body->ragdollBones = pose;
+	body->ragdollMagic = RAGDOLL_MAGIC;
+}
+
+/*
+=================
+CG_VRX_Dismember
+
+A body with limbs off: everything below each cut squeezed into the joint (the mesh is one
+piece, so the bones are folded away), on the pose being drawn (the ragdoll's, or the
+death animation's). Then it's drawn with that pose.
+=================
+*/
+
+void CG_VRX_Dismember( centity_t *cent, refEntity_t *body ) {
+	int n = cent->currentState.number, bits, limb, root, i, p;
+	float *pose;
+	vrSkel_t *sk;
+
+	if ( n >= MAX_CLIENTS || !( cent->currentState.eFlags & EF_DEAD ) || !CG_VRX_Gore( VRX_DISMEMBER ) ) {
+		return;
+	}
+	bits = CG_VRX_GoreBits( cent ) & ( VRX_GB_LARM | VRX_GB_RARM | VRX_GB_LLEG | VRX_GB_RLEG );
+	if ( !bits ) {
+		return;
+	}
+	pose = vrxPoses[n];
+	if ( body->ragdollBones && body->ragdollMagic == RAGDOLL_MAGIC ) {
+		sk = VRX_Skel( body, NULL );
+		if ( !sk ) {
+			return;
+		}
+		memcpy( pose, body->ragdollBones, sizeof( float ) * 12 * sk->n );
+	} else {
+		sk = VRX_Skel( body, pose );
+		if ( !sk ) {
+			return;
+		}
+	}
+	for ( limb = VRX_GB_LARM; limb <= VRX_GB_RLEG; limb <<= 1 ) {
+		if ( !( bits & limb ) ) {
+			continue;
+		}
+		root = VRX_FindBone( sk, VRX_LimbRoot( limb, ( vrxGoreHigh[n] & limb ) != 0 ) );
+		if ( root < 0 ) {
+			continue;
+		}
+		for ( i = 0; i < sk->n; i++ ) {
+			for ( p = i; p >= 0 && p != root; p = sk->parents[p] ) {
+			}
+			if ( p == root ) {
+				float *bm = pose + i * 12;
+				int k;
+				for ( k = 0; k < 9; k++ ) {
+					bm[k] *= 0.001f;
+				}
+				VectorCopy( pose + root * 12 + 9, bm + 9 );
+			}
+		}
 	}
 	body->ragdollBones = pose;
 	body->ragdollMagic = RAGDOLL_MAGIC;

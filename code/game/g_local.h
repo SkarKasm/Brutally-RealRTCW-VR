@@ -1029,7 +1029,8 @@ void G_VR_GrabHint( gentity_t *ent );
 void G_VRX_Frame( void );
 int G_VRX( int which );
 qboolean G_VRX_Gore( int which );
-void G_VRX_Kill( gentity_t *targ, gentity_t *attacker, const vec3_t dir, const vec3_t point, int mod );
+void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
+				 int mod, int damage );
 gentity_t *G_VRX_FindProp( const vec3_t p, float reach );
 qboolean G_VRX_PropGrab( gentity_t *ent, gentity_t *e, const vec3_t hand );
 int G_VRX_PropHeld( gentity_t *ent );

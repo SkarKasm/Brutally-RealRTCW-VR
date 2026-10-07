@@ -2545,6 +2545,7 @@ qboolean    CG_VRX_General( centity_t *cent );
 void        CG_VRX_KnifeSwing( void );
 void        CG_VRX_KnifeFrame( void );
 void        CG_VRX_Surrender( centity_t *cent, refEntity_t *body );
+void        CG_VRX_Dismember( centity_t *cent, refEntity_t *body );
 void        CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body );
 void        CG_Ragdoll_Hit( int entityNum, const vec3_t point, const vec3_t dir, float speed );
 void        CG_Ragdoll_Explosion( const vec3_t origin, float radius, float strength );
