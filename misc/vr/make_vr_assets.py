@@ -298,6 +298,7 @@ HOST_EXTRAS = (
     ("g_propGrab", "Pick up and throw props:", (("Off", 0), ("On", 1))),
     ("g_propHit", "Thrown props:", (("Just bounce", 0), ("Stun", 1), ("Stun and hurt", 2))),
     ("g_decapitate", "Knife takes heads (dead):", (("Off", 0), ("On", 1))),
+    ("g_headScare", "Thrown heads:", (("Nothing", 0), ("Scare", 1), ("Scare, surrender", 2))),
     ("g_flatGrab", "Body pickup (flat):", (("Off", 0), ("On", 1))),
     ("g_vrGrabAssist", "Grab assist:", (("Off", 0), ("Normal", 1), ("Strong", 2))),
 )
