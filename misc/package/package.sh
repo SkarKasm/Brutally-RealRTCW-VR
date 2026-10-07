@@ -3,7 +3,7 @@
 # RealRTCW (with its co-op mode) and Return to Castle Wolfenstein. Run deploy.sh first.
 cd "$(dirname "$0")/../.."
 OUT=dist/RealRTCW-VR-Coop
-rm -rf dist && mkdir -p $OUT/game/coopmain $OUT/game/EE
+rm -rf $OUT dist/RealRTCW-VR-Coop.zip && mkdir -p $OUT/game/coopmain $OUT/game/EE
 cp run/RTCWCoop.x64.exe run/RTCWCoopDED.x64.exe run/renderer_coop_opengl1_x64.dll run/SDL264.dll run/OpenAL64.dll \
    run/libopenxr_loader.dll run/libgcc_s_seh-1.dll run/libwinpthread-1.dll run/libstdc++-6.dll $OUT/game/
 cp run/coopmain/*.dll run/coopmain/z_vr_assets.pk3 $OUT/game/coopmain/
@@ -18,5 +18,8 @@ mk "Classic co-op VR.bat" "the original campaign in co-op, in VR" '+set fs_game 
 mk "Classic co-op (no VR).bat" "the original campaign in co-op on the monitor" '+set fs_game "" +set vr_enable 0'
 cp misc/package/README.txt $OUT/
 for f in $OUT/*.bat $OUT/game/*.cmd $OUT/README.txt; do sed -i 's/\r\?$/\r/' "$f"; done
-(cd dist && powershell -NoProfile -Command "Compress-Archive -Path RealRTCW-VR-Coop -DestinationPath RealRTCW-VR-Coop.zip -Force")
+(cd dist && python -c "import shutil; shutil.make_archive('RealRTCW-VR-Coop', 'zip', '.', 'RealRTCW-VR-Coop')")
+# the single player build next to it, when it's been packaged (../RealRTCW-VR)
+SP_ZIP=../RealRTCW-VR/dist/RealRTCW-VR.zip
+[ -f "$SP_ZIP" ] && cp "$SP_ZIP" dist/
 ls -la dist

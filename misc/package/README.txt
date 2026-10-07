@@ -59,7 +59,12 @@ The old ways still work too: JOIN GAME lists games on your LAN, and the console
 (~ key) takes "connect <IP address>".
 
 Each player sets their own VR options (main menu, VR OPTIONS), including manual
-reloading and aim accuracy.
+reloading and aim accuracy. The host also chooses the optional mechanics and gore for
+everyone on HOST GAME's EXTRAS & GORE page (body pickup without a headset, grab assist,
+shot reactions, wounds, throat cuts, throwing props, taking heads, scaring enemies with
+them, dismemberment).
+
+For single player, use the separate RealRTCW-VR package (RealRTCW-VR.zip).
 
 
 VR controls (Quest / Touch layout)
