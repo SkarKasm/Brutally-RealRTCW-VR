@@ -20,6 +20,15 @@ the Free Software Foundation, either version 3 of the License, or
 // GORE page; either way they apply to everyone in the game, with or without a headset.
 
 #include "g_local.h"
+#include "../botlib/botlib.h"
+#include "../botlib/be_aas.h"
+#include "../botlib/be_ea.h"
+#include "../botlib/be_ai_gen.h"
+#include "../botlib/be_ai_goal.h"
+#include "../botlib/be_ai_move.h"
+#include "../botlib/be_ai_weap.h"
+#include "../botlib/botai.h"
+#include "ai_cast.h"
 #include "bg_vrextras.h"
 
 static vmCvar_t vrxCvars[VRX_COUNT];
@@ -172,6 +181,7 @@ typedef struct {
 	vrxPropState_t  saved;
 	vec3_t          lastPos, lastVel;
 	qboolean        harmless;       // already hit someone
+	qboolean        scared;         // a head: has already scared whoever saw it land
 	int             time;
 } vrxThrown_t;
 
@@ -180,6 +190,7 @@ static vrxThrown_t vrxThrown[VRX_MAX_THROWN];
 static qboolean vrxPropsReady;
 
 static void G_VRX_Launch( vrxThrown_t *t, gentity_t *e, gentity_t *ent, const vec3_t vel, const vrxPropState_t *saved );
+static void G_VRX_HeadScare( vrxThrown_t *t, gentity_t *head );
 
 static void G_VRX_PropsInit( void ) {
 	int i;
@@ -489,6 +500,7 @@ static void G_VRX_PropsFrame( void ) {
 			hit = tr.entityNum < ENTITYNUM_MAX_NORMAL ? &g_entities[tr.entityNum] : NULL;
 			if ( hit && hit != e && hit->client && hit->health > 0 ) {
 				t->harmless = qtrue;
+				G_VRX_HeadScare( t, e );
 				VectorNormalize2( t->lastVel, dir );
 				if ( G_VRX( VRX_PROPHIT ) ) {
 					// a stun (the pain of it, knocked back a little), and with 2 some real damage
@@ -513,6 +525,7 @@ static void G_VRX_PropsFrame( void ) {
 
 		// landed: a hard landing breaks what can break, else it settles
 		if ( e->s.pos.trType == TR_STATIONARY || level.time - t->time > 8000 ) {
+			G_VRX_HeadScare( t, e );
 			if ( speed > 420 && G_VRX_PropBreak( e, thrower ) ) {
 				t->prop = -1;
 				continue;
@@ -536,7 +549,8 @@ void G_VRX_TestProp( gentity_t *ent ) {
 	G_VRX_PropsInit();
 	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
 		e = &g_entities[i];
-		if ( G_VRX_Grabbable( e ) && ( d = Distance( e->r.currentOrigin, ent->r.currentOrigin ) ) < bestDist ) {
+		if ( G_VRX_Grabbable( e ) && ( d = Distance( e->r.currentOrigin, ent->r.currentOrigin ) -
+										 ( e->s.dmgFlags == VRX_ENT_HEAD ? 100000 : 0 ) ) < bestDist ) {     // heads first
 			best = e;
 			bestDist = d;
 		}
@@ -784,4 +798,94 @@ void G_VRX_TestDecap( gentity_t *ent ) {
 	te = G_TempEntity( neck, EV_VR_GORE );
 	te->s.eventParm = VRG_DECAP;
 	te->s.otherEntityNum = best->s.number;
+}
+
+/*
+=================
+G_VRX_HeadScare / G_VRX_Surrender (g_headScare)
+
+A head a player threw, landing or hitting someone: the soldiers who see it run from it
+(as from a grenade), and with 2 those it catches unawares, or lands right by, give up:
+weapon dropped, hands up (cgame raises the arms, VRX_GB_SURRENDER), no more fighting.
+=================
+*/
+#define VRX_SCARE_DIST      280
+#define VRX_GIVEUP_DIST     160
+
+static qboolean G_VRX_Scareable( gentity_t *e ) {
+	switch ( e->aiCharacter ) {
+	case AICHAR_SOLDIER:
+	case AICHAR_ELITEGUARD:
+	case AICHAR_BLACKGUARD:
+	case AICHAR_VENOM:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
+static void G_VRX_Surrender( gentity_t *e, cast_state_t *cs ) {
+	gitem_t *item = e->client->ps.weapon > WP_NONE ? BG_FindItemForWeapon( e->client->ps.weapon ) : NULL;
+	vec3_t org, vel;
+
+	if ( item ) {
+		VectorCopy( e->r.currentOrigin, org );
+		org[2] += 24;
+		VectorSet( vel, crandom() * 80, crandom() * 80, 140 );
+#ifdef VR_NET_HANDS
+		LaunchItem( item, org, vel, e->s.number );
+#else
+		LaunchItem( item, org, vel );
+#endif
+	}
+	memset( e->client->ps.weapons, 0, sizeof( e->client->ps.weapons ) );
+	e->client->ps.weapon = WP_NONE;
+	cs->weaponNum = WP_NONE;
+	cs->noAttackTime = level.time + 3600000;    // for good
+	cs->pauseTime = level.time + 3600000;       // stays where they are
+	G_VRX_AddGoreBits( e, VRX_GB_SURRENDER );
+}
+
+static void G_VRX_HeadScare( vrxThrown_t *t, gentity_t *head ) {
+	gentity_t *e, *thrower = &g_entities[t->thrower];
+	cast_state_t *cs;
+	vec3_t eye;
+	trace_t tr;
+	float dist;
+	int i;
+
+	if ( t->scared || head->s.dmgFlags != VRX_ENT_HEAD || !G_VRX( VRX_HEADSCARE ) ||
+		 !thrower->client || thrower->aiCharacter ) {
+		return;
+	}
+	t->scared = qtrue;
+	for ( i = 0; i < level.maxclients; i++ ) {
+		e = &g_entities[i];
+		if ( !e->inuse || !e->client || !e->aiCharacter || e->health <= 0 || !G_VRX_Scareable( e ) ||
+			 ( G_VRX_GoreBits( e ) & VRX_GB_SURRENDER ) ) {
+			continue;
+		}
+		dist = Distance( e->r.currentOrigin, head->r.currentOrigin );
+		if ( dist > VRX_SCARE_DIST ) {
+			continue;
+		}
+		VectorCopy( e->r.currentOrigin, eye );
+		eye[2] += e->client->ps.viewheight;
+		trap_Trace( &tr, head->r.currentOrigin, NULL, NULL, eye, head->s.number, MASK_SOLID );
+		if ( tr.fraction < 1.0f ) {
+			continue;       // didn't see it
+		}
+		cs = AICast_GetCastState( i );
+		if ( G_VRX( VRX_HEADSCARE ) >= 2 && ( dist < VRX_GIVEUP_DIST || cs->aiState < AISTATE_COMBAT ) ) {
+			G_VRX_Surrender( e, cs );
+			continue;
+		}
+		// run from it
+		cs->dangerEntity = head->s.number;
+		VectorCopy( head->r.currentOrigin, cs->dangerEntityPos );
+		cs->dangerEntityValidTime = level.time + 6000;
+		cs->dangerDist = VRX_SCARE_DIST * 1.5f;
+		cs->dangerEntityTimestamp = level.time;
+		G_VRX_AddGoreBits( e, VRX_GB_SCARED );
+	}
 }

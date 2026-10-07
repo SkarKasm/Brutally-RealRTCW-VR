@@ -853,3 +853,117 @@ void CG_VRX_KnifeFrame( void ) {
 	VectorCopy( tip, lastTip );
 	lastTime = cg.time;
 }
+
+/*
+=================
+CG_VRX_Surrender
+
+Someone who gave up (VRX_GB_SURRENDER): over the animation the arms go up, upper arms
+out to the sides and the forearms straight up, eased in. The pose goes to the renderer
+the way a ragdoll's does (ragdollBones), in the model's own space.
+=================
+*/
+static int vrxGaveUp[MAX_CLIENTS];      // when we first saw it
+
+// rotate bone b and everything under it about pivot (model space)
+static void VRX_RotateSubtree( float *pose, vrSkel_t *sk, int top, vec3_t r[3], const vec3_t pivot ) {
+	int i, k, j, p;
+
+	for ( i = 0; i < sk->n; i++ ) {
+		for ( p = i; p >= 0 && p != top; p = sk->parents[p] ) {
+		}
+		if ( p != top ) {
+			continue;
+		}
+		{
+			float *bm = pose + i * 12, m[9], t[3];
+			memcpy( m, bm, sizeof( m ) );
+			for ( k = 0; k < 3; k++ ) {
+				for ( j = 0; j < 3; j++ ) {
+					if ( sk->flags[i] & BONEFLAG_TAG ) {
+						// rows are the axes: each axis turned
+						bm[k * 3 + j] = m[k * 3 + 0] * r[0][j] + m[k * 3 + 1] * r[1][j] + m[k * 3 + 2] * r[2][j];
+					} else {
+						// columns are the axes: R * M
+						bm[k * 3 + j] = r[0][k] * m[0 * 3 + j] + r[1][k] * m[1 * 3 + j] + r[2][k] * m[2 * 3 + j];
+					}
+				}
+			}
+			VectorSubtract( bm + 9, pivot, t );
+			for ( k = 0; k < 3; k++ ) {
+				bm[9 + k] = pivot[k] + r[0][k] * t[0] + r[1][k] * t[1] + r[2][k] * t[2];
+			}
+		}
+	}
+}
+
+// the rotation (columns) taking unit u part of the way (f) onto unit v
+static void VRX_Turn( const vec3_t u, const vec3_t v, float f, vec3_t r[3] ) {
+	vec3_t axis;
+	float ang, s, c, t, x, y, z;
+
+	CrossProduct( u, v, axis );
+	s = VectorNormalize( axis );
+	ang = atan2( s, DotProduct( u, v ) ) * f;
+	if ( s < 1e-4f ) {
+		AxisClear( r );
+		return;
+	}
+	s = sin( ang );
+	c = cos( ang );
+	t = 1 - c;
+	x = axis[0]; y = axis[1]; z = axis[2];
+	r[0][0] = t * x * x + c;     r[0][1] = t * x * y + s * z; r[0][2] = t * x * z - s * y;
+	r[1][0] = t * x * y - s * z; r[1][1] = t * y * y + c;     r[1][2] = t * y * z + s * x;
+	r[2][0] = t * x * z + s * y; r[2][1] = t * y * z - s * x; r[2][2] = t * z * z + c;
+}
+
+void CG_VRX_Surrender( centity_t *cent, refEntity_t *body ) {
+	static float pose[VRX_MAX_BONES * 12];
+	static const char *arms[2][3] = { { "L UpperArm", "L Forearm", "L Hand" }, { "R UpperArm", "R Forearm", "R Hand" } };
+	int n = cent->currentState.number, side, b[3], k;
+	vrSkel_t *sk;
+	vec3_t r[3], d, want;
+	float f;
+
+	if ( n >= MAX_CLIENTS || ( cent->currentState.eFlags & EF_DEAD ) || body->ragdollBones ||
+		 !( CG_VRX_GoreBits( cent ) & VRX_GB_SURRENDER ) ) {
+		if ( n < MAX_CLIENTS ) {
+			vrxGaveUp[n] = 0;
+		}
+		return;
+	}
+	if ( !vrxGaveUp[n] ) {
+		vrxGaveUp[n] = cg.time;
+	}
+	f = ( cg.time - vrxGaveUp[n] ) / 500.0f;
+	f = f > 1 ? 1 : f;
+	sk = VRX_Skel( body, pose );
+	if ( !sk ) {
+		return;
+	}
+	for ( side = 0; side < 2; side++ ) {
+		for ( k = 0; k < 3; k++ ) {
+			b[k] = VRX_FindBone( sk, arms[side][k] );
+		}
+		if ( b[0] < 0 || b[1] < 0 || b[2] < 0 ) {
+			continue;
+		}
+		// upper arm out to the side (model space: x forward, y left, z up), a little up
+		VectorSubtract( pose + b[1] * 12 + 9, pose + b[0] * 12 + 9, d );
+		VectorNormalize( d );
+		VectorSet( want, 0.15f, side ? -0.9f : 0.9f, 0.35f );
+		VectorNormalize( want );
+		VRX_Turn( d, want, f, r );
+		VRX_RotateSubtree( pose, sk, b[0], r, pose + b[0] * 12 + 9 );
+		// forearm straight up
+		VectorSubtract( pose + b[2] * 12 + 9, pose + b[1] * 12 + 9, d );
+		VectorNormalize( d );
+		VectorSet( want, 0.1f, 0, 1 );
+		VectorNormalize( want );
+		VRX_Turn( d, want, f, r );
+		VRX_RotateSubtree( pose, sk, b[1], r, pose + b[1] * 12 + 9 );
+	}
+	body->ragdollBones = pose;
+	body->ragdollMagic = RAGDOLL_MAGIC;
+}

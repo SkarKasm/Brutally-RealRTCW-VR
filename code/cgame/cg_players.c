@@ -4705,6 +4705,7 @@ void CG_Player( centity_t *cent ) {
 
 		// RealRTCW-VR: the dead go limp; a VR player sees their own body, arms on the controllers
 		CG_Ragdoll_Apply( cent, &legs );
+		CG_VRX_Surrender( cent, &legs );     // GORE & EXTRAS: hands up
 		if ( CG_VR_FullBody( cent ) ) {
 			CG_VR_BodyApply( cent, &legs );
 		}
