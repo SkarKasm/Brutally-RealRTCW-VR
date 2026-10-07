@@ -2242,7 +2242,9 @@ void ClientCommand( int clientNum ) {
 			{
 				char arg[16];
 				trap_Argv( 1, arg, sizeof( arg ) );
-				if ( !Q_stricmp( arg, "throat" ) || !Q_stricmp( arg, "belly" ) ) {
+				if ( !Q_stricmp( arg, "blast" ) ) {
+					G_Damage( best, ent, ent, fwd, NULL, 10000, DAMAGE_NO_PROTECTION, MOD_GRENADE_SPLASH );
+				} else if ( !Q_stricmp( arg, "throat" ) || !Q_stricmp( arg, "belly" ) ) {
 					// a knife kill: from behind, or a stab low in the front
 					vec3_t low;
 					VectorCopy( best->r.currentOrigin, low );

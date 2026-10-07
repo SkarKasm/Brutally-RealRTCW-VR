@@ -48,6 +48,7 @@ static qboolean vrxRegistered;
 
 static void G_VRX_PropsFrame( void );
 static void G_VRX_MarkersFrame( void );
+static gentity_t *G_VRX_Marker( gentity_t *body, qboolean create );
 
 static void G_VRX_Register( void ) {
 	char def[2] = { 0, 0 };
@@ -101,6 +102,94 @@ qboolean G_VRX_Gore( int which ) {
 
 /*
 =================
+G_VRX_Dismember (g_dismember)
+
+A blast (1), or a heavy hit too (2), as it kills someone or lands on a body: limbs off.
+A blast takes one or two, close ones at the shoulder or hip; a heavy round takes the one
+it hit, at the elbow or knee. Never on the living.
+=================
+*/
+static qboolean G_VRX_Blast( int mod ) {
+	switch ( mod ) {
+	case MOD_GRENADE:
+	case MOD_GRENADE_SPLASH:
+	case MOD_ROCKET:
+	case MOD_ROCKET_SPLASH:
+	case MOD_PANZERFAUST:
+	case MOD_GRENADE_LAUNCHER:
+	case MOD_GRENADE_PINEAPPLE:
+	case MOD_MORTAR:
+	case MOD_MORTAR_SPLASH:
+	case MOD_DYNAMITE:
+	case MOD_DYNAMITE_SPLASH:
+	case MOD_AIRSTRIKE:
+	case MOD_EXPLOSIVE:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
+static void G_VRX_Dismember( gentity_t *targ, gentity_t *inflictor, const vec3_t dir, const vec3_t point, int mod, int damage ) {
+	static const int limbs[4] = { VRX_GB_LARM, VRX_GB_RARM, VRX_GB_LLEG, VRX_GB_RLEG };
+	gentity_t *m, *te;
+	int have, cut = 0, high = 0, i, k;
+	qboolean blast = G_VRX_Blast( mod );
+
+	if ( !G_VRX_Gore( VRX_DISMEMBER ) || !targ->client || !targ->aiCharacter || targ->health > 0 ) {
+		return;
+	}
+	if ( !blast && !( G_VRX( VRX_DISMEMBER ) >= 2 && ( mod == MOD_VENOM || damage >= 45 ) ) ) {
+		return;
+	}
+	have = G_VRX_GoreBits( targ );
+	if ( blast ) {
+		float d = inflictor ? Distance( inflictor->r.currentOrigin, targ->r.currentOrigin ) : 999;
+		if ( damage < 40 && d > 100 ) {
+			return;     // too far off
+		}
+		for ( k = 0; k < 2; k++ ) {
+			i = rand() % 4;
+			if ( k == 0 || random() < 0.5f ) {
+				cut |= limbs[i];
+				if ( d < 90 || random() < 0.3f ) {
+					high |= limbs[i];
+				}
+			}
+		}
+	} else {
+		// the limb that was hit: by height, and which side (for someone who was standing)
+		vec3_t right, ang, rel;
+		qboolean leg = point && point[2] < targ->r.currentOrigin[2] - 4;
+		int side = rand() & 1;
+		if ( point && !( targ->client->ps.eFlags & EF_DEAD ) ) {
+			VectorSet( ang, 0, targ->client->ps.viewangles[YAW], 0 );
+			AngleVectors( ang, NULL, right, NULL );
+			VectorSubtract( point, targ->r.currentOrigin, rel );
+			side = DotProduct( rel, right ) > 0;
+		}
+		cut = limbs[( leg ? 2 : 0 ) + side];
+	}
+	cut &= ~have;
+	if ( !cut ) {
+		return;
+	}
+	G_VRX_AddGoreBits( targ, cut );
+	m = G_VRX_Marker( targ, qtrue );
+	m->s.frame |= high & cut;
+
+	te = G_TempEntity( point ? (float *)point : targ->r.currentOrigin, EV_VR_GORE );
+	te->s.eventParm = VRG_LIMBS;
+	te->s.otherEntityNum = targ->s.number;
+	te->s.density = cut;
+	te->s.frame = high & cut;
+	if ( dir ) {
+		VectorCopy( dir, te->s.origin2 );
+	}
+}
+
+/*
+=================
 G_VRX_Kill
 
 From G_Damage, as a blow kills a character (before its die function): the gory ones are
@@ -110,12 +199,17 @@ A knife kill from behind, or one that lands high, cuts the throat; one that goes
 (a stab to the belly in VR, from a crouch without a headset) disembowels.
 =================
 */
-void G_VRX_Kill( gentity_t *targ, gentity_t *attacker, const vec3_t dir, const vec3_t point, int mod ) {
+void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
+				 int mod, int damage ) {
 	gentity_t *te;
 	int gore = VRG_NONE;
 	float neck;
 
-	if ( !targ->client || !targ->aiCharacter || !G_VRX_Gore( VRX_THROAT ) ) {
+	if ( !targ->client || !targ->aiCharacter ) {
+		return;
+	}
+	G_VRX_Dismember( targ, inflictor, dir, point, mod, damage );
+	if ( !G_VRX_Gore( VRX_THROAT ) ) {
 		return;
 	}
 	if ( mod == MOD_KNIFE || mod == MOD_KNIFE2 || mod == MOD_KNIFE_STEALTH ) {
