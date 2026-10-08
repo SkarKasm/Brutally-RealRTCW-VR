@@ -2783,6 +2783,7 @@ void        CG_VR_ScopePiece( int weapon, int part, const refEntity_t *ent );
 void        CG_VR_RenderScope( void );
 qboolean    CG_VR_ScopeActive( void );
 void        CG_VR_IronSights( void );
+qboolean    CG_AdsDebug( void );
 float       CG_AdsFraction( void );           // cg_weapons.c: flat aiming down the sights, 0..1
 
 // cg_vrrecoil.c (RealRTCW-VR)

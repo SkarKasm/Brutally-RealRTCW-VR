@@ -2679,6 +2679,13 @@ static void CG_DrawCrosshair( void ) {
 	}
 	// RealRTCW-VR: aiming down the sights, the gun's own sights are the crosshair
 	if ( CG_AdsFraction() > 0.5f ) {
+		if ( CG_AdsDebug() ) {     // a dot on the true centre, to line the sights up
+			vec4_t red = { 1, 0, 0, 1 };
+			CG_FillRect( 300, 239.5f, 16, 1, red );        // ticks pointing at the centre, clear of the sights
+			CG_FillRect( 324, 239.5f, 16, 1, red );
+			CG_FillRect( 319.5f, 220, 1, 16, red );
+			CG_FillRect( 319.5f, 244, 1, 16, red );
+		}
 		return;
 	}
 	float x, y;
