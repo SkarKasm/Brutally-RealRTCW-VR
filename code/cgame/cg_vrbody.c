@@ -70,7 +70,7 @@ void CG_VR_BodyInit( void ) {
 	memset( &vb, 0, sizeof( vb ) );
 	trap_Cvar_Register( &vr_fullBody, "vr_fullBody", "1", CVAR_ARCHIVE );
 	trap_Cvar_Register( &cg_flatLegs, "cg_flatLegs", "1", CVAR_ARCHIVE );
-	trap_Cvar_Register( &cg_flatLegsBack, "cg_flatLegsBack", "0", CVAR_ARCHIVE );
+	trap_Cvar_Register( &cg_flatLegsBack, "cg_flatLegsBack", "6", CVAR_ARCHIVE );
 	trap_Cvar_Register( &cg_flatLegsCut, "cg_flatLegsCut", "0", CVAR_ARCHIVE );
 }
 

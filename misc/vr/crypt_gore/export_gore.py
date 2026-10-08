@@ -79,3 +79,10 @@ md3.write(OUT+'/jaw_skinned2.md3','models/vr_gore/jaw_skinned2.md3',sf)
 q=[(np.array([0,-1.0,1.0]),(0,0),np.array([1.0,0,0])),(np.array([0,1.0,1.0]),(1,0),np.array([1.0,0,0])),
    (np.array([0,1.0,-3.0]),(1,1),np.array([1.0,0,0])),(np.array([0,-1.0,-3.0]),(0,1),np.array([1.0,0,0]))]
 md3.write(OUT+'/headhole.md3','models/vr_gore/headhole.md3',[('hole','vr_headhole',q,[(0,2,1),(0,3,2)])])
+
+# a flat cut through the neck (neck_flat.tga from neck_tex.py): a disc 4.6 across facing +x,
+# the front of the neck along +y
+import math
+N=24; R=2.3
+disc=[((0,0,0),(0.5,0.5),(1,0,0))]+[((0,R*math.cos(2*math.pi*i/N),R*math.sin(2*math.pi*i/N)),(0.5+0.5*math.cos(2*math.pi*i/N),0.5-0.5*math.sin(2*math.pi*i/N)),(1,0,0)) for i in range(N)]
+md3.write(OUT+'/neck_flat.md3','models/vr_gore/neck_flat.md3',[('neck','vr_neckflat',disc,[(0,1+(i+1)%N,1+i) for i in range(N)])])

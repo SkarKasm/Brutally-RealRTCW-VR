@@ -204,7 +204,7 @@ typedef struct {
 } vrSkel_t;
 
 static vrWounded_t vrWounded[VRX_MAX_WOUNDED];
-static qboolean VRX_HeadHit( int entityNum, const vec3_t point );
+static qboolean VRX_HeadHit( int entityNum, const vec3_t point, const vec3_t dir );
 static void VRX_AddFleshCap( const vec3_t p, const vec3_t dir, float len, float width, const vec3_t light );
 static vrSkel_t vrSkels[VRX_MAX_SKELS];
 static int vrSkelNext;
@@ -345,7 +345,7 @@ static vrWound_t *VRX_NewWound( int entityNum, int kind, const vec3_t point, con
 void CG_VRX_Wound( int entityNum, const vec3_t point, const vec3_t dir ) {
 	if ( CG_VRX_Gore( VRX_WOUNDS ) && entityNum >= 0 && entityNum < MAX_GENTITIES && cg.snap &&
 		 entityNum != cg.snap->ps.clientNum && cg_entities[entityNum].currentState.eType == ET_PLAYER &&
-		 VRX_HeadHit( entityNum, point ) ) {
+		 VRX_HeadHit( entityNum, point, dir ) ) {
 		return;     // a head wound instead
 	}
 	if ( CG_VRX_Gore( VRX_WOUNDS ) ) {
@@ -653,7 +653,7 @@ chest faces, z up the spine, the origin VRX_CRYPT_NECK below the neck).
 
 typedef struct {
 	qboolean    registered;
-	qhandle_t   headSkinned, ribs, guts, stump, cap, hole, jaw[2];
+	qhandle_t   headSkinned, ribs, guts, stump, cap, neck, hole, jaw[2];
 } vrxCrypt_t;
 
 static vrxCrypt_t *VRX_CryptModels( void ) {
@@ -669,6 +669,7 @@ static vrxCrypt_t *VRX_CryptModels( void ) {
 		m.ribs = trap_R_RegisterModel( "models/vr_gore/ribs.md3" );
 		m.guts = trap_R_RegisterModel( "models/vr_gore/guts.md3" );
 		m.stump = trap_R_RegisterModel( "models/vr_gore/stump.md3" );
+		m.neck = trap_R_RegisterModel( "models/vr_gore/neck_flat.md3" );
 	}
 	return &m;
 }
@@ -715,6 +716,31 @@ static void VRX_AddFleshCap( const vec3_t p, const vec3_t dir, float len, float 
 	CrossProduct( re.axis[0], re.axis[1], re.axis[2] );
 	VectorScale( re.axis[0], len / 5.8f, re.axis[0] );     // the cap is 5.8 long, 4.6 across
 	VectorScale( re.axis[1], width / 4.6f, re.axis[1] );
+	VectorScale( re.axis[2], width / 4.6f, re.axis[2] );
+	re.nonNormalizedAxes = qtrue;
+	VectorCopy( p, re.origin );
+	VectorCopy( p, re.oldorigin );
+	VectorCopy( light, re.lightingOrigin );
+	re.renderfx = RF_LIGHTING_ORIGIN;
+	trap_R_AddRefEntityToScene( &re );
+}
+
+// a flat cut through the neck at p, facing n, the front of the neck towards front
+static void VRX_AddNeckCut( const vec3_t p, const vec3_t n, const vec3_t front, float width, const vec3_t light ) {
+	refEntity_t re;
+
+	if ( !VRX_CryptModels()->neck ) {
+		return;
+	}
+	memset( &re, 0, sizeof( re ) );
+	re.hModel = VRX_CryptModels()->neck;
+	VectorNormalize2( n, re.axis[0] );
+	VectorMA( front, -DotProduct( front, re.axis[0] ), re.axis[0], re.axis[1] );
+	if ( VectorNormalize( re.axis[1] ) < 0.01f ) {
+		PerpendicularVector( re.axis[1], re.axis[0] );
+	}
+	CrossProduct( re.axis[0], re.axis[1], re.axis[2] );
+	VectorScale( re.axis[1], width / 4.6f, re.axis[1] );      // the disc is 4.6 across
 	VectorScale( re.axis[2], width / 4.6f, re.axis[2] );
 	re.nonNormalizedAxes = qtrue;
 	VectorCopy( p, re.origin );
@@ -776,28 +802,56 @@ static vrHeadWounds_t *VRX_HeadWounds( int entityNum, qboolean create ) {
 	return spare;
 }
 
-// a bullet hit this character at point: on its head? (qtrue when it was)
-static qboolean VRX_HeadHit( int entityNum, const vec3_t point ) {
+// a bullet hit this character at point (where it met the hit box), travelling along dir: did
+// its path go through the head? (qtrue when it did) The hit box is much bigger than the body,
+// so it is the path that counts, not where it met the box.
+#define VRX_HEAD_SLACK      1.35f   // how far off the head (in head radii) a shot still counts
+static qboolean VRX_HeadHit( int entityNum, const vec3_t point, const vec3_t dir ) {
 	centity_t *cent = &cg_entities[entityNum];
 	refEntity_t *head = &cent->pe.headRefEnt;
 	vrHeadWounds_t *hw;
-	vec3_t rel, d, e, n;
-	float len;
+	vec3_t rel, d, e, n, ed, nd;
+	float len, t, dd;
 	int k;
 
 	if ( !head->hModel || CG_VRX_Headless( cent ) ) {
 		return qfalse;
 	}
-	VectorSubtract( point, head->origin, rel );
+	VectorNormalize2( dir, nd );
+	VectorMA( point, -40.0f, nd, rel );
+	VectorSubtract( rel, head->origin, rel );
+	// the path in the head's egg, where the head is the unit sphere
 	for ( k = 0; k < 3; k++ ) {
 		float axisLen = VectorLength( head->axis[k] );
-		d[k] = DotProduct( rel, head->axis[k] ) / ( axisLen > 0.01f ? axisLen * axisLen : 1.0f ) - vrHeadCentre[k];
-		e[k] = d[k] / vrHeadRadii[k];
+		float sc = axisLen > 0.01f ? axisLen * axisLen : 1.0f;
+		e[k] = ( DotProduct( rel, head->axis[k] ) / sc - vrHeadCentre[k] ) / vrHeadRadii[k];
+		ed[k] = DotProduct( nd, head->axis[k] ) / sc / vrHeadRadii[k];
 	}
-	len = VectorLength( e );
-	if ( len > 1.7f || len < 0.01f ) {
-		return qfalse;      // (hit boxes are bigger than heads)
+	dd = DotProduct( ed, ed );
+	if ( dd < 1e-6f ) {
+		return qfalse;
 	}
+	t = -DotProduct( e, ed ) / dd;
+	if ( t < 0 || t * VectorLength( nd ) > 120.0f ) {
+		return qfalse;
+	}
+	VectorMA( e, t, ed, d );        // closest to the head's centre
+	len = VectorLength( d );
+	if ( len > VRX_HEAD_SLACK ) {
+		return qfalse;
+	}
+	if ( len < 1.0f ) {
+		// where it went in: back along the path to the surface
+		VectorMA( d, -sqrt( ( 1.0f - len * len ) / dd ), ed, e );
+	} else if ( len > 0.01f ) {
+		VectorScale( d, 1.0f / len, e );    // a graze: the nearest point of the head
+	} else {
+		return qfalse;
+	}
+	for ( k = 0; k < 3; k++ ) {
+		d[k] = e[k] * vrHeadRadii[k];       // (from the centre)
+	}
+	len = 1.0f;
 	hw = VRX_HeadWounds( entityNum, qtrue );
 	hw->lastSeen = cg.time;
 	// on the egg's surface, facing out of it
@@ -987,7 +1041,20 @@ void CG_VRX_AddCryptGore( centity_t *cent, refEntity_t *body ) {
 		VRX_AddCryptPiece( m->guts, center, frame, center );
 	}
 	if ( bits & VRX_GB_HEAD ) {
-		VRX_AddCryptPiece( m->stump, center, frame, center );
+		// the flat cut across the top of the neck, where the head came off
+		int h = VRX_FindBone( sk, "Head" );
+		vec3_t hPos, n;
+		if ( h >= 0 && m->neck ) {
+			VRX_BoneWorld( bones + h * 12, qfalse, axis, body->origin, bAxis, hPos );
+			VectorSubtract( hPos, neckPos, n );
+			if ( VectorNormalize( n ) < 0.1f ) {
+				VectorCopy( up, n );
+			}
+			VectorMA( hPos, 0.3f, n, hPos );
+			VRX_AddNeckCut( hPos, n, frame[0], 4.6f, center );
+		} else {
+			VRX_AddCryptPiece( m->stump, center, frame, center );
+		}
 	}
 }
 
@@ -1101,6 +1168,8 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 			if ( w->kind == VRW_LIMB ) {
 				// torn flesh closing the stump (thighs are thicker than arms)
 				VRX_AddFleshCap( p, n, 2.4f, ( w->limb & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) ? ( w->high ? 6.0f : 4.6f ) : ( w->high ? 4.4f : 3.6f ), p );
+			} else if ( w->kind == VRW_STUMP && VRX_CryptModels()->neck ) {
+				continue;   // the flat cut is drawn with the crypt gore (CG_VRX_AddCryptGore)
 			} else if ( w->kind == VRW_STUMP ) {
 				VRX_AddFleshCap( p, n, 2.2f, 4.6f, p );
 			}
@@ -1206,7 +1275,11 @@ static void VRX_DrawHead( centity_t *cent ) {
 			VectorMA( head.origin, 0.6f, head.axis[0], p );
 			VectorMA( p, -2.4f, head.axis[2], p );
 			VectorNegate( head.axis[2], down );
-			VRX_AddFleshCap( p, down, 2.2f, 4.8f, head.lightingOrigin );
+			if ( VRX_CryptModels()->neck ) {
+				VRX_AddNeckCut( p, down, head.axis[0], 4.8f, head.lightingOrigin );
+			} else {
+				VRX_AddFleshCap( p, down, 2.2f, 4.8f, head.lightingOrigin );
+			}
 		}
 		CG_VRX_AddHeadWounds( body, &head );
 		// the helmet / cap stays on

@@ -131,7 +131,7 @@ static qboolean G_VRX_Blast( int mod ) {
 	}
 }
 
-static void G_VRX_Dismember( gentity_t *targ, gentity_t *inflictor, const vec3_t dir, const vec3_t point, int mod, int damage ) {
+static void G_VRX_Dismember( gentity_t *targ, gentity_t *inflictor, const vec3_t dir, const vec3_t point, int mod, int damage, qboolean headshot ) {
 	static const int limbs[4] = { VRX_GB_LARM, VRX_GB_RARM, VRX_GB_LLEG, VRX_GB_RLEG };
 	gentity_t *m, *te;
 	int have, cut = 0, high = 0, i, k;
@@ -142,6 +142,9 @@ static void G_VRX_Dismember( gentity_t *targ, gentity_t *inflictor, const vec3_t
 	}
 	if ( !blast && !( G_VRX( VRX_DISMEMBER ) >= 2 && ( mod == MOD_VENOM || damage >= 45 ) ) ) {
 		return;
+	}
+	if ( !blast && headshot ) {
+		return;     // a round through the head takes no limb
 	}
 	have = G_VRX_GoreBits( targ );
 	if ( blast ) {
@@ -214,7 +217,7 @@ void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, con
 		 ( !inflictor || Distance( inflictor->r.currentOrigin, targ->r.currentOrigin ) < 200.0f ) ) {
 		G_VRX_AddGoreBits( targ, VRX_GB_BLOWN );
 	}
-	G_VRX_Dismember( targ, inflictor, dir, point, mod, damage );
+	G_VRX_Dismember( targ, inflictor, dir, point, mod, damage, headshot );
 	if ( !G_VRX_Gore( VRX_THROAT ) ) {
 		return;
 	}

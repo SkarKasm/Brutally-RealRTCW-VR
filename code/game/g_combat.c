@@ -793,8 +793,9 @@ qboolean IsHeadShot( gentity_t *targ, gentity_t *attacker, vec3_t dir, vec3_t po
 		VectorCopy( targ->r.currentAngles, head->s.angles );
 		VectorCopy( head->s.angles, head->s.apos.trBase );
 		VectorCopy( head->s.angles, head->s.apos.trDelta );
-		VectorSet( head->r.mins, -6, -6, -6 ); // JPW NERVE changed this z from -12 to -6 for crouching, also removed standing offset
-		VectorSet( head->r.maxs, 6, 6, 6 ); // changed this z from 0 to 6
+		// RealRTCW-VR: a bigger head box (was 6 each way), so shots that clearly meet the head count
+		VectorSet( head->r.mins, -8, -8, -7 ); // JPW NERVE changed this z from -12 to -6 for crouching, also removed standing offset
+		VectorSet( head->r.maxs, 8, 8, 8 ); // changed this z from 0 to 6
 		head->clipmask = CONTENTS_SOLID;
 		head->r.contents = CONTENTS_SOLID;
 
