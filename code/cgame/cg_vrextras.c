@@ -343,10 +343,19 @@ static vrWound_t *VRX_NewWound( int entityNum, int kind, const vec3_t point, con
 }
 
 void CG_VRX_Wound( int entityNum, const vec3_t point, const vec3_t dir ) {
+	char dbg[8];
+
+	trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
 	if ( CG_VRX_Gore( VRX_WOUNDS ) && entityNum >= 0 && entityNum < MAX_GENTITIES && cg.snap &&
 		 entityNum != cg.snap->ps.clientNum && cg_entities[entityNum].currentState.eType == ET_PLAYER &&
 		 VRX_HeadHit( entityNum, point, dir ) ) {
+		if ( atoi( dbg ) == 3 ) {
+			CG_Printf( "VR wound: %d in the head\n", entityNum );
+		}
 		return;     // a head wound instead
+	}
+	if ( atoi( dbg ) == 3 ) {
+		CG_Printf( "VR wound: %d in the body\n", entityNum );
 	}
 	if ( CG_VRX_Gore( VRX_WOUNDS ) ) {
 		VRX_NewWound( entityNum, VRW_BULLET, point, dir );
@@ -653,7 +662,7 @@ chest faces, z up the spine, the origin VRX_CRYPT_NECK below the neck).
 
 typedef struct {
 	qboolean    registered;
-	qhandle_t   headSkinned, ribs, guts, stump, cap, neck, hole, jaw[2];
+	qhandle_t   headSkinned, ribs, guts, stump, cap, neck, hole, jawWound;
 } vrxCrypt_t;
 
 static vrxCrypt_t *VRX_CryptModels( void ) {
@@ -663,13 +672,12 @@ static vrxCrypt_t *VRX_CryptModels( void ) {
 		m.registered = qtrue;
 		m.cap = trap_R_RegisterModel( "models/vr_gore/flesh_cap.md3" );
 		m.hole = trap_R_RegisterModel( "models/vr_gore/headhole.md3" );
-		m.jaw[0] = trap_R_RegisterModel( "models/vr_gore/jaw_skinned.md3" );
-		m.jaw[1] = trap_R_RegisterModel( "models/vr_gore/jaw_skinned2.md3" );
 		m.headSkinned = trap_R_RegisterModel( "models/vr_gore/head_skinned.md3" );
 		m.ribs = trap_R_RegisterModel( "models/vr_gore/ribs.md3" );
 		m.guts = trap_R_RegisterModel( "models/vr_gore/guts.md3" );
 		m.stump = trap_R_RegisterModel( "models/vr_gore/stump.md3" );
 		m.neck = trap_R_RegisterModel( "models/vr_gore/neck_flat.md3" );
+		m.jawWound = trap_R_RegisterShader( "vr_jawwound" );
 	}
 	return &m;
 }
@@ -861,6 +869,14 @@ static qboolean VRX_HeadHit( int entityNum, const vec3_t point, const vec3_t dir
 	}
 	VectorNormalize( n );
 	// low on the face: often the jaw goes; anywhere now and then
+	{
+		char dbg[8];
+		trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
+		if ( atoi( dbg ) == 4 && !hw->jaw ) {
+			hw->jaw = 1;        // (test aid: every head shot takes the jaw)
+			return qtrue;
+		}
+	}
 	if ( !hw->jaw && ( ( d[2] < vrHeadCentre[2] - 1.5f && n[0] > 0.2f && random() < 0.6f ) || random() < 0.2f ) ) {
 		hw->jaw = 1 + ( rand() & 1 );
 		return qtrue;
@@ -900,15 +916,12 @@ void CG_VRX_AddHeadWounds( int entityNum, refEntity_t *head ) {
 	if ( !CG_VRX_Gore( VRX_WOUNDS ) ) {
 		return;
 	}
-	if ( hw->jaw && m->jaw[hw->jaw - 1] ) {
-		memset( &re, 0, sizeof( re ) );
-		re.hModel = m->jaw[hw->jaw - 1];
-		VectorCopy( head->origin, re.origin );
-		VectorCopy( head->origin, re.oldorigin );
-		AxisCopy( head->axis, re.axis );
-		re.nonNormalizedAxes = head->nonNormalizedAxes;
-		VectorCopy( head->lightingOrigin, re.lightingOrigin );
-		re.renderfx = RF_LIGHTING_ORIGIN | ( head->renderfx & ( RF_THIRD_PERSON | RF_FIRST_PERSON ) );
+	if ( hw->jaw && m->jawWound ) {
+		// the head again, with the shot-away jaw projected onto the front of its face
+		re = *head;
+		re.customSkin = 0;
+		re.customShader = m->jawWound;
+		re.renderfx |= RF_LIGHTING_ORIGIN;
 		trap_R_AddRefEntityToScene( &re );
 	}
 	for ( i = 0; i < hw->numHoles && m->hole; i++ ) {
