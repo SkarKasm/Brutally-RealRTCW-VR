@@ -2,9 +2,8 @@
 rem Finds the RealRTCW install (Steam) and puts it in RRTCW. Set RRTCW yourself before
 rem calling this to use another location.
 if defined RRTCW if exist "%RRTCW%\Main" goto :eof
-rem Unzipped straight into the RealRTCW folder (as ModDB says): use that folder.
-for %%D in ("%~dp0..") do set "RRTCW=%%~fD"
-if exist "%RRTCW%\Main\z_realrtcw_models.pk3" goto :eof
+rem Unzipped straight into the RealRTCW folder (as ModDB says), or into a folder inside it
+for %%D in ("%~dp0.." "%~dp0..\..") do if exist "%%~fD\Main\z_realrtcw_models.pk3" (set "RRTCW=%%~fD" & goto :eof)
 set "RRTCW=%ProgramFiles(x86)%\Steam\steamapps\common\RealRTCW"
 if exist "%RRTCW%\Main" goto :eof
 set "RRTCW="

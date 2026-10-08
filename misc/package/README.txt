@@ -9,6 +9,16 @@ It also plays on the monitor without a headset.
 For co-op, use the separate RealRTCW-VR-Coop package.
 
 
+What's new (October 8 update)
+-----------------------------
+- The launchers start again for everyone: they find RealRTCW from the folder you unzipped into
+  (a bug in game\find_realrtcw.cmd closed them instantly when Steam wasn't in its default place).
+- Ragdolls: heads no longer spin round when soldiers die, and bodies fall at real-world gravity
+  instead of being slammed to the floor (console: vr_ragdollGravity, default 400, the old value 800).
+- New GORE & EXTRAS option "Original gibbing" (Off by default): explosions no longer burst
+  soldiers into the game's stock gibs, so the mod's dismemberment takes them apart instead.
+
+
 What you need
 -------------
 - Return to Castle Wolfenstein (Steam)
@@ -16,8 +26,8 @@ What you need
 - For VR: a PC VR headset with SteamVR (or another OpenXR runtime) running.
   Quest: connect with Steam Link, Air Link, Virtual Desktop or a Link cable first.
 
-Unzip this folder anywhere. Nothing in the Steam folders is changed. Settings and
-saves are kept in the "game" folder.
+Unzip into your RealRTCW folder (normally ...\steamapps\common\RealRTCW). Nothing of
+RealRTCW's own is changed. Settings and saves are kept in the "game" folder.
 
 The launchers find RealRTCW through Steam. If they can't, edit game\find_realrtcw.cmd
 and set RRTCW to the RealRTCW folder (normally ...\steamapps\common\RealRTCW).
@@ -45,6 +55,7 @@ Main menu (or VR OPTIONS), GORE & EXTRAS: everything here is optional, VR or not
   Knife takes heads (dead)   cut a dead body's neck; the head can be picked up and thrown
   Thrown heads               soldiers who see one land run, or drop their guns and give up
   Dismemberment (dead)       explosions (and heavy hits) take limbs off the dead
+  Original gibbing           Off: explosions leave bodies whole for the gore above
 
 
 VR controls (Quest / Touch layout)
