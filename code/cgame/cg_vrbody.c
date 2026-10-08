@@ -482,6 +482,8 @@ Called with the local player's skeletal body just before it is drawn.
 */
 void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 	vec3_t fwd, target, dir, handFwd, yaw;
+	vec3_t gunWrist[2], gunDir[2];
+	qboolean gunHand[2];
 	int h, side, i;
 
 	VectorSet( yaw, 0, vb.bodyYaw, 0 );
@@ -517,18 +519,31 @@ void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 	}
 	VectorCopy( body->origin, body->oldorigin );
 
+	CG_VR_ArmTargets( gunHand, gunWrist, gunDir );
 	for ( h = 0; h < 2; h++ ) {
 		if ( !cgVR->handValid[h] ) {
 			continue;
 		}
 		side = h == VR_HAND_RIGHT ? SIDE_R : SIDE_L;
-		AngleVectors( cgvr.handAngles[h], handFwd, NULL, NULL );
-		// the grip pose is the palm; the wrist is behind it
-		VectorMA( cgvr.handOrigin[h], -VB_PALM_TO_WRIST, handFwd, target );
+		if ( gunHand[h] ) {
+			// the flat game's hand is on the gun: reach its wrist
+			VectorCopy( gunWrist[h], target );
+			VectorCopy( gunDir[h], handFwd );
+		} else {
+			AngleVectors( cgvr.handAngles[h], handFwd, NULL, NULL );
+			// the grip pose is the palm; the wrist is behind it
+			VectorMA( cgvr.handOrigin[h], -VB_PALM_TO_WRIST, handFwd, target );
+		}
 		VB_ToModel( body, target, target );
 		VB_DirToModel( body, handFwd, dir );
 		VectorNormalize( dir );
 		VB_ReachArm( side, target, dir );
+	}
+	// and BJ's own hand folds away where the gun's is drawn
+	for ( h = 0; h < 2; h++ ) {
+		if ( gunHand[h] ) {
+			VB_Collapse( vb.hand[h == VR_HAND_RIGHT ? SIDE_R : SIDE_L] );
+		}
 	}
 
 	VB_Output( body );

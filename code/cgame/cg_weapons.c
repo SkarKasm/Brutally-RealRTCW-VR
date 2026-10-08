@@ -3172,6 +3172,9 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	VectorCopy( parent->lightingOrigin, gun.lightingOrigin );
 	gun.shadowPlane = parent->shadowPlane;
 	gun.renderfx = parent->renderfx;
+	if ( ps && cgvr.active ) {    // RealRTCW-VR: which of the flat game's hands this piece shows
+		gun.renderfx = ( gun.renderfx & ~( RF_VR_NOHANDS | RF_VR_NOSLEEVES ) ) | CG_VR_PieceHandFx( weaponNum, -1 );
+	}
 
 	// set custom shading for railgun refire rate
 	if ( ps ) {
@@ -3325,6 +3328,9 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 			spunpart = qfalse;
 			barrel.hModel = weapon->partModels[W_FP_MODEL][i].model;
+			if ( cgvr.active ) {     // RealRTCW-VR: which of the flat game's hands this part shows
+				barrel.renderfx = ( parent->renderfx & ~( RF_VR_NOHANDS | RF_VR_NOSLEEVES ) ) | CG_VR_PieceHandFx( weaponNum, i );
+			}
 
 			if (isPlayer)
 			{
@@ -4135,15 +4141,11 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 			weapon = &cg_weapons[ ps->weapon ];
 			CG_VR_WeaponPose( ps->weapon, hand.origin, hand.axis );
 			CG_WeaponAnimation( ps, weapon, &hand.oldframe, &hand.frame, &hand.backlerp );
-			// the flat game's firing animations throw the gun around the hand: hold it
-			// still, the recoil is real now (cg_vrrecoil.c)
-			{
-				int anim = ps->weapAnim & ~ANIM_TOGGLEBIT;
-				if ( anim == WEAP_ATTACK1 || anim == WEAP_ATTACK2 || anim == WEAP_ATTACK_LASTSHOT ) {
-					hand.oldframe = hand.frame = weapon->weapAnimations[WEAP_IDLE1].firstFrame;
-					hand.backlerp = 0;
-				}
-			}
+			// the flat game's animations (firing, idle sway, reloads, raising) move the gun
+			// around the hand: hold it still at the idle pose the grip was measured in. The
+			// recoil and reloading are done by hand now (cg_vrrecoil.c, CG_VR_WeaponPart).
+			hand.oldframe = hand.frame = weapon->weapAnimations[WEAP_IDLE1].firstFrame;
+			hand.backlerp = 0;
 			VectorCopy( hand.origin, hand.lightingOrigin );
 			hand.hModel = weapon->handsModel;
 			hand.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;

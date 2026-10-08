@@ -124,6 +124,154 @@ void CG_VR_Geom( int weapon, vrWeaponGeom_t *g ) {
 	g->scale = CG_VR_WeaponScale();
 }
 
+/*
+=================
+CG_VR_HandPose
+
+With the full body, the gun is held by the flat game's own first person hand: it sits on
+the grip with the finger on the trigger and stays fixed to the gun, and BJ's arm leads to
+its wrist. Two handed, the support hand is the flat game's too, fixed where it holds the
+gun on screen. Measured by misc/vr/make_vr_assets.py's posing of each first person model
+(hands model space at the idle frame): which piece carries each hand (-1 the gun model,
+0.. a part, -2 none) and where its wrist meets the sleeve.
+=================
+*/
+typedef struct {
+	const char  *weap;
+	int         trigPiece;
+	vec3_t      trigWrist;
+	int         supPiece;
+	vec3_t      supWrist;
+} vrHandPose_t;
+
+static const vrHandPose_t vrHandPoses[] = {
+	{ "airstrike.weap", -1, { 9.2f, -15.4f, -15.6f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "akimbo.weap", -1, { 14.8f, -14.9f, -14.2f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "bar.weap", -1, { 2.9f, -10.3f, -7.4f }, 2, { 33.7f, -2.2f, -15.8f } },
+	{ "browning.weap", -2, { 0.0f, 0.0f, 0.0f }, 1, { 39.2f, 5.5f, -14.8f } },
+	{ "colt.weap", -1, { 13.4f, -10.4f, -12.4f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "dualtt33.weap", -1, { 16.1f, -13.8f, -13.7f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "dynamite.weap", -1, { 13.2f, -15.8f, -20.2f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "dynamite_eng.weap", -1, { 13.2f, -15.8f, -20.2f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "fg42.weap", -1, { 10.0f, -10.5f, -9.8f }, 2, { 29.0f, -1.9f, -12.8f } },
+	{ "fg42scope.weap", -1, { 10.0f, -10.5f, -9.8f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "flamethrower.weap", -1, { 4.0f, -3.9f, -11.9f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "g43.weap", -2, { 0.0f, 0.0f, 0.0f }, 0, { 17.4f, -0.6f, -8.2f } },
+	{ "garand.weap", -2, { 0.0f, 0.0f, 0.0f }, 0, { 15.2f, -0.4f, -7.1f } },
+	{ "grenade.weap", -1, { 14.4f, -14.5f, -17.4f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "hdm.weap", -1, { 12.0f, -12.2f, -13.3f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "ithaca.weap", -2, { 0.0f, 0.0f, 0.0f }, 4, { 34.3f, -0.9f, -14.9f } },
+	{ "knife.weap", -1, { 10.0f, -9.7f, -8.7f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "luger.weap", -1, { 14.4f, -10.9f, -12.8f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "luger_silenced.weap", -1, { 14.4f, -10.9f, -12.8f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "m1garand.weap", -2, { 0.0f, 0.0f, 0.0f }, -1, { 35.7f, -1.6f, -15.7f } },
+	{ "m7.weap", -2, { 0.0f, 0.0f, 0.0f }, -1, { 35.7f, -1.6f, -15.7f } },
+	{ "mauser.weap", -2, { 0.0f, 0.0f, 0.0f }, -1, { 36.9f, -3.3f, -17.3f } },
+	{ "mg42m.weap", -2, { 0.0f, 0.0f, 0.0f }, 1, { 32.4f, 2.3f, -18.3f } },
+	{ "mosin.weap", -2, { 0.0f, 0.0f, 0.0f }, -1, { 19.2f, -2.3f, -10.8f } },
+	{ "mp34.weap", -2, { 0.0f, 0.0f, 0.0f }, 2, { 33.4f, -2.1f, -21.5f } },
+	{ "mp40.weap", -1, { 1.0f, -8.0f, -9.7f }, 2, { 20.7f, 0.2f, -14.0f } },
+	{ "mp44.weap", -2, { 0.0f, 0.0f, 0.0f }, 2, { 27.9f, 1.4f, -12.2f } },
+	{ "panzerfaust.weap", 4, { 1.2f, -9.0f, -9.1f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "pineapple.weap", -1, { 15.4f, -14.7f, -17.1f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "poisongas.weap", -1, { 9.2f, -15.4f, -15.6f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "ppsh.weap", -1, { -3.3f, -8.8f, -7.3f }, 2, { 14.7f, 3.4f, -13.9f } },
+	{ "revolver.weap", -1, { 8.5f, -12.3f, -12.0f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "smokebomb.weap", -1, { 9.2f, -15.4f, -15.6f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "sniperrifle.weap", -2, { 0.0f, 0.0f, 0.0f }, -1, { 36.9f, -3.3f, -17.3f } },
+	{ "snooper.weap", -2, { 0.0f, 0.0f, 0.0f }, 0, { 15.2f, -0.4f, -7.1f } },
+	{ "sten.weap", -2, { 0.0f, 0.0f, 0.0f }, 2, { 39.2f, -2.4f, -15.7f } },
+	{ "tesla.weap", -1, { 6.5f, -2.7f, -10.1f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "thompson.weap", -1, { 5.7f, -6.1f, -7.4f }, 2, { 19.6f, -0.3f, -7.5f } },
+	{ "tt33.weap", -1, { 15.9f, -9.6f, -11.8f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "venom.weap", 4, { 16.4f, -5.8f, -17.5f }, -2, { 0.0f, 0.0f, 0.0f } },
+};
+
+static const vrHandPose_t *CG_VR_HandPose( int weapon ) {
+	const char *file;
+	int i;
+
+	if ( cg_vanilla_guns.integer || weapon <= WP_NONE ) {
+		return NULL;
+	}
+	file = BG_GetWeaponFilename( weapon );
+	if ( !file || !*file ) {
+		return NULL;
+	}
+	for ( i = 0; i < ARRAY_LEN( vrHandPoses ); i++ ) {
+		if ( !Q_stricmp( vrHandPoses[i].weap, file ) ) {
+			return &vrHandPoses[i];
+		}
+	}
+	return NULL;
+}
+
+// the flat game's hands are drawn on the gun instead of BJ's own
+static qboolean CG_VR_GunHands( void ) {
+	return cgvr.active && CG_VR_BodyDrawn() && !cgVR->dualWield && vr_drawHands.integer;
+}
+
+/*
+=================
+CG_VR_PieceHandFx
+
+Which of the held weapon's hands to draw on one of its pieces (piece -1: the gun model):
+RF_VR_NOSLEEVES keeps the hand and leaves the sleeve to BJ's arm, RF_VR_NOHANDS hides both.
+=================
+*/
+int CG_VR_PieceHandFx( int weapon, int piece ) {
+	const vrHandPose_t *hp;
+
+	if ( !CG_VR_DrawHands() ) {
+		return 0;
+	}
+	hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
+	if ( hp && piece == hp->trigPiece ) {
+		return RF_VR_NOSLEEVES;
+	}
+	if ( hp && piece == hp->supPiece && cgVR->twoHanded ) {
+		return RF_VR_NOSLEEVES;
+	}
+	return RF_VR_NOHANDS;
+}
+
+/*
+=================
+CG_VR_ArmTargets
+
+Where BJ's arms reach while the gun's own hands are drawn: the wrists of those hands, on
+the gun as it is posed this frame. Returns for each hand whether it has a target (its own
+hand is then hidden).
+=================
+*/
+void CG_VR_ArmTargets( qboolean has[2], vec3_t wrist[2], vec3_t dir[2] ) {
+	const vrHandPose_t *hp;
+	vec3_t origin, axis[3];
+	int weapon = cg.predictedPlayerState.weapon;
+	int dom = CG_VR_DominantHand();
+
+	has[0] = has[1] = qfalse;
+	trap_Cvar_Update( &vr_drawHands );
+	if ( !cgvr.active || cgVR->dualWield || !vr_drawHands.integer || cgVR->menuPointer || cg.cameraMode ) {
+		return;
+	}
+	hp = CG_VR_HandPose( weapon );
+	if ( !hp ) {
+		return;
+	}
+	CG_VR_WeaponPose( weapon, origin, axis );
+	if ( hp->trigPiece != -2 && cgVR->handValid[dom] ) {
+		BG_VR_ModelPoint( origin, axis, hp->trigWrist, wrist[dom] );
+		VectorNormalize2( axis[0], dir[dom] );
+		has[dom] = qtrue;
+	}
+	if ( hp->supPiece != -2 && cgVR->twoHanded && cgVR->handValid[!dom] ) {
+		BG_VR_ModelPoint( origin, axis, hp->supWrist, wrist[!dom] );
+		VectorNormalize2( axis[0], dir[!dom] );
+		has[!dom] = qtrue;
+	}
+}
+
 // tracked hand models are available and wanted
 qboolean CG_VR_DrawHands( void ) {
 	trap_Cvar_Update( &vr_drawHands );

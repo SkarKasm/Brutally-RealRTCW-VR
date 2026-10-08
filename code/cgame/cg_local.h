@@ -1860,6 +1860,8 @@ void CG_VR_AddReloadItems( void );
 qboolean CG_VR_Inspect( playerState_t *ps );
 void CG_WeaponAnimation( playerState_t *ps, weaponInfo_t *weapon, int *weapOld, int *weap, float *weapBackLerp );
 qboolean CG_VR_DrawHands( void );
+int CG_VR_PieceHandFx( int weapon, int piece );
+void CG_VR_ArmTargets( qboolean has[2], vec3_t wrist[2], vec3_t dir[2] );
 void CG_VR_Haptic( int hand, float amplitude, int msec );
 int CG_VR_DominantHand( void );
 qboolean CG_VR_PredictsHits( int weapon );
