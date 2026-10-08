@@ -40,3 +40,35 @@ vr_jawwound
 		depthFunc equal
 	}
 }
+
+// RealRTCW-VR: the inside of a cut off head (the head is drawn again with this shader, which
+// draws only the faces turned away from the eye, so the cut through the neck shows exactly
+// where the head is open): neck_inside.tga projected up the head (x the way the face looks,
+// y to its left) and centred on the neck, its meat running out to the edge of the opening.
+// Sorted ahead of the head itself so the head's own two sided faces still win.
+vr_neckinside_head
+{
+	cull back
+	nopicmip
+	sort 2
+	{
+		clampmap models/vr_gore/neck_inside.tga
+		tcGen vector ( 0.25 0 0 ) ( 0 0.25 0 )
+		tcMod transform 1 0 0 1 0.5 0.5
+		rgbGen lightingDiffuse
+	}
+}
+
+// RealRTCW-VR: the inside of a headless body (drawn again the same way): neck_meat.tga tiled
+// across it, skewed so it never stretches along an axis
+vr_neckinside_body
+{
+	cull back
+	nopicmip
+	sort 2
+	{
+		map models/vr_gore/neck_meat.tga
+		tcGen vector ( 0.11 0 0.05 ) ( 0 0.11 0.07 )
+		rgbGen lightingDiffuse
+	}
+}

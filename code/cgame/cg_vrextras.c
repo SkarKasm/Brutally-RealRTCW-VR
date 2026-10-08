@@ -662,7 +662,7 @@ chest faces, z up the spine, the origin VRX_CRYPT_NECK below the neck).
 
 typedef struct {
 	qboolean    registered;
-	qhandle_t   headSkinned, ribs, guts, stump, cap, neck, hole, jawWound;
+	qhandle_t   headSkinned, ribs, guts, stump, cap, neck, hole, jawWound, insideHead, insideBody;
 } vrxCrypt_t;
 
 static vrxCrypt_t *VRX_CryptModels( void ) {
@@ -678,6 +678,8 @@ static vrxCrypt_t *VRX_CryptModels( void ) {
 		m.stump = trap_R_RegisterModel( "models/vr_gore/stump.md3" );
 		m.neck = trap_R_RegisterModel( "models/vr_gore/neck_flat.md3" );
 		m.jawWound = trap_R_RegisterShader( "vr_jawwound" );
+		m.insideHead = trap_R_RegisterShader( "vr_neckinside_head" );
+		m.insideBody = trap_R_RegisterShader( "vr_neckinside_body" );
 	}
 	return &m;
 }
@@ -1054,10 +1056,16 @@ void CG_VRX_AddCryptGore( centity_t *cent, refEntity_t *body ) {
 		VRX_AddCryptPiece( m->guts, center, frame, center );
 	}
 	if ( bits & VRX_GB_HEAD ) {
-		// the flat cut across the top of the neck, where the head came off
+		// the cut through the neck, where the head came off: the body again, only its inside
+		// faces, so the opening fills with meat right up to its edge
 		int h = VRX_FindBone( sk, "Head" );
 		vec3_t hPos, n;
-		if ( h >= 0 && m->neck ) {
+		if ( m->insideBody ) {
+			refEntity_t re = *body;
+			re.customSkin = 0;
+			re.customShader = m->insideBody;
+			trap_R_AddRefEntityToScene( &re );
+		} else if ( h >= 0 && m->neck ) {
 			VRX_BoneWorld( bones + h * 12, qfalse, axis, body->origin, bAxis, hPos );
 			VectorSubtract( hPos, neckPos, n );
 			if ( VectorNormalize( n ) < 0.1f ) {
@@ -1288,7 +1296,13 @@ static void VRX_DrawHead( centity_t *cent ) {
 			VectorMA( head.origin, 0.6f, head.axis[0], p );
 			VectorMA( p, -2.4f, head.axis[2], p );
 			VectorNegate( head.axis[2], down );
-			if ( VRX_CryptModels()->neck ) {
+			if ( VRX_CryptModels()->insideHead ) {
+				// the head again, only its inside faces: the cut fills the open neck exactly
+				refEntity_t re = head;
+				re.customSkin = 0;
+				re.customShader = VRX_CryptModels()->insideHead;
+				trap_R_AddRefEntityToScene( &re );
+			} else if ( VRX_CryptModels()->neck ) {
 				VRX_AddNeckCut( p, down, head.axis[0], 4.8f, head.lightingOrigin );
 			} else {
 				VRX_AddFleshCap( p, down, 2.2f, 4.8f, head.lightingOrigin );

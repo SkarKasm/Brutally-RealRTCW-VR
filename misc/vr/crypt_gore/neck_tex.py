@@ -50,3 +50,22 @@ img = img.filter(ImageFilter.GaussianBlur(0.7))
 a = np.clip((1.0 - r) / 0.03, 0, 1)
 arr = np.asarray(img).copy(); arr[..., 3] = (a * 255).astype(np.uint8)
 Image.fromarray(arr).save(sys.argv[1])
+
+# neck_inside.tga: the same cut, opaque and with no skin round it, for the inside of a cut off
+# head seen through its open neck (shader vr_neckinside_head: the head's own rim is the edge)
+if len(sys.argv) > 2:
+    inside = np.asarray(img.convert('RGB'), np.float32)
+    rim = np.clip((r - 0.80) / 0.06, 0, 1)[..., None]
+    inside = inside * (1 - rim) + meat * rim       # the meat goes on out to the texture's edge
+    Image.fromarray(np.clip(inside * 1.35, 0, 255).astype(np.uint8)).save(sys.argv[2])  # (lit from behind)
+
+# neck_meat.tga: a tiling patch of the same meat, for the inside of a headless body seen down its neck
+if len(sys.argv) > 3:
+    T = 64
+    yy, xx = np.mgrid[0:T, 0:T]
+    acc = np.zeros((T, T), np.float32)
+    for fx, fy, ph in ((1, 0, 0.3), (0, 1, 1.1), (1, 1, 2.0), (2, 1, 0.7), (1, 3, 2.6), (3, 2, 1.9), (5, 3, 0.4), (4, 7, 2.2), (7, 5, 1.3), (9, 4, 0.9), (6, 11, 2.8)):
+        acc += np.cos(2 * np.pi * (fx * xx + fy * yy) / T + ph) / ( fx + fy )
+    acc = (acc - acc.mean()) / acc.std()
+    tile = np.stack([95 + 18 * acc, 13 + 5 * acc, 11 + 4 * acc], -1) * 1.35
+    Image.fromarray(np.clip(tile, 0, 255).astype(np.uint8)).save(sys.argv[3])
