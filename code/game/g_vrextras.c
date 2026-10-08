@@ -223,7 +223,8 @@ From G_Damage, as a blow kills a character (before its die function): the gory o
 sent to every cgame (EV_VR_GORE). Only ever killing blows, never someone alive.
 
 A knife kill from behind, or one that lands high, cuts the throat; one that goes in low
-(a stab to the belly in VR, from a crouch without a headset) disembowels.
+(a stab to the belly in VR, from a crouch without a headset) disembowels, and so does a
+shotgun blast to the gut from close by.
 =================
 */
 void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
@@ -241,6 +242,25 @@ void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, con
 		G_VRX_AddGoreBits( targ, VRX_GB_BLOWN );
 	}
 	G_VRX_Dismember( targ, inflictor, dir, point, mod, damage, headshot );
+
+	// a shotgun blast to the gut from close by spills it
+	if ( ( mod == MOD_M97 || mod == MOD_AUTO5 || mod == MOD_M30 || mod == MOD_SHOTGUN ) && point && !headshot &&
+		 VRX_HUMAN_MALE( targ->aiCharacter ) && G_VRX_Gore( VRX_DISMEMBER ) &&
+		 attacker && Distance( attacker->r.currentOrigin, targ->r.currentOrigin ) < 400.0f &&
+		 !G_VRX_ShotAtHead( targ, dir, point ) ) {
+		neck = targ->r.currentOrigin[2] + targ->client->ps.viewheight - 12.0f;
+		if ( point[2] > targ->r.currentOrigin[2] - 6.0f && point[2] < neck - 4.0f ) {
+			te = G_TempEntity( targ->r.currentOrigin, EV_VR_GORE );
+			te->s.eventParm = VRG_BELLY;
+			te->s.density = 1;      // torn open by the pellets: bigger than a knife's cut
+			te->s.otherEntityNum = targ->s.number;
+			te->s.otherEntityNum2 = attacker->s.number;
+			if ( dir ) {
+				VectorCopy( dir, te->s.origin2 );
+			}
+			return;
+		}
+	}
 	if ( !G_VRX_Gore( VRX_THROAT ) ) {
 		return;
 	}

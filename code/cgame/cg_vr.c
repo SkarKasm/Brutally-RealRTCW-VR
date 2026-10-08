@@ -278,7 +278,8 @@ void CG_VR_BeginFrame( void ) {
 	vrCanGrab = cgVR->canGrab != 0;
 
 	cgVR->cutscene = cg.cameraMode;
-	cgVR->twoHandAllowed = !CG_VR_OneHanded( cg.predictedPlayerState.weapon );
+	cgVR->twoHandAllowed = !CG_VR_OneHanded( cg.predictedPlayerState.weapon ) &&
+						   !BG_DualActive( &cg.predictedPlayerState );   // the off hand has its own gun
 	if ( !cg.cameraMode ) {
 		cgvr.cutsceneBaseValid = qfalse;
 	}
@@ -946,8 +947,13 @@ void CG_VR_PredictBullet( int weapon ) {
 	if ( !CG_VR_PredictsHits( weapon ) || !cgVR->muzzleValid ) {
 		return;
 	}
-	VectorCopy( cgvr.muzzle, start );
-	AngleVectors( cgvr.weaponAngles, forward, NULL, NULL );
+	if ( cgvr.lastShotLeft ) {
+		VectorCopy( cgvr.muzzleOff, start );   // the off hand's gun of a pair
+		AngleVectors( cgvr.aimOff, forward, NULL, NULL );
+	} else {
+		VectorCopy( cgvr.muzzle, start );
+		AngleVectors( cgvr.weaponAngles, forward, NULL, NULL );
+	}
 	VectorMA( start, 8192 * 2, forward, end );
 
 	CG_Trace( &tr, start, NULL, NULL, end, self, MASK_SHOT );
@@ -973,19 +979,19 @@ void CG_VR_PredictBullet( int weapon ) {
 =================
 CG_VR_DualSingle / CG_VR_AddDualGuns
 
-Two pistols: one in each hand, each fired by its own trigger (cl_vr.c, BG_AkimboFireSequence).
-They're drawn as two of the single pistol, since the pair's model has the left gun fixed
-to the right hand.
+Two pistols or SMGs: one in each hand, each fired by its own trigger (cl_vr.c,
+BG_AkimboFireSequence, BG_DualLeftFires). They're drawn as two of the single gun, each its
+own unmirrored copy (the akimbo pair's model has the left gun fixed to the right hand).
 =================
 */
-int CG_VR_DualSingle( int weapon ) {
-	switch ( weapon ) {
+int CG_VR_DualSingle( const playerState_t *ps ) {
+	switch ( ps->weapon ) {
 	case WP_AKIMBO:
 		return WP_COLT;
 	case WP_DUAL_TT33:
 		return WP_TT33;
 	default:
-		return 0;
+		return BG_DualActive( ps ) ? ps->weapon : 0;     // any pistol or SMG, dual wielded
 	}
 }
 
@@ -1031,7 +1037,14 @@ void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
 		// only the gun that fired flashes
 		cent->muzzleFlashTime = ( ( side == 0 ) == cgvr.lastShotLeft ) ? savedFlash : 0;
 		cent->currentState.weapon = single;
+		cg_dualOneHand = CG_DualSMG( single );
 		CG_AddPlayerWeapon( &hand, ps, cent );
+		cg_dualOneHand = qfalse;
+		if ( side == 0 ) {
+			// the off hand's muzzle, for drawing its shots' hits
+			VectorCopy( cgvr.muzzle, cgvr.muzzleOff );
+			VectorCopy( angles, cgvr.aimOff );
+		}
 	}
 	cent->currentState.weapon = savedWeapon;
 	cent->muzzleFlashTime = savedFlash;

@@ -1819,6 +1819,8 @@ typedef struct {
 	vec3_t      handAngles[2];
 	vec3_t      weaponAngles;       // world aim of the gun
 	vec3_t      muzzle;             // world position of the gun's muzzle this frame
+	vec3_t      muzzleOff;          // dual guns: the off hand's muzzle, and its aim (world angles)
+	vec3_t      aimOff;
 
 	qhandle_t   handModel[2];       // indexed by VR_HAND_*
 	qhandle_t   handSkin;           // the flatscreen hands' gloves and sleeves for this map
@@ -2795,7 +2797,9 @@ void        CG_VR_WristHUD( void );
 void        CG_VR_ComfortInit( void );
 void        CG_VR_Comfort( void );
 void        CG_VR_PingReceived( int client, const vec3_t pos );
-int         CG_VR_DualSingle( int weapon );
+int         CG_VR_DualSingle( const playerState_t *ps );
+extern qboolean cg_dualOneHand;     // cg_weapons.c: a dual wielded SMG, its supporting arm left out
+qboolean    CG_DualSMG( int weapon );
 void        CG_VR_AddDualGuns( playerState_t *ps, int single );
 #ifdef VR_NET_HANDS
 qboolean    CG_VR_RemoteBody( centity_t *cent );

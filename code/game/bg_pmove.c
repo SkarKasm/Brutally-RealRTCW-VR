@@ -2708,6 +2708,14 @@ void PM_CheckForReload(int weapon) {
 	qboolean reloadRequested = (pm->cmd.wbuttons & WBUTTON_RELOAD);
 	qboolean autoreload = pm->pmext->bAutoReload || isAutoReloadWeapon(pm->ps->weapon);
 
+	// RealRTCW-VR: two guns in the hands are reloaded with both hands lowered to the waist
+	if ( pm->vrAim && BG_DualActive( pm->ps ) ) {
+		autoreload = qfalse;
+		if ( !pm->vrHandsLow ) {
+			reloadRequested = qfalse;
+		}
+	}
+
 	if (pm->ps->weaponstate == WEAPON_RAISING ||
 		pm->ps->weaponstate == WEAPON_RAISING_TORELOAD ||
 		pm->ps->weaponstate == WEAPON_DROPPING ||
@@ -3221,6 +3229,7 @@ static void PM_Weapon( void ) {
 	int weapattackanim;
 	qboolean akimboFire_colt;
 	qboolean akimboFire_tt33;
+	qboolean dualLeft;
 	qboolean gameReloading;
 
 	// don't allow attack until all buttons are up
@@ -3258,6 +3267,7 @@ static void PM_Weapon( void ) {
 
 	akimboFire_colt = BG_AkimboFireSequence( pm->ps->weapon, pm->ps->ammoclip[WP_AKIMBO] );
 	akimboFire_tt33 = BG_AkimboFireSequence( pm->ps->weapon, pm->ps->ammoclip[WP_DUAL_TT33] );
+	dualLeft = BG_DualLeftFires( pm->ps );     // RealRTCW-VR: the off hand's gun of a dual pair
 
 	if ( 0 ) {
 		switch ( pm->ps->weaponstate ) {
@@ -3809,6 +3819,9 @@ static void PM_Weapon( void ) {
 			if ( pm->vrManualReload ) {
 				reloadingW = qfalse;    // RealRTCW-VR: reloads are done by hand
 			}
+			if ( pm->vrAim && BG_DualActive( pm->ps ) && !( ( pm->cmd.wbuttons & WBUTTON_RELOAD ) && pm->vrHandsLow ) ) {
+				reloadingW = qfalse;    // RealRTCW-VR: dual guns reload with the hands at the waist
+			}
 
 			switch ( pm->ps->weapon ) {
 			// Ridah, only play if using a triggered weapon
@@ -3905,6 +3918,10 @@ static void PM_Weapon( void ) {
 		}
 	}
 
+	// RealRTCW-VR: the off hand's gun of a dual pair: the weapon hand's gun doesn't move
+	if ( dualLeft ) {
+		;
+	} else
 	switch ( pm->ps->weapon ) {
 	case WP_MAUSER:
 	case WP_DELISLE:
@@ -3971,6 +3988,8 @@ static void PM_Weapon( void ) {
 		} else {
 			PM_AddEvent( EV_FIRE_WEAPON );
 		}
+	} else if ( dualLeft ) {
+		PM_AddEvent( EV_FIRE_WEAPONB );     // RealRTCW-VR: the off hand's gun
 	} else {
 		if ( pm->ps->weapon == WP_KNIFE && pm->ps->weaponstate == WEAPON_FIRINGALT ){
 			PM_AddEvent( EV_THROWKNIFE );
@@ -4022,6 +4041,11 @@ static void PM_Weapon( void ) {
 		case WP_DUAL_TT33:
 		    addTime = BG_GetNextShotTime(pm->ps, pm->ps->weapon, qfalse);
 		break;
+	}
+
+	// RealRTCW-VR: without a headset, a dual pair fires in turn, each gun at its own rate
+	if ( BG_DualActive( pm->ps ) && !pm->vrAim ) {
+		addTime /= 2;
 	}
 
 	// set weapon recoil (kickback)

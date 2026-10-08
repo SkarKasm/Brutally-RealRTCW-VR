@@ -318,6 +318,8 @@ typedef struct {
 	int vrChambered;        // with vrManualReload: qfalse makes the trigger click
 	int vrNoAttack;         // a body is held without a headset: attack throws it instead
 	int vrAkimbo;           // dual pistols: 0 the usual alternation, 1 right gun, 2 left gun
+	int vrHandsLow;         // dual wielding in VR: both hands down at the waist, so the reload
+	                        // button reloads (BG_VR_HandsLow); no reload starts on its own
 
 	// for fixed msec Pmove
 	int pmove_fixed;
@@ -387,7 +389,8 @@ typedef enum {
 	PERS_HWEAPON_USE, // Rafael - mg42
 	PERS_WOLFKICK, // Rafael wolfkick
 	PERS_KILLS,
-	PERS_WAVES
+	PERS_WAVES,
+	PERS_DUAL                       // RealRTCW-VR: a second pistol / SMG in the other hand (BG_DualActive)
 } persEnum_t;
 
 // entityState_t->eFlags
@@ -1365,6 +1368,10 @@ weapon_t BG_FindClipForWeapon( weapon_t weapon );
 gitem_t *BG_FindItemForPerk( perk_t perk );
 
 qboolean BG_AkimboFireSequence( int weapon, int akimboClip );
+// RealRTCW-VR: dual wielding any pistol or SMG (a second one in the off hand, twice the clip)
+qboolean BG_DualCapable( int weapon );
+qboolean BG_DualActive( const playerState_t *ps );
+qboolean BG_DualLeftFires( const playerState_t *ps );
 
 #define IS_VALID_WEAPON(w) ((w) > WP_NONE && (w) < WP_NUM_WEAPONS)
 #define ITEM_INDEX( x ) ( ( x ) - bg_itemlist )
@@ -1904,6 +1911,8 @@ int BG_VR_ScalePreset( float scale );
 
 int  BG_VR_ReloadClass( int weapon );
 qboolean BG_VR_InstantFire( int weapon );
+struct vrShared_s;
+qboolean BG_VR_HandsLow( const struct vrShared_s *vr );
 void BG_VR_WeaponGeom( int weapon, qboolean vanillaGuns, vrWeaponGeom_t *out );
 void BG_VR_WeaponFrame( const vrWeaponGeom_t *g, const vec3_t hand, const vec3_t aimAngles, const float *adj,
 						vec3_t origin, vec3_t axis[3] );

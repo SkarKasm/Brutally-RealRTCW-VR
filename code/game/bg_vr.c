@@ -23,6 +23,7 @@ the Free Software Foundation, either version 3 of the License, or
 
 #include "../qcommon/q_shared.h"
 #include "bg_public.h"
+#include "../qcommon/vr_shared.h"
 
 int trap_FS_FOpenFile( const char *qpath, fileHandle_t *f, fsMode_t mode );
 void trap_FS_Read( void *buffer, int len, fileHandle_t f );
@@ -342,4 +343,28 @@ qboolean BG_VR_InstantFire( int weapon ) {
 	default:
 		return qfalse;
 	}
+}
+
+/*
+=================
+BG_VR_HandsLow
+
+Both hands down at the waist (dual wielding: the reload button reloads the pair). Game and
+cgame both read it from the shared tracking, so prediction agrees.
+=================
+*/
+qboolean BG_VR_HandsLow( const struct vrShared_s *vr ) {
+	float drop;
+	int h;
+
+	if ( !vr || !vr->active ) {
+		return qfalse;
+	}
+	drop = 0.40f * ( vr->worldScale > 0 ? vr->worldScale : 32.0f );   // 40cm under the eyes
+	for ( h = 0; h < 2; h++ ) {
+		if ( !vr->handValid[h] || vr->handOrigin[h][2] > vr->hmdOrigin[2] - drop ) {
+			return qfalse;
+		}
+	}
+	return qtrue;
 }

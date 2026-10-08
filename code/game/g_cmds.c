@@ -2195,6 +2195,10 @@ void ClientCommand( int clientNum ) {
 		G_VRX_Decap_f( ent );      // RealRTCW-VR: a knife through a dead body's neck
 		return;
 	}
+	if ( Q_stricmp( cmd, "dualwield" ) == 0 ) {
+		G_DualToggle( ent );       // RealRTCW-VR: a pistol / SMG in each hand
+		return;
+	}
 	if ( Q_stricmp( cmd, "vrtestdecap" ) == 0 && CheatsOk( ent ) ) {
 		G_VRX_TestDecap( ent );     // RealRTCW-VR test aid
 		return;

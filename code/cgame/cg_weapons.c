@@ -3379,6 +3379,11 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 			}
 			// end spinning
 
+			// RealRTCW-VR: a dual wielded SMG is held in one hand, the other has its own gun
+			if ( cg_dualOneHand && i == W_PART_3 ) {
+				barrel.hModel = 0;
+			}
+
 			// knife's off-hand model is cosmetic only; hide it while holding a melee prop (chair)
 			if ( weaponNum == WP_KNIFE && i == W_PART_2 && ( ps->eFlags & EF_MELEE_ACTIVE ) ) {
 				barrel.hModel = 0;
@@ -3735,9 +3740,164 @@ CG_AddViewWeapon
 Add the weapon, and flash for the player's view
 ==============
 */
+/*
+==============
+CG_AddDualLeft
+
+RealRTCW-VR: dual wielding without a headset. The second gun is held in a left arm of its
+own, never a mirror of the right: the akimbo Colts' left arm (models/vr_dual/left_arm.md3,
+on their animated hands' tag_barrel3: idle, the left gun's shot, reload) holding an
+ordinary copy of the gun, its own hands hidden. dualGrip places each gun in that hand: its
+model frame shifted so its grip sits where the Colt's did (from the hands of the models,
+misc/vr/dual), plus cg_dualAdjust "x y z pitch yaw roll" for fine tuning.
+==============
+*/
+qboolean cg_dualOneHand;    // CG_AddPlayerWeapon: leave out the SMG's supporting arm
+
+qboolean CG_DualSMG( int weapon ) {
+	return weapon == WP_MP40 || weapon == WP_THOMPSON || weapon == WP_STEN || weapon == WP_PPSH || weapon == WP_MP34;
+}
+
+static const struct {
+	int weapon;
+	float grip[3];
+} dualGrip[] = {
+	{ WP_COLT,     {  0.61f,  0.33f,   0.0f  } },
+	{ WP_HDM,      {  0.65f,  0.35f,  -0.05f } },
+	{ WP_LUGER,    {  1.27f,  0.20f,   0.51f } },
+	{ WP_SILENCER, {  1.27f,  0.20f,   0.51f } },
+	{ WP_TT33,     { -0.56f,  0.23f,  -0.64f } },
+	{ WP_REVOLVER, { 10.87f, -3.94f,  -3.31f } },
+	{ WP_MP40,     { 15.87f, -1.74f,  -5.8f  } },
+	{ WP_THOMPSON, {  9.13f, -2.37f,  -5.92f } },
+	{ WP_PPSH,     {  3.6f,  -4.8f,  -10.6f  } },
+	{ WP_STEN,     { 16.6f,  -7.1f,   -7.6f  } },
+	{ WP_MP34,     { 31.6f,  -6.7f,   -6.6f  } },
+};
+
+static int CG_DualFrame( const animation_t *a, float frac ) {
+	if ( a->numFrames <= 1 ) {
+		return a->firstFrame;
+	}
+	if ( frac < 0 ) {
+		frac = 0;
+	} else if ( frac > 1 ) {
+		frac = 1;
+	}
+	return a->firstFrame + (int)( frac * ( a->numFrames - 1 ) );
+}
+
+static void CG_AddDualLeft( playerState_t *ps, const vec3_t base, const vec3_t angles, const vec3_t fovOffset ) {
+	static qhandle_t armModel;
+	centity_t *cent = &cg.predictedPlayerEntity;
+	weaponInfo_t *ak, *weapon = &cg_weapons[ps->weapon];
+	refEntity_t akHand, arm, gun, hand;
+	orientation_t tag;
+	vec3_t adjAngles, adjAxis[3], off;
+	char buf[64];
+	float adj[6] = { 0, 0, 0, 0, 0, 0 };
+	int i, savedFlash = cent->muzzleFlashTime, since;
+	const animation_t *a;
+
+	if ( !armModel ) {
+		armModel = trap_R_RegisterModel( "models/vr_dual/left_arm.md3" );
+	}
+	CG_RegisterWeapon( WP_AKIMBO, qfalse );
+	ak = &cg_weapons[WP_AKIMBO];
+	if ( !armModel || !ak->handsModel || !weapon->handsModel ) {
+		return;
+	}
+
+	// the akimbo pair's hands (all tags, no surfaces) where that pair would be held
+	memset( &akHand, 0, sizeof( akHand ) );
+	VectorCopy( base, akHand.origin );
+	for ( i = 0; i < 3; i++ ) {
+		float o = cg_gunPosLock.integer == 1 ? ak->weaponPosition[i] : cg_gunPosLock.integer == 2 ? ak->weaponPositionAlt[i] :
+				  cg_gunPosLock.integer == 3 ? ak->weaponPositionAlt2[i] : ( i == 0 ? cg_gun_x.value : i == 1 ? cg_gun_y.value : cg_gun_z.value );
+		VectorMA( akHand.origin, o + fovOffset[i], cg.refdef.viewaxis[i], akHand.origin );
+	}
+	AnglesToAxis( angles, akHand.axis );
+	akHand.hModel = ak->handsModel;
+	akHand.renderfx = RF_DEPTHHACK | RF_FIRST_PERSON | RF_MINLIGHT;
+	VectorCopy( akHand.origin, akHand.lightingOrigin );
+
+	// its left half's animation: the left gun's shot, the reload, raising and lowering
+	since = cg.time - cent->muzzleFlashTime;
+	if ( ps->weaponstate == WEAPON_RELOADING && ammoTable[ps->weapon].reloadTime > 0 ) {
+		a = &ak->weapAnimations[WEAP_RELOAD1];
+		akHand.frame = CG_DualFrame( a, 1.0f - (float)ps->weaponTime / ammoTable[ps->weapon].reloadTime );
+	} else if ( ps->weaponstate == WEAPON_RAISING || ps->weaponstate == WEAPON_RAISING_TORELOAD ) {
+		a = &ak->weapAnimations[WEAP_RAISE];
+		akHand.frame = CG_DualFrame( a, 1.0f - ps->weaponTime / (float)( a->numFrames * MAX( a->frameLerp, 1 ) ) );
+	} else if ( ps->weaponstate == WEAPON_DROPPING || ps->weaponstate == WEAPON_DROPPING_TORELOAD ) {
+		a = &ak->weapAnimations[WEAP_DROP];
+		akHand.frame = CG_DualFrame( a, 1.0f - ps->weaponTime / (float)( a->numFrames * MAX( a->frameLerp, 1 ) ) );
+	} else if ( cent->akimboFire && since >= 0 &&
+				since < ak->weapAnimations[WEAP_ATTACK2].numFrames * MAX( ak->weapAnimations[WEAP_ATTACK2].frameLerp, 1 ) ) {
+		a = &ak->weapAnimations[WEAP_ATTACK2];
+		akHand.frame = a->firstFrame + since / MAX( a->frameLerp, 1 );
+	} else {
+		akHand.frame = ak->weapAnimations[WEAP_IDLE1].firstFrame;
+	}
+	akHand.oldframe = akHand.frame;
+
+	// the left arm
+	memset( &arm, 0, sizeof( arm ) );
+	CG_PositionEntityOnTag( &arm, &akHand, "tag_barrel3", 0, NULL );
+	arm.hModel = armModel;
+	arm.customSkin = ak->handsSkin;
+	arm.renderfx = akHand.renderfx;
+	VectorCopy( akHand.lightingOrigin, arm.lightingOrigin );
+	CG_AddWeaponWithPowerups( &arm, cent->currentState.powerups, ps, cent );
+
+	// where this gun goes in that hand
+	for ( i = 0; i < (int)ARRAY_LEN( dualGrip ); i++ ) {
+		if ( dualGrip[i].weapon == ps->weapon ) {
+			VectorCopy( dualGrip[i].grip, off );
+			break;
+		}
+	}
+	if ( i == (int)ARRAY_LEN( dualGrip ) ) {
+		VectorCopy( dualGrip[0].grip, off );
+	}
+	trap_Cvar_VariableStringBuffer( "cg_dualAdjust", buf, sizeof( buf ) );
+	sscanf( buf, "%f %f %f %f %f %f", &adj[0], &adj[1], &adj[2], &adj[3], &adj[4], &adj[5] );
+	memset( &gun, 0, sizeof( gun ) );
+	VectorCopy( arm.origin, gun.origin );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( gun.origin, off[i] + adj[i], arm.axis[i], gun.origin );
+	}
+	VectorSet( adjAngles, adj[3], adj[4], adj[5] );
+	AnglesToAxis( adjAngles, adjAxis );
+	MatrixMultiply( adjAxis, arm.axis, gun.axis );
+
+	// the gun's own hands, placed so their tag_weapon is there (and hidden)
+	memset( &hand, 0, sizeof( hand ) );
+	hand.hModel = weapon->handsModel;
+	hand.frame = hand.oldframe = weapon->weapAnimations[WEAP_IDLE1].firstFrame;
+	trap_R_LerpTag( &tag, &hand, "tag_weapon", 0 );
+	for ( i = 0; i < 3; i++ ) {
+		hand.axis[i][0] = tag.axis[0][i] * gun.axis[0][0] + tag.axis[1][i] * gun.axis[1][0] + tag.axis[2][i] * gun.axis[2][0];
+		hand.axis[i][1] = tag.axis[0][i] * gun.axis[0][1] + tag.axis[1][i] * gun.axis[1][1] + tag.axis[2][i] * gun.axis[2][1];
+		hand.axis[i][2] = tag.axis[0][i] * gun.axis[0][2] + tag.axis[1][i] * gun.axis[1][2] + tag.axis[2][i] * gun.axis[2][2];
+	}
+	VectorCopy( gun.origin, hand.origin );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( hand.origin, -tag.origin[i], hand.axis[i], hand.origin );
+	}
+	VectorCopy( akHand.lightingOrigin, hand.lightingOrigin );
+	hand.renderfx = akHand.renderfx | RF_VR_NOHANDS;
+
+	// only the gun that fired flashes
+	cent->muzzleFlashTime = cent->akimboFire ? savedFlash : 0;
+	CG_AddPlayerWeapon( &hand, ps, cent );
+	cent->muzzleFlashTime = savedFlash;
+}
+
 void CG_AddViewWeapon( playerState_t *ps ) {
 	refEntity_t hand;
 	vec3_t fovOffset;
+	vec3_t base;
 	vec3_t angles;
 	vec3_t gunoff;
 	weaponInfo_t    *weapon;
@@ -3789,7 +3949,7 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		if ( cgVR->menuPointer || cg.cameraMode ) {
 			return;
 		}
-		cgVR->dualWield = CG_VR_DualSingle( ps->weapon ) != 0;
+		cgVR->dualWield = CG_VR_DualSingle( ps ) != 0;
 		{
 			static int next;
 			char dbg[8];
@@ -3803,7 +3963,7 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		if ( ps->weapon <= WP_NONE ) {
 			cgVR->muzzleValid = qfalse;
 		} else if ( cgVR->dualWield ) {
-			CG_VR_AddDualGuns( ps, CG_VR_DualSingle( ps->weapon ) );     // a pistol in each hand
+			CG_VR_AddDualGuns( ps, CG_VR_DualSingle( ps ) );     // a gun in each hand
 		} else {
 			memset( &hand, 0, sizeof( hand ) );
 			weapon = &cg_weapons[ ps->weapon ];
@@ -3860,6 +4020,7 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 
 		// set up gun position
 		CG_CalculateWeaponPosition( hand.origin, angles );
+		VectorCopy( hand.origin, base );
             
 			// RealRTCW gun position is defined in .weap files if CVAR is active.
             if ( cg_gunPosLock.integer == 1 ) 
@@ -3905,6 +4066,19 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		hand.hModel = weapon->handsModel;
 		hand.renderfx = RF_DEPTHHACK | RF_FIRST_PERSON | RF_MINLIGHT;   //----(SA)
 
+		// RealRTCW-VR: dual wielding, the second gun in a left hand of its own (drawn first,
+		// so the weapon hand's gun is the one other effects read back)
+		if ( BG_DualActive( ps ) ) {
+			int savedFlash = cg.predictedPlayerEntity.muzzleFlashTime;
+			CG_AddDualLeft( ps, base, angles, fovOffset );
+			if ( cg.predictedPlayerEntity.akimboFire ) {
+				cg.predictedPlayerEntity.muzzleFlashTime = 0;
+			}
+			cg_dualOneHand = CG_DualSMG( ps->weapon );
+			CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity );
+			cg_dualOneHand = qfalse;
+			cg.predictedPlayerEntity.muzzleFlashTime = savedFlash;
+		} else
 		// add everything onto the hand
 		CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity );
 		// Ridah

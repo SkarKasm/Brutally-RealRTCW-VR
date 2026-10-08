@@ -372,8 +372,8 @@ EV_VR_GORE: a killing blow did something gory to a body (g_vrextras.c G_VRX_Kill
 void CG_VRX_GoreEvent( entityState_t *es ) {
 	vrWound_t *w;
 
-	if ( !CG_VRX_Gore( VRX_THROAT ) ) {
-		return;
+	if ( !CG_VRX_Gore( VRX_THROAT ) && !( es->eventParm == VRG_BELLY && es->density && CG_VRX_Gore( VRX_DISMEMBER ) ) ) {
+		return;     // (a shotgun's disembowelling goes with dismemberment)
 	}
 	switch ( es->eventParm ) {
 	case VRG_THROAT:
@@ -386,7 +386,7 @@ void CG_VRX_GoreEvent( entityState_t *es ) {
 	case VRG_BELLY:
 		w = VRX_NewWound( es->otherEntityNum, VRW_BELLY, es->pos.trBase, es->origin2 );
 		if ( w ) {
-			w->size = 3.6f;
+			w->size = es->density ? 4.6f : 3.6f;    // a shotgun tears a bigger hole than a knife
 		}
 		break;
 	case VRG_LIMBS:

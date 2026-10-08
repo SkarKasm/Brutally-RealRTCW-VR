@@ -790,7 +790,9 @@ void ClientEvents( gentity_t *ent, int oldEventSequence ) {
 		case EV_FIRE_WEAPON:
 		case EV_FIRE_WEAPONB:
 		case EV_FIRE_WEAPON_LASTSHOT:
+			g_dualLeftShot = event == EV_FIRE_WEAPONB && BG_DualActive( &ent->client->ps );  // RealRTCW-VR
 			FireWeapon( ent );
+			g_dualLeftShot = qfalse;
 			break;
 
 		case EV_GRENADE_SUICIDE:
@@ -1232,6 +1234,7 @@ void ClientThink_real( gentity_t *ent ) {
 		pm.vrManualReload = gVR->manualReload;
 		pm.vrChambered = gVR->chambered;
 		pm.vrAkimbo = gVR->akimboLeft ? 2 : 1;
+		pm.vrHandsLow = BG_VR_HandsLow( gVR );
 	}
 	pm.pmove_msec = pmove_msec.integer;
 	pm.pmext = &client->pmext;

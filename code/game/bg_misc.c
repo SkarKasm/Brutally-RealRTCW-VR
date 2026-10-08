@@ -7536,6 +7536,49 @@ qboolean BG_AkimboFireSequence( int weapon, int akimboClip ) {
 	return akimboClip & 1;
 }
 
+/*
+==============
+BG_DualCapable / BG_DualActive / BG_DualLeftFires
+
+RealRTCW-VR: dual wielding. With PERS_DUAL set, a pistol or SMG is carried in each hand:
+twice the clip (one magazine per gun, BG_GetMaxClip), the two fire in turn without a headset
+and each on its own trigger in VR (bg_vrAkimbo), and the off hand's shots are EV_FIRE_WEAPONB
+like the akimbo pairs'.
+==============
+*/
+qboolean BG_DualCapable( int weapon ) {
+	switch ( weapon ) {
+	case WP_LUGER:
+	case WP_SILENCER:
+	case WP_COLT:
+	case WP_TT33:
+	case WP_REVOLVER:
+	case WP_HDM:
+	case WP_MP40:
+	case WP_THOMPSON:
+	case WP_STEN:
+	case WP_PPSH:
+	case WP_MP34:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
+qboolean BG_DualActive( const playerState_t *ps ) {
+	return ps && !ps->aiChar && ps->persistant[PERS_DUAL] && BG_DualCapable( ps->weapon );
+}
+
+qboolean BG_DualLeftFires( const playerState_t *ps ) {
+	if ( !BG_DualActive( ps ) ) {
+		return qfalse;
+	}
+	if ( bg_vrAkimbo >= 0 ) {
+		return bg_vrAkimbo ? qtrue : qfalse;
+	}
+	return ps->ammoclip[BG_FindClipForWeapon( ps->weapon )] & 1;
+}
+
 //----(SA) end
 
 //----(SA) Added keys
@@ -9852,6 +9895,7 @@ taking into account the weapon upgrade level.
 int BG_GetMaxClip(const playerState_t *ps, int weapon) {
 	int upgradeLevel;
 	int maxClip;
+	int dual;
 
 	if (!ps || weapon <= WP_NONE || weapon >= WP_NUM_WEAPONS) {
 		return 0;
@@ -9864,6 +9908,9 @@ int BG_GetMaxClip(const playerState_t *ps, int weapon) {
 		upgradeLevel = 0;
 	}
 
+	// RealRTCW-VR: two guns, two magazines
+	dual = !ps->aiChar && ps->persistant[PERS_DUAL] && BG_DualCapable( weapon ) ? 2 : 1;
+
 	if (upgradeLevel >= 1) {
 		maxClip = wt->maxclipUpgraded;
 
@@ -9873,10 +9920,10 @@ int BG_GetMaxClip(const playerState_t *ps, int weapon) {
 			maxClip *= 2.0f;
 		}
 
-		return maxClip;
+		return maxClip * dual;
 	}
 
-	return wt->maxclip;
+	return wt->maxclip * dual;
 }
 
 /*
