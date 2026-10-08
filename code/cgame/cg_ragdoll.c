@@ -42,7 +42,8 @@ the Free Software Foundation, either version 3 of the License, or
 #define RD_MAX_STEPS        6           // per frame, after a hitch the rest is dropped
 #define RD_ITERATIONS       12
 #define RD_MASK             ( MASK_SOLID | CONTENTS_PLAYERCLIP )    // props are often only player-clipped
-#define RD_GRAVITY          800.0f
+#define RD_GRAVITY          "400"       // vr_ragdollGravity: about real gravity at RTCW's scale (the game's own 800 slams bodies down)
+#define RD_HEAD_LEN         9.0f        // neck joint to the top of the skull
 #define RD_ANCHOR_SLACK     20.0f       // how far the pelvis may drift from the server's body
 #define RD_SLEEP_MOVE       0.04f       // a point moving less than this per step is at rest
 #define RD_SLEEP_STEPS      45
@@ -152,10 +153,12 @@ static ragdoll_t rdPool[RD_MAX_RAGDOLLS];
 static ragdoll_t *RD_Find( int entityNum );
 static void RD_ApplyPending( ragdoll_t *rd );
 static vmCvar_t vr_ragdolls;
+static vmCvar_t vr_ragdollGravity;
 
 void CG_Ragdoll_Init( void ) {
 	memset( rdPool, 0, sizeof( rdPool ) );
 	trap_Cvar_Register( &vr_ragdolls, "vr_ragdolls", "1", CVAR_ARCHIVE );
+	trap_Cvar_Register( &vr_ragdollGravity, "vr_ragdollGravity", RD_GRAVITY, CVAR_ARCHIVE );
 }
 
 /*
@@ -716,6 +719,38 @@ static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 		return qfalse;      // not a human skeleton (dogs, bosses...)
 	}
 
+	// tag_head (where the head model goes on) sits on, or right next to, the Head bone: the head
+	// was a segment of almost no length, its direction (and with it the head's whole turn) set by
+	// whichever way the two points were last nudged, and the head spun. The top of the skull
+	// instead: along the Head bone's axis that points away from the neck, as it was at death.
+	if ( rd->hasPoint[P_HEAD] ) {
+		vec3_t up;
+		float best = 0;
+
+		VectorSubtract( rd->p0[P_HEAD], rd->p0[P_NECK], up );
+		if ( VectorNormalize( up ) < 1e-3f ) {
+			VectorCopy( body->axis[2], up );
+		}
+		for ( i = 0; i < n; i++ ) {
+			if ( !Q_stricmp( RD_BoneShortName( names + i * 32 ), "Head" ) ) {
+				vec3_t along = { 0, 0, 0 };
+				for ( k = 0; k < 3; k++ ) {
+					float c = DotProduct( rd->bone0Axis[i][k], up );
+					if ( fabs( c ) > fabs( best ) ) {
+						best = c;
+						VectorScale( rd->bone0Axis[i][k], c < 0 ? -1 : 1, along );
+					}
+				}
+				if ( fabs( best ) > 0.5f ) {
+					VectorCopy( along, up );
+				}
+				break;
+			}
+		}
+		VectorMA( rd->p0[P_HEAD], RD_HEAD_LEN, up, rd->p0[P_HEADEND] );
+		rd->hasPoint[P_HEADEND] = qtrue;
+	}
+
 	// segments, and which one each bone turns with
 	for ( s = 0; s < S_COUNT; s++ ) {
 		keyBone[s] = -1;
@@ -896,7 +931,7 @@ static void RD_Step( ragdoll_t *rd, centity_t *cent, const vec3_t grabPoint, qbo
 		VectorScale( v, 0.995f, v );
 		VectorCopy( rd->p[k], rd->old[k] );
 		VectorAdd( rd->p[k], v, rd->p[k] );
-		rd->p[k][2] -= RD_GRAVITY * RD_STEP * RD_STEP;
+		rd->p[k][2] -= vr_ragdollGravity.value * RD_STEP * RD_STEP;
 		RD_Collide( rd, k, start[k] );
 	}
 
@@ -1336,6 +1371,7 @@ void CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body ) {
 	int steps = 0;
 
 	trap_Cvar_Update( &vr_ragdolls );
+	trap_Cvar_Update( &vr_ragdollGravity );
 	if ( !( cent->currentState.eFlags & EF_DEAD ) || !vr_ragdolls.integer || !body->hModel ||
 		 cent->currentState.eType != ET_PLAYER ) {
 		if ( rd ) {
