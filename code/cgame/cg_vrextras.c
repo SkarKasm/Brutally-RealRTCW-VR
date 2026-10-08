@@ -204,6 +204,8 @@ typedef struct {
 } vrSkel_t;
 
 static vrWounded_t vrWounded[VRX_MAX_WOUNDED];
+static qboolean VRX_HeadHit( int entityNum, const vec3_t point );
+static void VRX_AddFleshCap( const vec3_t p, const vec3_t dir, float len, float width, const vec3_t light );
 static vrSkel_t vrSkels[VRX_MAX_SKELS];
 static int vrSkelNext;
 static qhandle_t vrWoundShaders[5];
@@ -341,6 +343,11 @@ static vrWound_t *VRX_NewWound( int entityNum, int kind, const vec3_t point, con
 }
 
 void CG_VRX_Wound( int entityNum, const vec3_t point, const vec3_t dir ) {
+	if ( CG_VRX_Gore( VRX_WOUNDS ) && entityNum >= 0 && entityNum < MAX_GENTITIES && cg.snap &&
+		 entityNum != cg.snap->ps.clientNum && cg_entities[entityNum].currentState.eType == ET_PLAYER &&
+		 VRX_HeadHit( entityNum, point ) ) {
+		return;     // a head wound instead
+	}
 	if ( CG_VRX_Gore( VRX_WOUNDS ) ) {
 		VRX_NewWound( entityNum, VRW_BULLET, point, dir );
 	}
@@ -492,7 +499,7 @@ static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t b
 	w->localT[1] = DotProduct( right, bAxis[b][1] );
 	w->localT[2] = DotProduct( right, bAxis[b][2] );
 	w->bone = b;
-	w->bleedEnd = cg.time + ( w->kind == VRW_BELLY ? 2500 : w->kind == VRW_THROAT ? 3500 : 5000 );
+	w->bleedEnd = cg.time + ( w->kind == VRW_BELLY ? 2500 : w->kind == VRW_THROAT ? 3500 : 9000 );    // stumps bleed longest
 	w->nextSpurt = cg.time;
 }
 
@@ -570,6 +577,13 @@ static void VRX_Bleed( vrWound_t *w, const vec3_t p, const vec3_t n ) {
 	VectorCopy( n, dir );
 	dir[2] -= 0.4f;
 	VectorNormalize( dir );
+	if ( w->kind == VRW_LIMB || w->kind == VRW_STUMP ) {
+		// a stump pumps harder and longer, fading as it goes
+		float left = ( w->bleedEnd - cg.time ) / 9000.0f;
+		CG_AddBloodTrails( (float *)p, dir, 70 + (int)( 90 * left ) + rand() % 40, 900, 3, 0.5f );
+		w->nextSpurt = cg.time + 90 + rand() % 120 + (int)( 200 * ( 1.0f - left ) );
+		return;
+	}
 	CG_AddBloodTrails( (float *)p, dir, 60 + rand() % 50, 700, 2, 0.35f );
 	w->nextSpurt = cg.time + 130 + rand() % 150;
 }
@@ -639,7 +653,7 @@ chest faces, z up the spine, the origin VRX_CRYPT_NECK below the neck).
 
 typedef struct {
 	qboolean    registered;
-	qhandle_t   headShot, headSkinned, ribs, guts, stump;
+	qhandle_t   headSkinned, ribs, guts, stump, cap, hole, jaw[2];
 } vrxCrypt_t;
 
 static vrxCrypt_t *VRX_CryptModels( void ) {
@@ -647,7 +661,10 @@ static vrxCrypt_t *VRX_CryptModels( void ) {
 
 	if ( !m.registered ) {
 		m.registered = qtrue;
-		m.headShot = trap_R_RegisterModel( "models/vr_gore/head_shot.md3" );
+		m.cap = trap_R_RegisterModel( "models/vr_gore/flesh_cap.md3" );
+		m.hole = trap_R_RegisterModel( "models/vr_gore/headhole.md3" );
+		m.jaw[0] = trap_R_RegisterModel( "models/vr_gore/jaw_skinned.md3" );
+		m.jaw[1] = trap_R_RegisterModel( "models/vr_gore/jaw_skinned2.md3" );
 		m.headSkinned = trap_R_RegisterModel( "models/vr_gore/head_skinned.md3" );
 		m.ribs = trap_R_RegisterModel( "models/vr_gore/ribs.md3" );
 		m.guts = trap_R_RegisterModel( "models/vr_gore/guts.md3" );
@@ -660,18 +677,15 @@ static vrxCrypt_t *VRX_CryptModels( void ) {
 =================
 CG_VRX_GoreHead
 
-The head about to be drawn on a body (already on its tag_head): the crypt's own instead,
-for a head shot or a blast. qtrue when it was swapped (no hat then).
+The head about to be drawn on a body (already on its tag_head): the crypt's skinned one
+instead, for a blast. qtrue when it was swapped (no hat then).
 =================
 */
 qboolean CG_VRX_GoreHead( centity_t *cent, refEntity_t *head ) {
-	int bits = CG_VRX_GoreBits( cent );
 	qhandle_t m = 0;
 
-	if ( bits & VRX_GB_BLOWN ) {
+	if ( CG_VRX_GoreBits( cent ) & VRX_GB_BLOWN ) {
 		m = VRX_CryptModels()->headSkinned;
-	} else if ( bits & VRX_GB_HEADSHOT ) {
-		m = VRX_CryptModels()->headShot;
 	}
 	if ( !m ) {
 		return qfalse;
@@ -682,7 +696,198 @@ qboolean CG_VRX_GoreHead( centity_t *cent, refEntity_t *head ) {
 }
 
 qboolean CG_VRX_HeadSwapped( centity_t *cent ) {
-	return ( CG_VRX_GoreBits( cent ) & ( VRX_GB_HEADSHOT | VRX_GB_BLOWN ) ) != 0;
+	return ( CG_VRX_GoreBits( cent ) & VRX_GB_BLOWN ) != 0;
+}
+
+// torn flesh closing off a stump: out along dir from p, len long and width across
+static void VRX_AddFleshCap( const vec3_t p, const vec3_t dir, float len, float width, const vec3_t light ) {
+	refEntity_t re;
+	vec3_t n;
+
+	if ( !VRX_CryptModels()->cap ) {
+		return;
+	}
+	memset( &re, 0, sizeof( re ) );
+	re.hModel = VRX_CryptModels()->cap;
+	VectorNormalize2( dir, n );
+	VectorCopy( n, re.axis[0] );
+	PerpendicularVector( re.axis[1], n );
+	CrossProduct( re.axis[0], re.axis[1], re.axis[2] );
+	VectorScale( re.axis[0], len / 5.8f, re.axis[0] );     // the cap is 5.8 long, 4.6 across
+	VectorScale( re.axis[1], width / 4.6f, re.axis[1] );
+	VectorScale( re.axis[2], width / 4.6f, re.axis[2] );
+	re.nonNormalizedAxes = qtrue;
+	VectorCopy( p, re.origin );
+	VectorCopy( p, re.oldorigin );
+	VectorCopy( light, re.lightingOrigin );
+	re.renderfx = RF_LIGHTING_ORIGIN;
+	trap_R_AddRefEntityToScene( &re );
+}
+
+/*
+==============================================================================
+
+Head wounds
+
+A bullet that meets a head leaves a hole with the blood running from it (down, whichever
+way the head lies), or now and then takes the jaw off (the crypt's skinned jaw over the
+head's own). Kept in the head's own frame, so they work on every head and skin, and on a
+head that was cut off too. The head is taken as an egg about its centre (RTCW's heads all
+have their neck at the origin, the face along x).
+
+==============================================================================
+*/
+
+#define VRX_MAX_HEADS       16
+#define VRX_MAX_HOLES       4
+
+typedef struct {
+	int         entityNum;      // the body, -1 free
+	int         lastSeen;
+	qboolean    dead;
+	int         numHoles;
+	vec3_t      hole[VRX_MAX_HOLES], holeN[VRX_MAX_HOLES];  // on the head, in its frame
+	int         jaw;            // 0 none, else which skinned jaw + 1
+} vrHeadWounds_t;
+
+static vrHeadWounds_t vrHeads[VRX_MAX_HEADS];
+static const vec3_t vrHeadCentre = { 0.9f, 0.0f, 3.4f };
+static const vec3_t vrHeadRadii = { 4.3f, 3.4f, 4.8f };
+
+static vrHeadWounds_t *VRX_HeadWounds( int entityNum, qboolean create ) {
+	vrHeadWounds_t *spare = NULL;
+	int i;
+
+	for ( i = 0; i < VRX_MAX_HEADS; i++ ) {
+		if ( vrHeads[i].lastSeen && vrHeads[i].entityNum == entityNum ) {
+			return &vrHeads[i];
+		}
+		if ( !spare || ( spare->lastSeen && ( !vrHeads[i].lastSeen || vrHeads[i].lastSeen < spare->lastSeen ) ) ) {
+			spare = &vrHeads[i];
+		}
+	}
+	if ( !create ) {
+		return NULL;
+	}
+	memset( spare, 0, sizeof( *spare ) );
+	spare->entityNum = entityNum;
+	spare->lastSeen = cg.time;
+	spare->dead = ( cg_entities[entityNum].currentState.eFlags & EF_DEAD ) != 0;
+	return spare;
+}
+
+// a bullet hit this character at point: on its head? (qtrue when it was)
+static qboolean VRX_HeadHit( int entityNum, const vec3_t point ) {
+	centity_t *cent = &cg_entities[entityNum];
+	refEntity_t *head = &cent->pe.headRefEnt;
+	vrHeadWounds_t *hw;
+	vec3_t rel, d, e, n;
+	float len;
+	int k;
+
+	if ( !head->hModel || CG_VRX_Headless( cent ) ) {
+		return qfalse;
+	}
+	VectorSubtract( point, head->origin, rel );
+	for ( k = 0; k < 3; k++ ) {
+		float axisLen = VectorLength( head->axis[k] );
+		d[k] = DotProduct( rel, head->axis[k] ) / ( axisLen > 0.01f ? axisLen * axisLen : 1.0f ) - vrHeadCentre[k];
+		e[k] = d[k] / vrHeadRadii[k];
+	}
+	len = VectorLength( e );
+	if ( len > 1.7f || len < 0.01f ) {
+		return qfalse;      // (hit boxes are bigger than heads)
+	}
+	hw = VRX_HeadWounds( entityNum, qtrue );
+	hw->lastSeen = cg.time;
+	// on the egg's surface, facing out of it
+	for ( k = 0; k < 3; k++ ) {
+		d[k] = vrHeadCentre[k] + d[k] / len;
+		n[k] = e[k] / len / vrHeadRadii[k];
+	}
+	VectorNormalize( n );
+	// low on the face: often the jaw goes; anywhere now and then
+	if ( !hw->jaw && ( ( d[2] < vrHeadCentre[2] - 1.5f && n[0] > 0.2f && random() < 0.6f ) || random() < 0.2f ) ) {
+		hw->jaw = 1 + ( rand() & 1 );
+		return qtrue;
+	}
+	if ( hw->numHoles < VRX_MAX_HOLES ) {
+		VectorCopy( d, hw->hole[hw->numHoles] );
+		VectorCopy( n, hw->holeN[hw->numHoles] );
+		hw->numHoles++;
+	}
+	return qtrue;
+}
+
+/*
+=================
+CG_VRX_AddHeadWounds
+
+A head just drawn (head: where, its model's frame), the body entityNum it belongs to.
+=================
+*/
+void CG_VRX_AddHeadWounds( int entityNum, refEntity_t *head ) {
+	vrHeadWounds_t *hw = VRX_HeadWounds( entityNum, qfalse );
+	vrxCrypt_t *m = VRX_CryptModels();
+	qboolean dead = ( cg_entities[entityNum].currentState.eFlags & EF_DEAD ) != 0;
+	refEntity_t re;
+	vec3_t n, down, p;
+	int i, k;
+
+	if ( !hw ) {
+		return;
+	}
+	if ( hw->dead && !dead && cg_entities[entityNum].currentState.eType == ET_PLAYER ) {
+		hw->lastSeen = 0;       // alive again: a new face
+		return;
+	}
+	hw->dead = dead;
+	hw->lastSeen = cg.time;
+	if ( !CG_VRX_Gore( VRX_WOUNDS ) ) {
+		return;
+	}
+	if ( hw->jaw && m->jaw[hw->jaw - 1] ) {
+		memset( &re, 0, sizeof( re ) );
+		re.hModel = m->jaw[hw->jaw - 1];
+		VectorCopy( head->origin, re.origin );
+		VectorCopy( head->origin, re.oldorigin );
+		AxisCopy( head->axis, re.axis );
+		re.nonNormalizedAxes = head->nonNormalizedAxes;
+		VectorCopy( head->lightingOrigin, re.lightingOrigin );
+		re.renderfx = RF_LIGHTING_ORIGIN | ( head->renderfx & ( RF_THIRD_PERSON | RF_FIRST_PERSON ) );
+		trap_R_AddRefEntityToScene( &re );
+	}
+	for ( i = 0; i < hw->numHoles && m->hole; i++ ) {
+		VectorCopy( head->origin, p );
+		VectorClear( n );
+		for ( k = 0; k < 3; k++ ) {
+			VectorMA( p, hw->hole[i][k], head->axis[k], p );
+			VectorMA( n, hw->holeN[i][k], head->axis[k], n );
+		}
+		VectorNormalize( n );
+		VectorMA( p, 0.15f, n, p );
+		// the blood runs down: on a face looking up it runs off to the side it lies on
+		VectorSet( down, 0, 0, -1 );
+		VectorMA( down, -DotProduct( down, n ), n, down );
+		if ( VectorNormalize( down ) < 0.2f ) {
+			VectorNegate( head->axis[2], down );
+			VectorMA( down, -DotProduct( down, n ), n, down );
+			VectorNormalize( down );
+		}
+		memset( &re, 0, sizeof( re ) );
+		re.hModel = m->hole;
+		VectorCopy( n, re.axis[0] );
+		VectorNegate( down, re.axis[2] );
+		CrossProduct( re.axis[2], re.axis[0], re.axis[1] );
+		VectorScale( re.axis[1], 1.2f, re.axis[1] );
+		VectorScale( re.axis[2], 1.2f, re.axis[2] );
+		re.nonNormalizedAxes = qtrue;
+		VectorCopy( p, re.origin );
+		VectorCopy( p, re.oldorigin );
+		VectorCopy( head->lightingOrigin, re.lightingOrigin );
+		re.renderfx = RF_LIGHTING_ORIGIN;
+		trap_R_AddRefEntityToScene( &re );
+	}
 }
 
 static void VRX_AddCryptPiece( qhandle_t model, const vec3_t origin, vec3_t axis[3], const vec3_t light ) {
@@ -893,6 +1098,12 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 			if ( w->kind == VRW_BELLY && !VRX_CryptModels()->guts ) {
 				VRX_AddGuts( p, n, u );     // (with the crypt's guts, CG_VRX_AddCryptGore spills those)
 			}
+			if ( w->kind == VRW_LIMB ) {
+				// torn flesh closing the stump (thighs are thicker than arms)
+				VRX_AddFleshCap( p, n, 2.4f, ( w->limb & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) ? ( w->high ? 6.0f : 4.6f ) : ( w->high ? 4.4f : 3.6f ), p );
+			} else if ( w->kind == VRW_STUMP ) {
+				VRX_AddFleshCap( p, n, 2.2f, 4.6f, p );
+			}
 		}
 		for ( k = 0; k < 4; k++ ) {
 			float a = ( k == 0 || k == 3 ) ? 1 : -1, b = k < 2 ? 1 : -1;
@@ -989,6 +1200,15 @@ static void VRX_DrawHead( centity_t *cent ) {
 		head.hModel = ci->headModel;
 		head.customSkin = ci->headSkin;
 		trap_R_AddRefEntityToScene( &head );
+		// the torn neck under it, and whatever the head took before it came off
+		{
+			vec3_t p, down;
+			VectorMA( head.origin, 0.6f, head.axis[0], p );
+			VectorMA( p, -2.4f, head.axis[2], p );
+			VectorNegate( head.axis[2], down );
+			VRX_AddFleshCap( p, down, 2.2f, 4.8f, head.lightingOrigin );
+		}
+		CG_VRX_AddHeadWounds( body, &head );
 		// the helmet / cap stays on
 		for ( i = 0; i < 3; i++ ) {
 			static const int hats[3] = { ACC_HAT, ACC_MOUTH2, ACC_MOUTH3 };

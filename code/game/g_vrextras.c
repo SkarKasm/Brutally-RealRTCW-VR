@@ -209,14 +209,10 @@ void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, con
 	if ( !targ->client || !targ->aiCharacter ) {
 		return;
 	}
-	// how the body looks dead: a blast close by tears it open, a head shot leaves a hole
-	if ( VRX_HUMAN_MALE( targ->aiCharacter ) ) {
-		if ( G_VRX_Blast( mod ) && G_VRX_Gore( VRX_DISMEMBER ) &&
-			 ( !inflictor || Distance( inflictor->r.currentOrigin, targ->r.currentOrigin ) < 200.0f ) ) {
-			G_VRX_AddGoreBits( targ, VRX_GB_BLOWN );
-		} else if ( headshot && G_VRX_Gore( VRX_WOUNDS ) ) {
-			G_VRX_AddGoreBits( targ, VRX_GB_HEADSHOT );
-		}
+	// a blast close by tears the body open (head shots are the cgame's: cg_vrextras.c head wounds)
+	if ( VRX_HUMAN_MALE( targ->aiCharacter ) && G_VRX_Blast( mod ) && G_VRX_Gore( VRX_DISMEMBER ) &&
+		 ( !inflictor || Distance( inflictor->r.currentOrigin, targ->r.currentOrigin ) < 200.0f ) ) {
+		G_VRX_AddGoreBits( targ, VRX_GB_BLOWN );
 	}
 	G_VRX_Dismember( targ, inflictor, dir, point, mod, damage );
 	if ( !G_VRX_Gore( VRX_THROAT ) ) {

@@ -2749,6 +2749,7 @@ void        CG_VRX_AddWounds( centity_t *cent, refEntity_t *body );
 void        CG_VRX_AddCryptGore( centity_t *cent, refEntity_t *body );
 qboolean    CG_VRX_GoreHead( centity_t *cent, refEntity_t *head );
 qboolean    CG_VRX_HeadSwapped( centity_t *cent );
+void        CG_VRX_AddHeadWounds( int entityNum, refEntity_t *head );
 void        CG_VRX_TestWound_f( void );
 void        CG_VRX_GoreEvent( entityState_t *es );
 int         CG_VRX_GoreBits( centity_t *cent );

@@ -61,7 +61,6 @@ typedef enum {
 #define VRX_GB_RLEG         16
 #define VRX_GB_SCARED       32      // alive, running from a thrown head
 #define VRX_GB_SURRENDER    64      // alive, weapon dropped, hands up
-#define VRX_GB_HEADSHOT     128     // killed by a head shot: the head with a hole in the forehead
 #define VRX_GB_BLOWN        256     // killed by a blast close by: torn open (skinned head, ribs, guts)
 
 // the crypt's torn soldier pieces (z_vr_assets.pk3, cut from crypt1.bsp), and who can wear them:
