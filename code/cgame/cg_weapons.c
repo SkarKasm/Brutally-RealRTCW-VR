@@ -3735,6 +3735,132 @@ void CG_AddPlayerFoot( refEntity_t *parent, playerState_t *ps, centity_t *cent )
 
 /*
 ==============
+CG_AdsFraction / CG_AdsAdjust
+
+RealRTCW-VR: aiming down the sights without a headset. While the zoom (alt fire) is on, the
+gun slides to the middle of the view with its sights on the crosshair. Each gun's sight line
+was measured from its first person model (front sight on the view axis, the gun pitched so
+the rear and front sights line up), for RealRTCW's own guns; cg_adsX/Y/Z nudge it.
+==============
+*/
+typedef struct {
+	const char *weap;
+	float pitch;        // degrees, the sight line's slope to take out
+	vec3_t ofs;         // forward, left, up from the view origin
+} adsSight_t;
+
+static const adsSight_t adsSights[] = {
+	{ "luger.weap", 0.35f, { 4.00f, 4.24f, 6.38f } },
+	{ "luger_silenced.weap", 0.35f, { 4.00f, 4.24f, 6.38f } },
+	{ "colt.weap", -2.67f, { 4.00f, 5.16f, 3.68f } },
+	{ "tt33.weap", -1.28f, { 4.00f, 5.04f, 4.65f } },
+	{ "revolver.weap", 0.21f, { 4.00f, 6.05f, 3.60f } },
+	{ "hdm.weap", -0.04f, { 4.00f, 6.51f, 5.11f } },
+	{ "mp40.weap", -1.27f, { 4.00f, 4.87f, 2.89f } },
+	{ "thompson.weap", -1.94f, { 4.00f, 2.43f, 1.36f } },
+	{ "sten.weap", -1.69f, { 4.00f, 5.72f, 5.80f } },
+	{ "ppsh.weap", -0.06f, { 4.00f, 4.28f, 2.89f } },
+	{ "mp34.weap", 0.29f, { 4.00f, 5.88f, 7.27f } },
+	{ "mp44.weap", -1.91f, { 4.00f, 4.52f, 2.05f } },
+	{ "g43.weap", -1.44f, { 4.00f, 3.33f, 1.94f } },
+	{ "m1garand.weap", -2.55f, { 4.00f, 6.16f, 1.82f } },
+	{ "mauser.weap", 0.68f, { 4.00f, 5.49f, 5.99f } },
+	{ "mosin.weap", -2.91f, { 4.00f, 3.29f, 2.11f } },
+	{ "bar.weap", 1.07f, { 4.00f, 4.97f, 3.90f } },
+	{ "fg42.weap", -5.80f, { 4.00f, 5.30f, -2.86f } },
+	{ "ithaca.weap", -2.34f, { 4.00f, 4.53f, 4.46f } },
+	{ "mg42m.weap", -1.34f, { 4.00f, 6.76f, 1.96f } },
+};
+
+static vmCvar_t cg_ads, cg_adsX, cg_adsY, cg_adsZ;
+
+static const adsSight_t *CG_AdsSight( int weapon ) {
+	const char *file;
+	int i;
+
+	if ( cg_vanilla_guns.integer ) {
+		return NULL;
+	}
+	file = BG_GetWeaponFilename( weapon );
+	if ( !file || !*file ) {
+		return NULL;
+	}
+	for ( i = 0; i < ARRAY_LEN( adsSights ); i++ ) {
+		if ( !Q_stricmp( adsSights[i].weap, file ) ) {
+			return &adsSights[i];
+		}
+	}
+	return NULL;
+}
+
+float CG_AdsFraction( void ) {
+	static qboolean registered;
+	const playerState_t *ps = &cg.predictedPlayerState;
+	float f;
+	int t;
+
+	if ( !registered ) {
+		trap_Cvar_Register( &cg_ads, "cg_ads", "1", CVAR_ARCHIVE );
+		trap_Cvar_Register( &cg_adsX, "cg_adsX", "0", CVAR_ARCHIVE );
+		trap_Cvar_Register( &cg_adsY, "cg_adsY", "0", CVAR_ARCHIVE );
+		trap_Cvar_Register( &cg_adsZ, "cg_adsZ", "0", CVAR_ARCHIVE );
+		registered = qtrue;
+	}
+	trap_Cvar_Update( &cg_ads );
+	trap_Cvar_Update( &cg_adsX );
+	trap_Cvar_Update( &cg_adsY );
+	trap_Cvar_Update( &cg_adsZ );
+
+	if ( !cg_ads.integer || cg.zoomval || cg.zoomedBinoc || ( ps->eFlags & ( EF_ZOOMING | EF_DEAD | EF_MG42_ACTIVE ) ) ||
+		 ps->persistant[PERS_HWEAPON_USE] || BG_DualActive( ps ) || !CG_AdsSight( ps->weapon ) ) {
+		return 0;
+	}
+
+	t = cg_simpleZoomTimeMs.integer;
+	f = t > 0 ? (float)( cg.time - cg.simpleZoomTime ) / t : 1;
+	f = f < 0 ? 0 : f > 1 ? 1 : f;
+	return cg.simpleZoomed ? f : 1 - f;
+}
+
+static void CG_AdsAdjust( const playerState_t *ps, vec3_t origin, vec3_t angles, vec3_t gunoff, vec3_t fovOffset, float frac ) {
+	const adsSight_t *ads = CG_AdsSight( ps->weapon );
+	vec3_t ofs;
+	int i;
+
+	if ( !ads || frac <= 0 ) {
+		return;
+	}
+	VectorSet( ofs, ads->ofs[0] + cg_adsX.value, ads->ofs[1] + cg_adsY.value, ads->ofs[2] + cg_adsZ.value );
+	for ( i = 0; i < 3; i++ ) {
+		origin[i] += ( cg.refdef.vieworg[i] - origin[i] ) * frac;     // no bob while aiming
+		angles[i] = LerpAngle( angles[i], cg.refdefViewAngles[i], frac );
+		gunoff[i] += ( ofs[i] - gunoff[i] ) * frac;
+		fovOffset[i] *= 1 - frac;
+	}
+}
+
+// the gun's own sight line slope, taken out of the hand's axes
+static void CG_AdsPitchAxis( const playerState_t *ps, vec3_t axis[3], float frac ) {
+	const adsSight_t *ads = CG_AdsSight( ps->weapon );
+	vec3_t a0, a2;
+	float p, c, s;
+
+	if ( !ads || frac <= 0 ) {
+		return;
+	}
+	p = DEG2RAD( ads->pitch ) * frac;
+	c = cos( p );
+	s = sin( p );
+	VectorCopy( axis[0], a0 );
+	VectorCopy( axis[2], a2 );
+	VectorScale( a0, c, axis[0] );
+	VectorMA( axis[0], -s, a2, axis[0] );
+	VectorScale( a0, s, axis[2] );
+	VectorMA( axis[2], c, a2, axis[2] );
+}
+
+/*
+==============
 CG_AddViewWeapon
 
 Add the weapon, and flash for the player's view
@@ -3900,6 +4026,7 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 	vec3_t base;
 	vec3_t angles;
 	vec3_t gunoff;
+	float adsFrac = 0;
 	weaponInfo_t    *weapon;
 
 	if ( ps->persistant[PERS_TEAM] == TEAM_SPECTATOR ) {
@@ -4048,11 +4175,18 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 			gunoff[2] = cg_gun_z.value;
 			}
 
+		adsFrac = CG_AdsFraction();     // RealRTCW-VR: aiming down the sights
+		if ( adsFrac > 0 ) {
+			VectorCopy( base, hand.origin );
+			CG_AdsAdjust( ps, hand.origin, angles, gunoff, fovOffset, adsFrac );
+		}
+
 		VectorMA( hand.origin, ( gunoff[0] + fovOffset[0] ), cg.refdef.viewaxis[0], hand.origin );
 		VectorMA( hand.origin, ( gunoff[1] + fovOffset[1] ), cg.refdef.viewaxis[1], hand.origin );
 		VectorMA( hand.origin, ( gunoff[2] + fovOffset[2] ), cg.refdef.viewaxis[2], hand.origin );
 
 		AnglesToAxis( angles, hand.axis );
+		CG_AdsPitchAxis( ps, hand.axis, adsFrac );
 
 		if ( cg_gun_frame.integer ) {
 			hand.frame = hand.oldframe = cg_gun_frame.integer;

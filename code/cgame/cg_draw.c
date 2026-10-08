@@ -2677,6 +2677,10 @@ static void CG_DrawCrosshair( void ) {
 	if ( cgvr.active ) {
 		return;
 	}
+	// RealRTCW-VR: aiming down the sights, the gun's own sights are the crosshair
+	if ( CG_AdsFraction() > 0.5f ) {
+		return;
+	}
 	float x, y;
 	int weapnum;                // DHM - Nerve
 	vec4_t hcolor = {1, 1, 1, 1};
