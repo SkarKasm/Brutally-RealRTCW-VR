@@ -90,3 +90,5 @@ for prof in ['default','green','snow']:
     Image.fromarray(o).save(BJ+f'body_vr_{prof}.jpg',quality=92)
 b=cv2.imread(BJ+'boot_default_x4.png'); cv2.imwrite(BJ+'boot_vr.jpg',b,[cv2.IMWRITE_JPEG_QUALITY,92])
 Image.fromarray((arm*255).astype(np.uint8)).save(BJ+'armmask.png')
+# the normal player skin (flatscreen, mirrors, cutscenes): upscaled, captain's bars, own sleeves
+cv2.imwrite(BJ+'pk/models/players/player/body_default.jpg',cv2.cvtColor(np.clip(base,0,255).astype(np.uint8),cv2.COLOR_RGB2BGR),[cv2.IMWRITE_JPEG_QUALITY,92])
