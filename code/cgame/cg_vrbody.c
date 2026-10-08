@@ -70,8 +70,8 @@ void CG_VR_BodyInit( void ) {
 	memset( &vb, 0, sizeof( vb ) );
 	trap_Cvar_Register( &vr_fullBody, "vr_fullBody", "1", CVAR_ARCHIVE );
 	trap_Cvar_Register( &cg_flatLegs, "cg_flatLegs", "1", CVAR_ARCHIVE );
-	trap_Cvar_Register( &cg_flatLegsBack, "cg_flatLegsBack", "6", CVAR_ARCHIVE );
-	trap_Cvar_Register( &cg_flatLegsCut, "cg_flatLegsCut", "2", CVAR_ARCHIVE );
+	trap_Cvar_Register( &cg_flatLegsBack, "cg_flatLegsBack", "0", CVAR_ARCHIVE );
+	trap_Cvar_Register( &cg_flatLegsCut, "cg_flatLegsCut", "0", CVAR_ARCHIVE );
 }
 
 /*
@@ -420,7 +420,8 @@ CG_FlatLegs
 
 Flatscreen (cg_flatLegs): looking down shows the player's own body and legs. A second
 copy of the body is drawn for the eyes only, without its head and arms (the view
-weapon's arms are the only arms), its neck just behind and below the eyes.
+weapon's arms are the only arms), its torso upright over the hips whatever the view
+pitch, its neck just behind and below the eyes.
 =================
 */
 void CG_FlatLegs( centity_t *cent, const refEntity_t *legs ) {
@@ -440,6 +441,7 @@ void CG_FlatLegs( centity_t *cent, const refEntity_t *legs ) {
 	fp = *legs;
 	fp.ragdollBones = NULL;
 	fp.ragdollMagic = 0;
+	AxisClear( fp.torsoAxis );      // like Dying Light: the torso stays over the hips, it doesn't bend to look down
 	if ( !VB_Pose( &fp ) || vb.neck < 0 ) {
 		return;
 	}
