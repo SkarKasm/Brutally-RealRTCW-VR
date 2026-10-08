@@ -320,6 +320,8 @@ static cvar_t *vr_mirror;
 static cvar_t *vr_hapticScale;
 static cvar_t *vr_debug;
 
+static void VR_InitBindings( void );
+
 #define VR_OK( call ) VR_Check( ( call ), #call )
 
 static qboolean VR_Check( XrResult res, const char *what ) {
@@ -1209,6 +1211,8 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_wristHud", "1", CVAR_ARCHIVE );           // cg_vrwrist.c
 	Cvar_Get( "vr_pouchMags", "1", CVAR_ARCHIVE );          // spare magazines shown in the pouch
 	Cvar_Get( "vr_weaponScale", "1", CVAR_ARCHIVE );        // guns and hands: 1, 0.7 or 0.42 (life size)
+	VR_InitBindings();
+	Cbuf_AddText( "exec vr_controls.cfg\n" );              // the player's button layout
 
 	Com_Memset( &xr, 0, sizeof( xr ) );
 	Com_Memset( &com_vr, 0, sizeof( com_vr ) );
@@ -1453,7 +1457,10 @@ static void VR_ButtonCommand( const char *cmd, qboolean down ) {
 	}
 }
 
+static void VR_ClearActionHolds( void );
+
 static void VR_ReleaseAllCommands( void ) {
+	VR_ClearActionHolds();
 	xr.attackHeld = qfalse;
 	xr.attackOffHeld = qfalse;
 	while ( xr.numHeldCommands > 0 ) {
@@ -1503,19 +1510,242 @@ static qboolean VR_HandAtHip( int hand ) {
 	return rel[1] < -0.45f && rel[1] > -0.95f && side > 0.10f && ahead < 0.15f && ahead > -0.25f;
 }
 
-// in-game controls, after the RTCWQuest layout
+/*
+==============================================================================
+
+Remappable game controls
+
+Each action is a cvar, vr_bind_<action>, holding one or more inputs separated by
+spaces. vr_controls.cfg (exec'd at startup) sets them, so players on other
+controllers can move things around. Input names, as on Quest Touch for a right
+handed player (the weapon hand is "R"; vr_rightHanded 0 swaps the hands):
+
+  A B          weapon hand lower / upper face button
+  X Y          off hand lower / upper face button
+  RTRIG LTRIG  triggers          RGRIP LGRIP  grips
+  RCLICK LCLICK  stick clicks
+  RUP RDOWN RLEFT RRIGHT / LUP LDOWN LLEFT LRIGHT  stick pushed that way
+  G+<input>    only while the weapon hand grip is held
+
+A plain input does nothing while the weapon hand grip is held, so the same button
+can carry a plain action and a G+ action. Fire, the off hand trigger (sprint, or
+the second gun), grip tap reload, stick movement and turning are not remapped.
+
+==============================================================================
+*/
+
+typedef enum {
+	VRA_JUMP,
+	VRA_CROUCH,
+	VRA_STAND,
+	VRA_USE,
+	VRA_RELOAD,
+	VRA_WEAPNEXT,
+	VRA_WEAPPREV,
+	VRA_KICK,
+	VRA_NOTEBOOK,
+	VRA_HUD,
+	VRA_USEITEM,
+	VRA_ITEMNEXT,
+	VRA_ALTFIRE,
+	VRA_COUNT
+} vrAction_t;
+
+static const struct {
+	const char *cvar;
+	const char *def;
+} vrActions[VRA_COUNT] = {
+	{ "vr_bind_jump",     "A" },
+	{ "vr_bind_crouch",   "RDOWN" },
+	{ "vr_bind_stand",    "RUP" },
+	{ "vr_bind_use",      "X" },
+	{ "vr_bind_reload",   "B Y" },
+	{ "vr_bind_weapnext", "RCLICK" },
+	{ "vr_bind_weapprev", "G+RCLICK" },
+	{ "vr_bind_kick",     "LCLICK" },
+	{ "vr_bind_notebook", "G+Y" },
+	{ "vr_bind_hud",      "G+A" },
+	{ "vr_bind_useitem",  "G+X" },
+	{ "vr_bind_itemnext", "G+B" },
+	{ "vr_bind_altfire",  "G+RTRIG" },
+};
+
+static const struct {
+	const char *name;
+	qboolean    offHand;
+	vrButton_t  button;
+} vrInputs[] = {
+	{ "A", qfalse, VRB_LOWER },        { "B", qfalse, VRB_UPPER },
+	{ "X", qtrue, VRB_LOWER },         { "Y", qtrue, VRB_UPPER },
+	{ "RTRIG", qfalse, VRB_TRIGGER },  { "LTRIG", qtrue, VRB_TRIGGER },
+	{ "RGRIP", qfalse, VRB_SQUEEZE },  { "LGRIP", qtrue, VRB_SQUEEZE },
+	{ "RCLICK", qfalse, VRB_STICK },   { "LCLICK", qtrue, VRB_STICK },
+	{ "RUP", qfalse, VRB_STICK_UP },   { "RDOWN", qfalse, VRB_STICK_DOWN },
+	{ "RLEFT", qfalse, VRB_STICK_LEFT }, { "RRIGHT", qfalse, VRB_STICK_RIGHT },
+	{ "LUP", qtrue, VRB_STICK_UP },    { "LDOWN", qtrue, VRB_STICK_DOWN },
+	{ "LLEFT", qtrue, VRB_STICK_LEFT }, { "LRIGHT", qtrue, VRB_STICK_RIGHT },
+};
+
+#define VR_MAX_ACTION_INPUTS 4
+
+typedef struct {
+	int         count;
+	int         hand[VR_MAX_ACTION_INPUTS];         // 0 weapon hand, 1 off hand
+	vrButton_t  button[VR_MAX_ACTION_INPUTS];
+	qboolean    grip[VR_MAX_ACTION_INPUTS];         // needs the weapon hand grip
+} vrActionBinding_t;
+
+static cvar_t      *vr_bindCvars[VRA_COUNT];
+static vrActionBinding_t vrBindings[VRA_COUNT];
+static qboolean    vrActionHeld[VRA_COUNT];
+static qboolean    vrTriggerBound;      // something uses the weapon trigger with the grip
+
+static void VR_ParseBinding( int a ) {
+	vrActionBinding_t *b = &vrBindings[a];
+	char buf[MAX_CVAR_VALUE_STRING];
+	char *tok, *p;
+	int i;
+
+	Com_Memset( b, 0, sizeof( *b ) );
+	Q_strncpyz( buf, vr_bindCvars[a]->string, sizeof( buf ) );
+	for ( p = buf; ( tok = strtok( p, " ,\t" ) ) != NULL && b->count < VR_MAX_ACTION_INPUTS; p = NULL ) {
+		qboolean grip = qfalse;
+
+		if ( !Q_stricmpn( tok, "G+", 2 ) ) {
+			grip = qtrue;
+			tok += 2;
+		}
+		for ( i = 0; i < ARRAY_LEN( vrInputs ); i++ ) {
+			if ( !Q_stricmp( tok, vrInputs[i].name ) ) {
+				break;
+			}
+		}
+		if ( i == ARRAY_LEN( vrInputs ) ) {
+			if ( Q_stricmp( tok, "none" ) ) {
+				Com_Printf( "%s: unknown VR input \"%s\"\n", vr_bindCvars[a]->name, tok );
+			}
+			continue;
+		}
+		b->hand[b->count] = vrInputs[i].offHand;
+		b->button[b->count] = vrInputs[i].button;
+		b->grip[b->count] = grip;
+		b->count++;
+	}
+}
+
+static void VR_InitBindings( void ) {
+	int a;
+
+	for ( a = 0; a < VRA_COUNT; a++ ) {
+		vr_bindCvars[a] = Cvar_Get( vrActions[a].cvar, vrActions[a].def, 0 );
+		vr_bindCvars[a]->modified = qtrue;
+	}
+}
+
+static void VR_UpdateBindings( void ) {
+	int a, i;
+
+	vrTriggerBound = qfalse;
+	for ( a = 0; a < VRA_COUNT; a++ ) {
+		if ( vr_bindCvars[a]->modified ) {
+			vr_bindCvars[a]->modified = qfalse;
+			VR_ParseBinding( a );
+		}
+		for ( i = 0; i < vrBindings[a].count; i++ ) {
+			if ( vrBindings[a].hand[i] == 0 && vrBindings[a].button[i] == VRB_TRIGGER && vrBindings[a].grip[i] ) {
+				vrTriggerBound = qtrue;
+			}
+		}
+	}
+}
+
+/*
+=================
+VR_ActionPressed / VR_ActionUpdate
+
+Pressed: one of the action's inputs went down this frame (with the grip as asked).
+Update: for held actions, also reports when the input that started it lets go.
+=================
+*/
+static qboolean VR_ActionPressed( vrAction_t a ) {
+	int dom = vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT;
+	qboolean gripHeld = xr.hands[dom].down[VRB_SQUEEZE];
+	const vrActionBinding_t *b = &vrBindings[a];
+	int i;
+
+	for ( i = 0; i < b->count; i++ ) {
+		int hand = b->hand[i] ? !dom : dom;
+		qboolean isGrip = !b->hand[i] && b->button[i] == VRB_SQUEEZE;
+
+		if ( !VR_Pressed( hand, b->button[i] ) ) {
+			continue;
+		}
+		if ( b->grip[i] ? gripHeld : ( !gripHeld || isGrip ) ) {
+			if ( b->grip[i] ) {
+				xr.rightGripCombo = qtrue;      // not a grip tap reload
+			}
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+static qboolean VR_ActionDown( vrAction_t a ) {
+	int dom = vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT;
+	const vrActionBinding_t *b = &vrBindings[a];
+	int i;
+
+	for ( i = 0; i < b->count; i++ ) {
+		if ( xr.hands[b->hand[i] ? !dom : dom].down[b->button[i]] ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+// a "+command" for as long as the action's input is held
+static void VR_ActionHold( vrAction_t a, const char *cmd ) {
+	if ( VR_ActionPressed( a ) ) {
+		vrActionHeld[a] = qtrue;
+		VR_ButtonCommand( cmd, qtrue );
+	} else if ( vrActionHeld[a] && !VR_ActionDown( a ) ) {
+		vrActionHeld[a] = qfalse;
+		VR_ButtonCommand( cmd, qfalse );
+	}
+}
+
+static void VR_ClearActionHolds( void ) {
+	Com_Memset( vrActionHeld, 0, sizeof( vrActionHeld ) );
+}
+
+static qboolean VR_CommandHeld( const char *cmd ) {
+	int i;
+
+	for ( i = 0; i < xr.numHeldCommands; i++ ) {
+		if ( !strcmp( xr.heldCommands[i], cmd ) ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+// in-game controls (see vr_controls.cfg for the layout)
 static void VR_GameControls( void ) {
 	int dom = vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT;
 	int off = !dom;
 	vrHand_t *d = &xr.hands[dom];
 	qboolean modifier = d->down[VRB_SQUEEZE];
 
+	VR_UpdateBindings();
+
 	// weapon hand
 	// firing doesn't go through the command buffer (+attack would only reach the usercmd
 	// a frame later): CL_VR_CreateCmd sets the button directly
 	if ( VR_Pressed( dom, VRB_TRIGGER ) ) {
-		if ( modifier ) {
-			Cbuf_AddText( "weapalt\n" );        // grip + trigger: alternate fire mode
+		if ( modifier && vrTriggerBound ) {
+			if ( VR_ActionPressed( VRA_ALTFIRE ) ) {
+				Cbuf_AddText( "weapalt\n" );        // grip + trigger: alternate fire mode
+			}
 			xr.rightGripCombo = qtrue;
 		} else {
 			xr.attackHeld = qtrue;
@@ -1523,6 +1753,9 @@ static void VR_GameControls( void ) {
 		}
 	} else if ( !d->down[VRB_TRIGGER] ) {
 		xr.attackHeld = qfalse;
+	}
+	if ( !VR_Pressed( dom, VRB_TRIGGER ) && VR_ActionPressed( VRA_ALTFIRE ) ) {
+		Cbuf_AddText( "weapalt\n" );                // altfire moved off the trigger
 	}
 
 	if ( VR_Pressed( dom, VRB_SQUEEZE ) ) {
@@ -1536,15 +1769,51 @@ static void VR_GameControls( void ) {
 		Cbuf_AddText( "+reload\nwait\n-reload\n" );
 	}
 
-	VR_Hold( "movedown", dom, VRB_LOWER );          // A: crouch
-	VR_Hold( "moveup", dom, VRB_UPPER );            // B: jump
-	VR_Hold( "activate", dom, VRB_STICK );          // stick click: use
+	// slide release: reload (two guns reload only with both hands down at the waist;
+	// the game checks that)
+	if ( VR_ActionPressed( VRA_RELOAD ) ) {
+		if ( !com_vr.dualWield ) {
+			com_vr.ejectCount++;
+		}
+		Cbuf_AddText( "+reload\nwait\n-reload\n" );
+	}
 
-	if ( VR_Pressed( dom, VRB_STICK_UP ) ) {
+	// crouch stays on until stand (or a jump)
+	if ( VR_ActionPressed( VRA_CROUCH ) ) {
+		VR_ButtonCommand( "movedown", qtrue );
+	}
+	if ( VR_ActionPressed( VRA_STAND ) && VR_CommandHeld( "movedown" ) ) {
+		VR_ButtonCommand( "movedown", qfalse );
+	}
+	if ( VR_ActionPressed( VRA_JUMP ) ) {
+		VR_ButtonCommand( "movedown", qfalse );
+		vrActionHeld[VRA_JUMP] = qtrue;
+		VR_ButtonCommand( "moveup", qtrue );
+	} else if ( vrActionHeld[VRA_JUMP] && !VR_ActionDown( VRA_JUMP ) ) {
+		vrActionHeld[VRA_JUMP] = qfalse;
+		VR_ButtonCommand( "moveup", qfalse );
+	}
+
+	VR_ActionHold( VRA_USE, "activate" );
+	VR_ActionHold( VRA_KICK, "kick" );
+
+	if ( VR_ActionPressed( VRA_WEAPNEXT ) ) {
+		Cbuf_AddText( "weapnext\n" );
+	}
+	if ( VR_ActionPressed( VRA_WEAPPREV ) ) {
 		Cbuf_AddText( "weapprev\n" );
 	}
-	if ( VR_Pressed( dom, VRB_STICK_DOWN ) ) {
-		Cbuf_AddText( "weapnext\n" );
+	if ( VR_ActionPressed( VRA_NOTEBOOK ) ) {
+		Cbuf_AddText( "notebook\n" );
+	}
+	if ( VR_ActionPressed( VRA_HUD ) ) {
+		Cvar_SetValue( "cg_draw2D", Cvar_VariableIntegerValue( "cg_draw2D" ) ? 0 : 1 );
+	}
+	if ( VR_ActionPressed( VRA_USEITEM ) ) {
+		Cbuf_AddText( "+useitem\nwait\n-useitem\n" );
+	}
+	if ( VR_ActionPressed( VRA_ITEMNEXT ) ) {
+		Cbuf_AddText( "itemnext\n" );
 	}
 
 	// off hand
@@ -1554,7 +1823,7 @@ static void VR_GameControls( void ) {
 	}
 
 	if ( com_vr.dualWield ) {
-		// a pistol in this hand too: its trigger fires it
+		// a gun in this hand too: its trigger fires it
 		if ( VR_Pressed( off, VRB_TRIGGER ) ) {
 			xr.attackOffHeld = qtrue;
 			xr.akimboLastLeft = qtrue;
@@ -1567,24 +1836,6 @@ static void VR_GameControls( void ) {
 	} else {
 		xr.attackOffHeld = qfalse;
 		VR_Hold( "sprint", off, VRB_TRIGGER );      // trigger: sprint
-	}
-	VR_Hold( "kick", off, VRB_STICK );              // stick click: kick
-
-	if ( VR_Pressed( off, VRB_LOWER ) ) {           // X
-		if ( modifier ) {
-			Cbuf_AddText( "+useitem\nwait\n-useitem\n" );
-			xr.rightGripCombo = qtrue;
-		} else {
-			Cvar_SetValue( "cg_draw2D", Cvar_VariableIntegerValue( "cg_draw2D" ) ? 0 : 1 );
-		}
-	}
-	if ( VR_Pressed( off, VRB_UPPER ) ) {           // Y
-		if ( modifier ) {
-			Cbuf_AddText( "itemnext\n" );
-			xr.rightGripCombo = qtrue;
-		} else {
-			Cbuf_AddText( "notebook\n" );
-		}
 	}
 }
 

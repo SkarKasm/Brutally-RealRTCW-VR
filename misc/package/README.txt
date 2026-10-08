@@ -61,14 +61,20 @@ Main menu (or VR OPTIONS), GORE & EXTRAS: everything here is optional, VR or not
 VR controls (Quest / Touch layout)
 ----------------------------------
 Left stick           move (click: kick)
-Right stick          left/right turn (snap or smooth), up/down change weapon (click: use)
+Right stick          left/right turn (snap or smooth), down crouch, up stand up
+Right stick click    next weapon     Right grip + right stick click   previous weapon
 Right trigger        fire           Right grip + trigger   alternate fire
-Left trigger         sprint
+Left trigger         sprint (with two guns: fires the left gun)
 Right grip (tap)     drop the magazine (manual reloading) / reload
 Left grip            hold the gun with both hands (hold in front of the gun hand),
                      take a magazine from your chest and push it into the gun,
                      grab the slide / bolt and pull it back, grab bodies, props and heads
-A                    crouch         B   jump
-X                    toggle HUD     Y   notebook
+A                    jump           B or Y   slide release: reload
+X                    use (doors, levers) without reaching for them
+Right grip + A       toggle HUD     Right grip + Y   notebook
+Right grip + X       use item       Right grip + B   next item
+Two guns             cross-draw: grip with the left hand at the gun hand's hip.
+                     To reload both, lower both hands to your waist and press B or Y.
+Other controllers    edit game\main\vr_controls.cfg to move any of the above.
 Menu button          game menu; in menus point with either controller and pull the trigger
 Any button during cutscenes and videos skips them.
