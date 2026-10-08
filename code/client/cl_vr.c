@@ -1210,7 +1210,7 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_vignette", "0", CVAR_ARCHIVE );            // cg_vrcomfort.c
 	Cvar_Get( "vr_wristHud", "1", CVAR_ARCHIVE );           // cg_vrwrist.c
 	Cvar_Get( "vr_pouchMags", "1", CVAR_ARCHIVE );          // spare magazines shown in the pouch
-	Cvar_Get( "vr_weaponScale", "1", CVAR_ARCHIVE );        // guns and hands: 1, 0.7 or 0.42 (life size)
+	Cvar_Get( "vr_weaponScale", "0.42", CVAR_ARCHIVE );        // guns and hands: 1, 0.7 or 0.42 (life size)
 	VR_InitBindings();
 	Cbuf_AddText( "exec vr_controls.cfg\n" );              // the player's button layout
 

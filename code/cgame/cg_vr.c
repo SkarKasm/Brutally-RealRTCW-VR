@@ -146,8 +146,8 @@ void CG_VR_AddHands( void ) {
 	}
 
 	for ( h = 0; h < 2; h++ ) {
-		if ( !cgVR->handValid[h] || !cgvr.handModel[h] ) {
-			continue;
+		if ( !cgVR->handValid[h] || !cgvr.handModel[h] || CG_VR_BodyDrawn() ) {
+			continue;   // with the full body, its own arms and hands reach the controllers
 		}
 		memset( &ent, 0, sizeof( ent ) );
 		ent.hModel = cgvr.handModel[h];
