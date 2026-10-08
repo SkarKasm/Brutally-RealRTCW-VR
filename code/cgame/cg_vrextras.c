@@ -621,6 +621,172 @@ static void VRX_AddGuts( const vec3_t p, const vec3_t n, const vec3_t across ) {
 }
 
 /*
+==============================================================================
+
+The crypt's torn soldier
+
+crypt1.bsp has a soldier torn open, built into the map: misc/vr/make_vr_assets.py cuts its
+pieces out into models (z_vr_assets.pk3, models/vr_gore/). A head shot kill gets the dead
+nazi head with a hole in the forehead; a blast close by tears the body open, with the half
+skinned head, ribs through the chest and the guts out; an opened belly spills the guts; a
+cut off head leaves the torn neck. The torso pieces are in the torso's frame (x the way the
+chest faces, z up the spine, the origin VRX_CRYPT_NECK below the neck).
+
+==============================================================================
+*/
+
+#define VRX_CRYPT_NECK      11.4f
+
+typedef struct {
+	qboolean    registered;
+	qhandle_t   headShot, headSkinned, ribs, guts, stump;
+} vrxCrypt_t;
+
+static vrxCrypt_t *VRX_CryptModels( void ) {
+	static vrxCrypt_t m;
+
+	if ( !m.registered ) {
+		m.registered = qtrue;
+		m.headShot = trap_R_RegisterModel( "models/vr_gore/head_shot.md3" );
+		m.headSkinned = trap_R_RegisterModel( "models/vr_gore/head_skinned.md3" );
+		m.ribs = trap_R_RegisterModel( "models/vr_gore/ribs.md3" );
+		m.guts = trap_R_RegisterModel( "models/vr_gore/guts.md3" );
+		m.stump = trap_R_RegisterModel( "models/vr_gore/stump.md3" );
+	}
+	return &m;
+}
+
+/*
+=================
+CG_VRX_GoreHead
+
+The head about to be drawn on a body (already on its tag_head): the crypt's own instead,
+for a head shot or a blast. qtrue when it was swapped (no hat then).
+=================
+*/
+qboolean CG_VRX_GoreHead( centity_t *cent, refEntity_t *head ) {
+	int bits = CG_VRX_GoreBits( cent );
+	qhandle_t m = 0;
+
+	if ( bits & VRX_GB_BLOWN ) {
+		m = VRX_CryptModels()->headSkinned;
+	} else if ( bits & VRX_GB_HEADSHOT ) {
+		m = VRX_CryptModels()->headShot;
+	}
+	if ( !m ) {
+		return qfalse;
+	}
+	head->hModel = m;
+	head->customSkin = 0;
+	return qtrue;
+}
+
+qboolean CG_VRX_HeadSwapped( centity_t *cent ) {
+	return ( CG_VRX_GoreBits( cent ) & ( VRX_GB_HEADSHOT | VRX_GB_BLOWN ) ) != 0;
+}
+
+static void VRX_AddCryptPiece( qhandle_t model, const vec3_t origin, vec3_t axis[3], const vec3_t light ) {
+	refEntity_t re;
+
+	if ( !model ) {
+		return;
+	}
+	memset( &re, 0, sizeof( re ) );
+	re.hModel = model;
+	VectorCopy( origin, re.origin );
+	VectorCopy( origin, re.oldorigin );
+	VectorCopy( light, re.lightingOrigin );
+	AxisCopy( axis, re.axis );
+	re.renderfx = RF_LIGHTING_ORIGIN;
+	trap_R_AddRefEntityToScene( &re );
+}
+
+/*
+=================
+CG_VRX_AddCryptGore
+
+A dead body ready to draw (after the ragdoll and dismemberment): the torn soldier's pieces
+on its torso.
+=================
+*/
+void CG_VRX_AddCryptGore( centity_t *cent, refEntity_t *body ) {
+	static float pose[VRX_MAX_BONES * 12];
+	vrxCrypt_t *m;
+	vrSkel_t *sk;
+	const float *bones;
+	vec3_t axis[3], bAxis[3], neckPos, pelvisPos, lPos, rPos, up, left, center, frame[3];
+	int bits, neck, pelvis, la, ra, i, k;
+	qboolean belly = qfalse;
+
+	if ( !( cent->currentState.eFlags & EF_DEAD ) ) {
+		return;
+	}
+	bits = CG_VRX_GoreBits( cent );
+	for ( i = 0; i < VRX_MAX_WOUNDED; i++ ) {
+		if ( vrWounded[i].num && vrWounded[i].entityNum == cent->currentState.number ) {
+			for ( k = 0; k < vrWounded[i].num; k++ ) {
+				belly |= vrWounded[i].w[k].kind == VRW_BELLY && vrWounded[i].w[k].bone >= 0;
+			}
+			break;
+		}
+	}
+	if ( !( bits & ( VRX_GB_BLOWN | VRX_GB_HEAD ) ) && !belly ) {
+		return;
+	}
+	m = VRX_CryptModels();
+
+	if ( body->ragdollBones && body->ragdollMagic == RAGDOLL_MAGIC ) {
+		sk = VRX_Skel( body, NULL );
+		bones = body->ragdollBones;
+	} else {
+		sk = VRX_Skel( body, pose );
+		bones = pose;
+	}
+	if ( !sk ) {
+		return;
+	}
+	neck = VRX_FindBone( sk, "Neck" );
+	pelvis = VRX_FindBone( sk, "Pelvis" );
+	la = VRX_FindBone( sk, "L UpperArm" );
+	ra = VRX_FindBone( sk, "R UpperArm" );
+	if ( neck < 0 || pelvis < 0 || la < 0 || ra < 0 ) {
+		return;
+	}
+	for ( k = 0; k < 3; k++ ) {
+		VectorCopy( body->axis[k], axis[k] );
+	}
+	VRX_BoneWorld( bones + neck * 12, qfalse, axis, body->origin, bAxis, neckPos );
+	VRX_BoneWorld( bones + pelvis * 12, qfalse, axis, body->origin, bAxis, pelvisPos );
+	VRX_BoneWorld( bones + la * 12, qfalse, axis, body->origin, bAxis, lPos );
+	VRX_BoneWorld( bones + ra * 12, qfalse, axis, body->origin, bAxis, rPos );
+
+	// the torso's frame: up the spine, across the shoulders, the way the chest faces
+	VectorSubtract( neckPos, pelvisPos, up );
+	VectorSubtract( lPos, rPos, left );
+	if ( VectorNormalize( up ) < 1.0f ) {
+		return;
+	}
+	VectorMA( left, -DotProduct( left, up ), up, left );
+	if ( VectorNormalize( left ) < 0.01f ) {
+		return;
+	}
+	CrossProduct( left, up, frame[0] );
+	VectorCopy( left, frame[1] );
+	VectorCopy( up, frame[2] );
+	VectorMA( neckPos, -VRX_CRYPT_NECK, up, center );
+
+	if ( bits & VRX_GB_BLOWN ) {
+		VRX_AddCryptPiece( m->ribs, center, frame, center );
+	}
+	if ( ( bits & VRX_GB_BLOWN ) || belly ) {
+		VRX_AddCryptPiece( m->guts, center, frame, center );
+	}
+	if ( bits & VRX_GB_HEAD ) {
+		VRX_AddCryptPiece( m->stump, center, frame, center );
+	}
+}
+
+/*
 =================
 CG_VRX_AddWounds
 
@@ -724,8 +890,8 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 			CrossProduct( n, u, s );
 			VectorScale( s, w->size, s );
 			VRX_Bleed( w, p, n );
-			if ( w->kind == VRW_BELLY ) {
-				VRX_AddGuts( p, n, u );
+			if ( w->kind == VRW_BELLY && !VRX_CryptModels()->guts ) {
+				VRX_AddGuts( p, n, u );     // (with the crypt's guts, CG_VRX_AddCryptGore spills those)
 			}
 		}
 		for ( k = 0; k < 4; k++ ) {

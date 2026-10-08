@@ -201,13 +201,22 @@ A knife kill from behind, or one that lands high, cuts the throat; one that goes
 =================
 */
 void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
-				 int mod, int damage ) {
+				 int mod, int damage, qboolean headshot ) {
 	gentity_t *te;
 	int gore = VRG_NONE;
 	float neck;
 
 	if ( !targ->client || !targ->aiCharacter ) {
 		return;
+	}
+	// how the body looks dead: a blast close by tears it open, a head shot leaves a hole
+	if ( VRX_HUMAN_MALE( targ->aiCharacter ) ) {
+		if ( G_VRX_Blast( mod ) && G_VRX_Gore( VRX_DISMEMBER ) &&
+			 ( !inflictor || Distance( inflictor->r.currentOrigin, targ->r.currentOrigin ) < 200.0f ) ) {
+			G_VRX_AddGoreBits( targ, VRX_GB_BLOWN );
+		} else if ( headshot && G_VRX_Gore( VRX_WOUNDS ) ) {
+			G_VRX_AddGoreBits( targ, VRX_GB_HEADSHOT );
+		}
 	}
 	G_VRX_Dismember( targ, inflictor, dir, point, mod, damage );
 	if ( !G_VRX_Gore( VRX_THROAT ) ) {
