@@ -43,8 +43,8 @@ enum { SIDE_L, SIDE_R };
 
 static vmCvar_t vr_fullBody;
 static vmCvar_t cg_flatLegs;
-
-#define VB_FLAT_BACK        8.0f    // flatscreen legs: the hips sit this far behind the eyes
+static vmCvar_t cg_flatLegsBack;    // flatscreen legs: the neck sits this far further back
+static vmCvar_t cg_flatLegsCut;     // flatscreen legs: 0 whole torso, 1-3 fold away above Spine3/2/1
 
 static struct {
 	qhandle_t   model;              // skeleton the bone indices are for
@@ -70,6 +70,8 @@ void CG_VR_BodyInit( void ) {
 	memset( &vb, 0, sizeof( vb ) );
 	trap_Cvar_Register( &vr_fullBody, "vr_fullBody", "1", CVAR_ARCHIVE );
 	trap_Cvar_Register( &cg_flatLegs, "cg_flatLegs", "1", CVAR_ARCHIVE );
+	trap_Cvar_Register( &cg_flatLegsBack, "cg_flatLegsBack", "6", CVAR_ARCHIVE );
+	trap_Cvar_Register( &cg_flatLegsCut, "cg_flatLegsCut", "2", CVAR_ARCHIVE );
 }
 
 /*
@@ -392,21 +394,43 @@ static void VB_HDSkin( centity_t *cent, refEntity_t *body ) {
 	}
 }
 
+// fold a bone and everything below it into its joint, so it draws as nothing
+static void VB_Collapse( int root ) {
+	int i;
+
+	if ( root < 0 ) {
+		return;
+	}
+	for ( i = 0; i < vb.numBones; i++ ) {
+		if ( i != root && VB_InSubtree( i, root ) ) {
+			VectorClear( vb.rot[i][0] );
+			VectorClear( vb.rot[i][1] );
+			VectorClear( vb.rot[i][2] );
+			VectorCopy( vb.pos[root], vb.pos[i] );
+		}
+	}
+	VectorClear( vb.rot[root][0] );
+	VectorClear( vb.rot[root][1] );
+	VectorClear( vb.rot[root][2] );
+}
+
 /*
 =================
 CG_FlatLegs
 
-Flatscreen (cg_flatLegs): looking down shows the player's own hips and legs. A second
-copy of the body is drawn for the eyes only, everything above the waist folded into
-the spine so the view weapon's arms are the only arms, a little behind the eyes.
+Flatscreen (cg_flatLegs): looking down shows the player's own body and legs. A second
+copy of the body is drawn for the eyes only, without its head and arms (the view
+weapon's arms are the only arms), its neck just behind and below the eyes.
 =================
 */
 void CG_FlatLegs( centity_t *cent, const refEntity_t *legs ) {
 	refEntity_t fp;
-	vec3_t yaw, fwd;
-	int waist, i;
+	vec3_t yaw, fwd, neck, want;
+	int i, k;
 
 	trap_Cvar_Update( &cg_flatLegs );
+	trap_Cvar_Update( &cg_flatLegsBack );
+	trap_Cvar_Update( &cg_flatLegsCut );
 	if ( !cg_flatLegs.integer || cgvr.active || cent->currentState.number != cg.snap->ps.clientNum ||
 		 cg.renderingThirdPerson || cg.cameraMode || cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 ||
 		 ( cent->currentState.eFlags & EF_DEAD ) || cg.predictedPlayerState.pm_type != PM_NORMAL ) {
@@ -416,23 +440,32 @@ void CG_FlatLegs( centity_t *cent, const refEntity_t *legs ) {
 	fp = *legs;
 	fp.ragdollBones = NULL;
 	fp.ragdollMagic = 0;
-	if ( !VB_Pose( &fp ) || ( waist = VB_FindBone( "Spine2", "Spine1" ) ) < 0 ) {
+	if ( !VB_Pose( &fp ) || vb.neck < 0 ) {
 		return;
 	}
-	for ( i = 0; i < vb.numBones; i++ ) {
-		if ( VB_InSubtree( i, waist ) ) {
-			VectorClear( vb.rot[i][0] );
-			VectorClear( vb.rot[i][1] );
-			VectorClear( vb.rot[i][2] );
-			VectorCopy( vb.pos[waist], vb.pos[i] );
+	// the neck is where it was, before anything folds
+	for ( i = 0; i < 3; i++ ) {
+		neck[i] = fp.origin[i];
+		for ( k = 0; k < 3; k++ ) {
+			neck[i] += vb.pos[vb.neck][k] * fp.axis[k][i];
 		}
+	}
+	VB_Collapse( vb.upper[SIDE_L] );
+	VB_Collapse( vb.upper[SIDE_R] );
+	VB_Collapse( VB_FindBone( "Head", NULL ) );
+	if ( cg_flatLegsCut.integer >= 1 && cg_flatLegsCut.integer <= 3 ) {
+		static const char *cuts[3] = { "Spine3", "Spine2", "Spine1" };
+		VB_Collapse( VB_FindBone( cuts[cg_flatLegsCut.integer - 1], NULL ) );
 	}
 	VB_Output( &fp );
 	VB_HDSkin( cent, &fp );
 
+	// the neck behind the eyes (sideways and back only: the feet stay on the floor)
 	VectorSet( yaw, 0, cg.refdefViewAngles[YAW], 0 );
 	AngleVectors( yaw, fwd, NULL, NULL );
-	VectorMA( fp.origin, -VB_FLAT_BACK, fwd, fp.origin );
+	VectorMA( cg.refdef.vieworg, -( VB_EYES_AHEAD + cg_flatLegsBack.value ), fwd, want );
+	fp.origin[0] += want[0] - neck[0];
+	fp.origin[1] += want[1] - neck[1];
 	VectorCopy( fp.origin, fp.oldorigin );
 	fp.renderfx = ( fp.renderfx & ~( RF_THIRD_PERSON | RF_VR_NOHANDS ) ) | RF_FIRST_PERSON;
 	trap_R_AddRefEntityToScene( &fp );
