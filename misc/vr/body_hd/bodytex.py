@@ -25,6 +25,9 @@ def bar(cx,cy,w,h):
             base[y,x]=(g,g,min(255,g*1.04))
             bars[y,x]=1
 bar(1674,990,18,56); bar(1702,990,18,56)
+import ranger
+_b,rmask=ranger.apply(cv2.cvtColor(np.clip(base,0,255).astype(np.uint8),cv2.COLOR_RGB2BGR),[(1615,805),(1695,762),(1770,812),(1695,857)])
+base=cv2.cvtColor(_b,cv2.COLOR_BGR2RGB).astype(np.float32)
 bones,surfs=load(BJ+'models/players/player/body.mds')
 sn,sh,verts,tris=surfs[0]
 names=[b[0] for b in bones]
@@ -42,9 +45,9 @@ arm[int(0.667*N):]=0
 pm=Image.new('L',(N,N)); pd=ImageDraw.Draw(pm)
 s=N/1024
 pd.rectangle([803*s,146*s,890*s,212*s],fill=255)                     # flag
-pd.polygon([(845*s,381*s),(880*s,410*s),(845*s,438*s),(810*s,410*s)],fill=255)  # rangers diamond
 patch=np.asarray(pm).astype(np.float32)/255
 lum=base.mean(2)
+patch=np.maximum(patch,rmask)
 patch=np.maximum(patch,cv2.dilate(bars,np.ones((5,5),np.uint8)))
 patch=cv2.GaussianBlur(patch,(0,0),1.2)
 blo=cv2.GaussianBlur(lum,(0,0),18)          # body folds and shading, low frequency

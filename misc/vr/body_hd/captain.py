@@ -1,5 +1,6 @@
 # swap BJ's private chevron for captain's bars on a body texture
-import sys, numpy as np, cv2
+import sys, os, numpy as np, cv2
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 def bars_on(img, poly, cx, cy, w=18, h=56, gap=28):
     img=img.astype(np.float32)
     m=np.zeros(img.shape[:2],np.uint8); cv2.fillPoly(m,[np.array(poly,np.int32)],255)
@@ -22,4 +23,6 @@ if __name__=='__main__':
     src,dst=sys.argv[1],sys.argv[2]
     im=cv2.imread(src)
     out=bars_on(im,[(1698,1293),(1630,1375),(1634,1404),(1698,1352),(1770,1402),(1770,1373)],1700,1352)
+    import ranger
+    out,_=ranger.apply(out,[(1625,1163),(1707,1120),(1788,1172),(1706,1217)])
     cv2.imwrite(dst,out,[cv2.IMWRITE_JPEG_QUALITY,93])
