@@ -42,6 +42,9 @@ the Free Software Foundation, either version 3 of the License, or
 enum { SIDE_L, SIDE_R };
 
 static vmCvar_t vr_fullBody;
+static vmCvar_t cg_flatLegs;
+
+#define VB_FLAT_BACK        8.0f    // flatscreen legs: the hips sit this far behind the eyes
 
 static struct {
 	qhandle_t   model;              // skeleton the bone indices are for
@@ -66,6 +69,7 @@ static struct {
 void CG_VR_BodyInit( void ) {
 	memset( &vb, 0, sizeof( vb ) );
 	trap_Cvar_Register( &vr_fullBody, "vr_fullBody", "1", CVAR_ARCHIVE );
+	trap_Cvar_Register( &cg_flatLegs, "cg_flatLegs", "1", CVAR_ARCHIVE );
 }
 
 /*
@@ -357,6 +361,83 @@ static void VB_ReachArm( int side, const vec3_t wrist, const vec3_t handDir ) {
 	}
 }
 
+
+// the edited skeleton -> the renderer, like a ragdoll
+static void VB_Output( refEntity_t *body ) {
+	int i, k;
+
+	for ( i = 0; i < vb.numBones; i++ ) {
+		float *o = vb.out + i * 12;
+		for ( k = 0; k < 3; k++ ) {
+			if ( vb.flags[i] & BONEFLAG_TAG ) {
+				o[k * 3 + 0] = vb.rot[i][k][0];
+				o[k * 3 + 1] = vb.rot[i][k][1];
+				o[k * 3 + 2] = vb.rot[i][k][2];
+			} else {
+				o[0 * 3 + k] = vb.rot[i][k][0];
+				o[1 * 3 + k] = vb.rot[i][k][1];
+				o[2 * 3 + k] = vb.rot[i][k][2];
+			}
+		}
+		VectorCopy( vb.pos[i], o + 9 );
+	}
+	body->ragdollBones = vb.out;
+	body->ragdollMagic = RAGDOLL_MAGIC;
+}
+
+// the upscaled body, its sleeves matching the hands (only RealRTCW's "player" has that layout)
+static void VB_HDSkin( centity_t *cent, refEntity_t *body ) {
+	if ( cgvr.bodySkin && !Q_stricmp( cgs.clientinfo[cent->currentState.clientNum].modelName, "player" ) ) {
+		body->customSkin = cgvr.bodySkin;
+	}
+}
+
+/*
+=================
+CG_FlatLegs
+
+Flatscreen (cg_flatLegs): looking down shows the player's own hips and legs. A second
+copy of the body is drawn for the eyes only, everything above the waist folded into
+the spine so the view weapon's arms are the only arms, a little behind the eyes.
+=================
+*/
+void CG_FlatLegs( centity_t *cent, const refEntity_t *legs ) {
+	refEntity_t fp;
+	vec3_t yaw, fwd;
+	int waist, i;
+
+	trap_Cvar_Update( &cg_flatLegs );
+	if ( !cg_flatLegs.integer || cgvr.active || cent->currentState.number != cg.snap->ps.clientNum ||
+		 cg.renderingThirdPerson || cg.cameraMode || cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 ||
+		 ( cent->currentState.eFlags & EF_DEAD ) || cg.predictedPlayerState.pm_type != PM_NORMAL ) {
+		return;
+	}
+
+	fp = *legs;
+	fp.ragdollBones = NULL;
+	fp.ragdollMagic = 0;
+	if ( !VB_Pose( &fp ) || ( waist = VB_FindBone( "Spine2", "Spine1" ) ) < 0 ) {
+		return;
+	}
+	for ( i = 0; i < vb.numBones; i++ ) {
+		if ( VB_InSubtree( i, waist ) ) {
+			VectorClear( vb.rot[i][0] );
+			VectorClear( vb.rot[i][1] );
+			VectorClear( vb.rot[i][2] );
+			VectorCopy( vb.pos[waist], vb.pos[i] );
+		}
+	}
+	VB_Output( &fp );
+	VB_HDSkin( cent, &fp );
+
+	VectorSet( yaw, 0, cg.refdefViewAngles[YAW], 0 );
+	AngleVectors( yaw, fwd, NULL, NULL );
+	VectorMA( fp.origin, -VB_FLAT_BACK, fwd, fp.origin );
+	VectorCopy( fp.origin, fp.oldorigin );
+	fp.renderfx = ( fp.renderfx & ~( RF_THIRD_PERSON | RF_VR_NOHANDS ) ) | RF_FIRST_PERSON;
+	trap_R_AddRefEntityToScene( &fp );
+}
+
 /*
 =================
 CG_VR_BodyApply
@@ -366,15 +447,12 @@ Called with the local player's skeletal body just before it is drawn.
 */
 void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 	vec3_t fwd, target, dir, handFwd, yaw;
-	int h, side, i, k;
+	int h, side, i;
 
 	VectorSet( yaw, 0, vb.bodyYaw, 0 );
 	AngleVectors( yaw, fwd, NULL, NULL );
 
-	// the upscaled body, its sleeves matching the hands (only RealRTCW's "player" has that layout)
-	if ( cgvr.bodySkin && !Q_stricmp( cgs.clientinfo[cent->currentState.clientNum].modelName, "player" ) ) {
-		body->customSkin = cgvr.bodySkin;
-	}
+	VB_HDSkin( cent, body );
 
 	if ( !VB_Pose( body ) ) {
 		body->origin[0] = cgvr.headOrigin[0] - fwd[0] * VB_EYES_AHEAD;
@@ -418,24 +496,7 @@ void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 		VB_ReachArm( side, target, dir );
 	}
 
-	for ( i = 0; i < vb.numBones; i++ ) {
-		float *o = vb.out + i * 12;
-		for ( k = 0; k < 3; k++ ) {
-			if ( vb.flags[i] & BONEFLAG_TAG ) {
-				o[k * 3 + 0] = vb.rot[i][k][0];
-				o[k * 3 + 1] = vb.rot[i][k][1];
-				o[k * 3 + 2] = vb.rot[i][k][2];
-			} else {
-				o[0 * 3 + k] = vb.rot[i][k][0];
-				o[1 * 3 + k] = vb.rot[i][k][1];
-				o[2 * 3 + k] = vb.rot[i][k][2];
-			}
-		}
-		VectorCopy( vb.pos[i], o + 9 );
-	}
-
-	body->ragdollBones = vb.out;
-	body->ragdollMagic = RAGDOLL_MAGIC;
+	VB_Output( body );
 	body->renderfx &= ~RF_THIRD_PERSON;     // seen from the eyes
 	body->renderfx |= RF_VR_NOHANDS;        // the tracked hands are drawn instead
 	body->renderfx |= RF_FIRST_PERSON;      // only for the eyes: not in mirrors or scopes

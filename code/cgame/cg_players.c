@@ -4719,6 +4719,7 @@ void CG_Player( centity_t *cent ) {
 		CG_VRX_AddCryptGore( cent, &legs );     // the crypt's torn soldier pieces
 
 		CG_AddRefEntityWithPowerups( &legs, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
+		CG_FlatLegs( cent, &legs );     // RealRTCW-VR: your own legs on flatscreen
 
 		cent->pe.legsRefEnt = legs;
 		torso = legs;       // so tag calls use the correct values

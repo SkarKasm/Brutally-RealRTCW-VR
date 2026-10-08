@@ -4,6 +4,27 @@ from mds import load
 from PIL import Image, ImageDraw
 BJ='/tmp/claude-0/bj/'; N=2048
 base=cv2.cvtColor(cv2.imread(BJ+'body_default_x4.png'),cv2.COLOR_BGR2RGB).astype(np.float32)
+# BJ is a captain: the private's chevron comes off, two silver bars go on
+chev=np.zeros(base.shape[:2],np.uint8)
+cv2.fillPoly(chev,[np.array([(1688,932),(1618,1006),(1622,1046),(1688,990),(1758,1040),(1760,1002)],np.int32)],255)
+chev=cv2.dilate(chev,np.ones((9,9),np.uint8))
+base=cv2.inpaint(np.clip(base,0,255).astype(np.uint8),chev,12,cv2.INPAINT_TELEA).astype(np.float32)
+bars=np.zeros(base.shape[:2],np.float32)
+def bar(cx,cy,w,h):
+    x0,x1,y0,y1=cx-w//2,cx+w//2,cy-h//2,cy+h//2
+    sh=np.zeros_like(bars); sh[y0+3:y1+3,x0+3:x1+3]=1
+    sh=cv2.GaussianBlur(sh,(0,0),2)
+    base[...]=base*(1-0.45*sh[...,None])
+    for y in range(y0,y1):
+        for x in range(x0,x1):
+            t=(x-x0)/(w-1); v=(y-y0)/(h-1)
+            edge=min(x-x0,x1-1-x,y-y0,y1-1-y)
+            g=100+55*np.cos((t-0.3)*np.pi)*0.6+15*(1-v)
+            if edge<2: g=45
+            elif edge<4: g=g*1.12
+            base[y,x]=(g,g,min(255,g*1.04))
+            bars[y,x]=1
+bar(1674,990,18,56); bar(1702,990,18,56)
 bones,surfs=load(BJ+'models/players/player/body.mds')
 sn,sh,verts,tris=surfs[0]
 names=[b[0] for b in bones]
@@ -24,9 +45,7 @@ pd.rectangle([803*s,146*s,890*s,212*s],fill=255)                     # flag
 pd.polygon([(845*s,381*s),(880*s,410*s),(845*s,438*s),(810*s,410*s)],fill=255)  # rangers diamond
 patch=np.asarray(pm).astype(np.float32)/255
 lum=base.mean(2)
-cb=np.zeros_like(lum); cb[int(465*s):int(535*s),int(820*s):int(875*s)]=1    # chevron lines
-loc=cv2.GaussianBlur(lum,(0,0),6)
-patch=np.maximum(patch,cb*np.clip((loc-lum-4)/10,0,1))
+patch=np.maximum(patch,cv2.dilate(bars,np.ones((5,5),np.uint8)))
 patch=cv2.GaussianBlur(patch,(0,0),1.2)
 blo=cv2.GaussianBlur(lum,(0,0),18)          # body folds and shading, low frequency
 panels=[(650,8,992,292),(658,296,990,684)]
