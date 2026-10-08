@@ -50,6 +50,9 @@ the Free Software Foundation, either version 3 of the License, or
 #define RD_KILL_PUSH        110.0f      // speed of the fall away from the killer
 #define RD_MAX_TONE         16
 #define RD_GRAB_SPEED       900.0f      // a held point follows the hand this fast (no snapping)
+#define RD_DAMP             0.985f      // velocity kept per step: limbs settle instead of swinging on and on
+#define RD_DAMP_HELD        0.93f       // carried: the body hangs from the hand instead of whirling round it
+#define RD_MAX_SPEED        650.0f      // no point moves faster (shots, blasts and links can't fling it away)
 
 typedef enum {
 	P_PELVIS, P_CHEST, P_NECK, P_HEAD, P_HEADEND,
@@ -928,7 +931,11 @@ static void RD_Step( ragdoll_t *rd, centity_t *cent, const vec3_t grabPoint, qbo
 		}
 		VectorCopy( rd->p[k], start[k] );
 		VectorSubtract( rd->p[k], rd->old[k], v );
-		VectorScale( v, 0.995f, v );
+		VectorScale( v, grabbed ? RD_DAMP_HELD : RD_DAMP, v );
+		d = VectorLength( v );
+		if ( d > RD_MAX_SPEED * RD_STEP ) {
+			VectorScale( v, RD_MAX_SPEED * RD_STEP / d, v );
+		}
 		VectorCopy( rd->p[k], rd->old[k] );
 		VectorAdd( rd->p[k], v, rd->p[k] );
 		rd->p[k][2] -= vr_ragdollGravity.value * RD_STEP * RD_STEP;
@@ -1415,14 +1422,21 @@ void CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body ) {
 
 	grabbed = RD_GrabPoint( rd, cent, grabPoint );
 	if ( grabbed && rd->grabber != cent->currentState.dl_intensity ) {
-		// picked up: hold it by the point nearest the hand
+		// picked up: a VR hand holds it by the point nearest the hand. Without a headset the
+		// "hand" is just in front of the view and swings round with every turn of the mouse:
+		// held by a foot or a hand the body whirls round it, so it is taken by the collar.
 		float best = 1e9f, dist;
 		int k;
 		rd->pinned = -1;
-		for ( k = 0; k < P_COUNT; k++ ) {
-			if ( rd->hasPoint[k] && ( dist = Distance( rd->p[k], grabPoint ) ) < best ) {
-				best = dist;
-				rd->pinned = k;
+		if ( cent->currentState.dl_intensity - 1 == cg.snap->ps.clientNum && !cgvr.active &&
+			 rd->hasPoint[P_NECK] ) {
+			rd->pinned = P_NECK;
+		} else {
+			for ( k = 0; k < P_COUNT; k++ ) {
+				if ( rd->hasPoint[k] && ( dist = Distance( rd->p[k], grabPoint ) ) < best ) {
+					best = dist;
+					rd->pinned = k;
+				}
 			}
 		}
 	} else if ( !grabbed && rd->grabber ) {

@@ -816,8 +816,9 @@ static void G_VR_FlatGrab( gentity_t *ent ) {
 				fwd[2] = 0.15f;
 				VectorNormalize( fwd );
 			}
-			VectorScale( fwd, 420.0f, vrp.handVel );
-			vrp.handVel[2] += 140.0f;
+			// (scaled up by VR_THROW_SCALE on release: about 330 forward, a short toss, not across the room)
+			VectorScale( fwd, 220.0f, vrp.handVel );
+			vrp.handVel[2] += 90.0f;
 			G_VR_ReleaseBody( body, qtrue );
 			body->s.dl_intensity = 0;
 			vrp.grabbed = -1;
