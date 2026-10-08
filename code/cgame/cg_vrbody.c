@@ -371,6 +371,11 @@ void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 	VectorSet( yaw, 0, vb.bodyYaw, 0 );
 	AngleVectors( yaw, fwd, NULL, NULL );
 
+	// the upscaled body, its sleeves matching the hands (only RealRTCW's "player" has that layout)
+	if ( cgvr.bodySkin && !Q_stricmp( cgs.clientinfo[cent->currentState.clientNum].modelName, "player" ) ) {
+		body->customSkin = cgvr.bodySkin;
+	}
+
 	if ( !VB_Pose( body ) ) {
 		body->origin[0] = cgvr.headOrigin[0] - fwd[0] * VB_EYES_AHEAD;
 		body->origin[1] = cgvr.headOrigin[1] - fwd[1] * VB_EYES_AHEAD;

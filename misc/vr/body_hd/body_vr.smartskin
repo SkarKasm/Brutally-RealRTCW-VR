@@ -1,0 +1,16 @@
+base
+{
+	u_body,models/players/player/body_vr_default.jpg
+	l_bootrt,models/players/player/boot_vr.jpg
+	l_bootlft,models/players/player/boot_vr.jpg
+}
+
+profile green maps forest rocket baseout assault
+{
+	u_body,models/players/player/body_vr_green.jpg
+}
+
+profile snow maps norway xlabs boss2
+{
+	u_body,models/players/player/body_vr_snow.jpg
+}

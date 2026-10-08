@@ -1821,6 +1821,8 @@ typedef struct {
 	vec3_t      muzzle;             // world position of the gun's muzzle this frame
 
 	qhandle_t   handModel[2];       // indexed by VR_HAND_*
+	qhandle_t   handSkin;           // the flatscreen hands' gloves and sleeves for this map
+	qhandle_t   bodySkin;           // HD player body with those sleeves (vr_fullBody)
 
 	int         gunWeapon;          // first person gun drawn this frame, and its pose
 	qboolean    lastShotLeft;       // dual pistols: the off hand's gun fired last

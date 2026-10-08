@@ -1,0 +1,23 @@
+base
+{
+	hqhand,models/weapons/hands/glove_default.jpg
+	hqarm,models/weapons/hands/sleeve_default.jpg
+}
+
+profile green maps forest rocket baseout assault
+{
+	hqhand,models/weapons/hands/glove_green.jpg
+	hqarm,models/weapons/hands/sleeve_green.jpg
+}
+
+profile snow maps norway xlabs boss2
+{
+	hqhand,models/weapons/hands/glove_snow.jpg
+	hqarm,models/weapons/hands/sleeve_snow.jpg
+}
+
+profile night maps dam village2 chateau dark dig castle end
+{
+	hqhand,models/weapons/hands/glove_night.jpg
+	hqarm,models/weapons/hands/sleeve_night.jpg
+}

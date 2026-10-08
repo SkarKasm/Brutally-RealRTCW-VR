@@ -94,6 +94,13 @@ void CG_VR_Init( void ) {
 	// built by misc/vr/make_vr_assets.py into main/z_vr_assets.pk3
 	cgvr.handModel[VR_HAND_LEFT] = trap_R_RegisterModel( "models/vr/hand_l.md3" );
 	cgvr.handModel[VR_HAND_RIGHT] = trap_R_RegisterModel( "models/vr/hand_r.md3" );
+	// green, snow or night gloves and sleeves by map, like the flatscreen first person hands
+	{
+		char map[MAX_QPATH];
+		trap_Cvar_VariableStringBuffer( "mapname", map, sizeof( map ) );
+		cgvr.handSkin = trap_R_RegisterSmartSkin( "models/vr/hands.smartskin", map, qfalse );
+		cgvr.bodySkin = trap_R_RegisterSmartSkin( "models/players/player/body_vr.smartskin", map, qfalse );
+	}
 	cgvr.lastMagDrop = cgVR ? cgVR->magDropCount : 0;
 }
 
@@ -144,6 +151,7 @@ void CG_VR_AddHands( void ) {
 		}
 		memset( &ent, 0, sizeof( ent ) );
 		ent.hModel = cgvr.handModel[h];
+		ent.customSkin = cgvr.handSkin;
 		VectorCopy( cgvr.handOrigin[h], ent.origin );
 		VectorCopy( ent.origin, ent.oldorigin );
 		VectorCopy( ent.origin, ent.lightingOrigin );
@@ -527,6 +535,7 @@ qboolean CG_VR_Inspect( playerState_t *ps ) {
 		refEntity_t h;
 		memset( &h, 0, sizeof( h ) );
 		h.hModel = cgvr.handModel[dom];
+		h.customSkin = cgvr.handSkin;
 		VectorCopy( cgvr.handOrigin[dom], h.origin );
 		AnglesToAxis( cgvr.handAngles[dom], h.axis );
 		h.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;
