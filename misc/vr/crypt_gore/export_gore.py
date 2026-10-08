@@ -76,8 +76,9 @@ sf=[(n,sh,[(np.array([v[0][0],-v[0][1],v[0][2]]),v[1],np.array([v[2][0],-v[2][1]
 md3.write(OUT+'/jaw_skinned2.md3','models/vr_gore/jaw_skinned2.md3',sf)
 # a bullet hole: a quad facing +x, the hole at the origin and the blood running down -z
 # (headhole.tga is 64x128, the hole a quarter of the way down)
+# (just the hole: no blood running from it, which looked wrong on a head lying the other way up)
 q=[(np.array([0,-1.0,1.0]),(0,0),np.array([1.0,0,0])),(np.array([0,1.0,1.0]),(1,0),np.array([1.0,0,0])),
-   (np.array([0,1.0,-3.0]),(1,1),np.array([1.0,0,0])),(np.array([0,-1.0,-3.0]),(0,1),np.array([1.0,0,0]))]
+   (np.array([0,1.0,-1.0]),(1,0.5),np.array([1.0,0,0])),(np.array([0,-1.0,-1.0]),(0,0.5),np.array([1.0,0,0]))]
 md3.write(OUT+'/headhole.md3','models/vr_gore/headhole.md3',[('hole','vr_headhole',q,[(0,2,1),(0,3,2)])])
 
 # a flat cut through the neck (neck_flat.tga from neck_tex.py): a disc 4.6 across facing +x,
