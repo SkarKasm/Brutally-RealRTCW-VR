@@ -32,10 +32,11 @@ typedef enum {
 	VRX_DISMEMBER,      // 0 off, 1 explosions, 2 explosions and heavy weapons
 	VRX_DECAP,          // knife decapitation of the dead
 	VRX_HEADSCARE,      // thrown heads: 0 nothing, 1 scare, 2 scare and surrender
+	VRX_STOCKGIBS,      // RTCW's own gibbing of soldiers (0 off: bodies stay for our gore)
 	VRX_COUNT
 } vrExtra_t;
 
-#define VRX_DEFAULTS    "111112212"     // a digit per setting, in that order
+#define VRX_DEFAULTS    "1111122120"     // a digit per setting, in that order
 
 // EV_VR_GORE (eventParm): what happened to the body otherEntityNum, the blow along origin2
 typedef enum {

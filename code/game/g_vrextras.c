@@ -43,6 +43,7 @@ static const char *vrxNames[VRX_COUNT] = {
 	"g_dismember",
 	"g_decapitate",
 	"g_headScare",
+	"g_stockGibs",
 };
 static qboolean vrxRegistered;
 

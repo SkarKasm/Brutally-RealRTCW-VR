@@ -35,6 +35,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "g_local.h"
 #include "g_survival.h"
+#include "bg_vrextras.h"
 
 #include <pthread.h>
 #include <unistd.h>
@@ -248,6 +249,13 @@ void body_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int d
 			self->health = -1;
 			return;
 		}
+	}
+
+	// RealRTCW-VR: with extra gore on and original gibbing off, the body stays whole
+	// so dismemberment (G_VRX_Kill) can take it apart instead
+	if ( self->aiCharacter && G_VRX( VRX_GORE ) && !G_VRX( VRX_STOCKGIBS ) ) {
+		self->health = GIB_HEALTH + 1;
+		return;
 	}
 
 	GibEntity( self, 0 );
