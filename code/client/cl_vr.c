@@ -1729,6 +1729,89 @@ static qboolean VR_CommandHeld( const char *cmd ) {
 	return qfalse;
 }
 
+/*
+=================
+VR weapon wheel
+
+Holding the next weapon button (right stick click) opens the game's own weapon wheel on
+the HUD; tap it as before for the next weapon. Tilt the weapon hand stick towards a gun
+and let the stick go back to the middle to switch to it. While the wheel is open the
+stick doesn't turn or crouch, and until it's back in the middle afterwards.
+=================
+*/
+#define VR_WHEEL_HOLD_MS    300
+
+static struct {
+	qboolean    pressing;   // the button is down, not yet decided tap or hold
+	int         pressTime;
+	qboolean    open;
+	qboolean    tilted;     // the stick has pointed at something since it opened
+	qboolean    quiet;      // closed, the stick still has to come back to the middle
+} vrWheel;
+
+static void VR_WheelClose( void ) {
+	if ( vrWheel.open ) {
+		Cbuf_AddText( "-weaponwheel\n" );     // switches to the weapon picked
+	}
+	vrWheel.open = qfalse;
+	vrWheel.quiet = qtrue;
+}
+
+// the weapon hand stick goes to the wheel instead of turning while it's open
+static void VR_WheelStick( int dom ) {
+	vrHand_t *d = &xr.hands[dom];
+	float len = sqrt( d->stick[0] * d->stick[0] + d->stick[1] * d->stick[1] );
+	int b;
+
+	if ( vrWheel.open ) {
+		if ( cgvm ) {
+			VM_Call( cgvm, CG_JOYSTICK_EVENT, 2, (int)( d->stick[0] * 32767.0f ) );
+			VM_Call( cgvm, CG_JOYSTICK_EVENT, 3, (int)( -d->stick[1] * 32767.0f ) );     // screen y is down
+		}
+		if ( len > 0.5f ) {
+			vrWheel.tilted = qtrue;
+		} else if ( vrWheel.tilted && len < 0.25f && !vrWheel.pressing ) {
+			VR_WheelClose();
+		}
+	} else if ( vrWheel.quiet && len < 0.3f ) {
+		vrWheel.quiet = qfalse;
+	}
+
+	if ( vrWheel.open || vrWheel.quiet ) {
+		d->stick[0] = d->stick[1] = 0.0f;
+		for ( b = VRB_STICK_UP; b <= VRB_STICK_LEFT; b++ ) {
+			d->down[b] = d->wasDown[b] = qfalse;
+		}
+	}
+}
+
+// tap: next weapon; hold: the wheel
+static void VR_WheelButton( void ) {
+	if ( VR_ActionPressed( VRA_WEAPNEXT ) ) {
+		if ( vrWheel.open ) {
+			VR_WheelClose();        // clicked again: done
+			return;
+		}
+		vrWheel.pressing = qtrue;
+		vrWheel.pressTime = cls.realtime;
+	}
+	if ( !vrWheel.pressing ) {
+		return;
+	}
+	if ( !VR_ActionDown( VRA_WEAPNEXT ) ) {
+		vrWheel.pressing = qfalse;
+		if ( !vrWheel.open ) {
+			Cbuf_AddText( "weapnext\n" );
+		} else if ( vrWheel.tilted ) {
+			VR_WheelClose();
+		}
+	} else if ( !vrWheel.open && cls.realtime - vrWheel.pressTime >= VR_WHEEL_HOLD_MS ) {
+		Cbuf_AddText( "+weaponwheel\n" );
+		vrWheel.open = qtrue;
+		vrWheel.tilted = qfalse;
+	}
+}
+
 // in-game controls (see vr_controls.cfg for the layout)
 static void VR_GameControls( void ) {
 	int dom = vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT;
@@ -1737,6 +1820,16 @@ static void VR_GameControls( void ) {
 	qboolean modifier = d->down[VRB_SQUEEZE];
 
 	VR_UpdateBindings();
+
+	// the weapon wheel takes the stick while it's open; the trigger closes it
+	VR_WheelButton();
+	if ( vrWheel.open && VR_Pressed( dom, VRB_TRIGGER ) ) {
+		VR_WheelClose();
+		xr.attackHeld = qfalse;
+		VR_WheelStick( dom );
+		return;
+	}
+	VR_WheelStick( dom );
 
 	// weapon hand
 	// firing doesn't go through the command buffer (+attack would only reach the usercmd
@@ -1797,9 +1890,7 @@ static void VR_GameControls( void ) {
 	VR_ActionHold( VRA_USE, "activate" );
 	VR_ActionHold( VRA_KICK, "kick" );
 
-	if ( VR_ActionPressed( VRA_WEAPNEXT ) ) {
-		Cbuf_AddText( "weapnext\n" );
-	}
+	// (VRA_WEAPNEXT: VR_WheelButton)
 	if ( VR_ActionPressed( VRA_WEAPPREV ) ) {
 		Cbuf_AddText( "weapprev\n" );
 	}
