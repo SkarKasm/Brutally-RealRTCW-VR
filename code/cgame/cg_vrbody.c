@@ -134,6 +134,7 @@ Rotation helpers, matrices are column bases (m[k] is column k)
 ==============================================================================
 */
 
+#ifdef VR_NET_HANDS
 static void VB_MatMul( vec3_t a[3], vec3_t b[3], vec3_t out[3] ) {
 	vec3_t r[3];
 	int i, j;
@@ -155,7 +156,9 @@ static void VB_MatVec( vec3_t m[3], const vec3_t v, vec3_t out ) {
 	}
 	VectorCopy( r, out );
 }
+#endif
 
+#ifdef VR_NET_HANDS
 // smallest rotation turning unit vector u onto v
 static void VB_Align( const vec3_t u, const vec3_t v, vec3_t out[3] ) {
 	vec3_t axis;
@@ -175,6 +178,7 @@ static void VB_Align( const vec3_t u, const vec3_t v, vec3_t out[3] ) {
 	out[2][0] = t * x * z + s * y; out[2][1] = t * y * z - s * x; out[2][2] = t * z * z + c;
 }
 
+#endif
 static qboolean VB_InSubtree( int bone, int root ) {
 	for ( ; bone >= 0; bone = vb.parents[bone] ) {
 		if ( bone == root ) {
@@ -184,6 +188,7 @@ static qboolean VB_InSubtree( int bone, int root ) {
 	return qfalse;
 }
 
+#ifdef VR_NET_HANDS
 // turn a bone and everything below it about a point
 static void VB_Rotate( int root, vec3_t r[3], const vec3_t pivot ) {
 	vec3_t rel;
@@ -199,6 +204,7 @@ static void VB_Rotate( int root, vec3_t r[3], const vec3_t pivot ) {
 		VB_MatMul( r, vb.rot[i], vb.rot[i] );
 	}
 }
+#endif
 
 /*
 ==============================================================================
@@ -276,6 +282,7 @@ static qboolean VB_Pose( refEntity_t *body ) {
 	return qtrue;
 }
 
+#ifdef VR_NET_HANDS    // (the local body has no arms; co-op players reach with theirs)
 // world point / direction -> the body's model space
 static void VB_ToModel( refEntity_t *body, const vec3_t world, vec3_t out ) {
 	vec3_t d;
@@ -362,6 +369,7 @@ static void VB_ReachArm( int side, const vec3_t wrist, const vec3_t handDir ) {
 		}
 	}
 }
+#endif
 
 
 // the edited skeleton -> the renderer, like a ragdoll
@@ -481,10 +489,8 @@ Called with the local player's skeletal body just before it is drawn.
 =================
 */
 void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
-	vec3_t fwd, target, dir, handFwd, yaw;
-	vec3_t gunWrist[2], gunDir[2];
-	qboolean gunHand[2];
-	int h, side, i;
+	vec3_t fwd, yaw;
+	int i;
 
 	VectorSet( yaw, 0, vb.bodyYaw, 0 );
 	AngleVectors( yaw, fwd, NULL, NULL );
@@ -519,32 +525,10 @@ void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 	}
 	VectorCopy( body->origin, body->oldorigin );
 
-	CG_VR_ArmTargets( gunHand, gunWrist, gunDir );
-	for ( h = 0; h < 2; h++ ) {
-		if ( !cgVR->handValid[h] ) {
-			continue;
-		}
-		side = h == VR_HAND_RIGHT ? SIDE_R : SIDE_L;
-		if ( gunHand[h] ) {
-			// the flat game's hand is on the gun: reach its wrist
-			VectorCopy( gunWrist[h], target );
-			VectorCopy( gunDir[h], handFwd );
-		} else {
-			AngleVectors( cgvr.handAngles[h], handFwd, NULL, NULL );
-			// the grip pose is the palm; the wrist is behind it
-			VectorMA( cgvr.handOrigin[h], -VB_PALM_TO_WRIST, handFwd, target );
-		}
-		VB_ToModel( body, target, target );
-		VB_DirToModel( body, handFwd, dir );
-		VectorNormalize( dir );
-		VB_ReachArm( side, target, dir );
-	}
-	// and BJ's own hand folds away where the gun's is drawn
-	for ( h = 0; h < 2; h++ ) {
-		if ( gunHand[h] ) {
-			VB_Collapse( vb.hand[h == VR_HAND_RIGHT ? SIDE_R : SIDE_L] );
-		}
-	}
+	// no arms: the flat game's first person arms are drawn on the hands instead (cg_vr.c),
+	// at the weapon size, which BJ's own arms don't match
+	VB_Collapse( vb.upper[SIDE_L] );
+	VB_Collapse( vb.upper[SIDE_R] );
 
 	VB_Output( body );
 	body->renderfx &= ~RF_THIRD_PERSON;     // seen from the eyes

@@ -206,9 +206,23 @@ static const vrHandPose_t *CG_VR_HandPose( int weapon ) {
 	return NULL;
 }
 
-// the flat game's hands are drawn on the gun instead of BJ's own
+// the flat game's arms are drawn on the gun (not with two guns: those are held by the
+// free hand models)
 static qboolean CG_VR_GunHands( void ) {
-	return cgvr.active && CG_VR_BodyDrawn() && !cgVR->dualWield && vr_drawHands.integer;
+	return cgvr.active && !cgVR->dualWield && vr_drawHands.integer;
+}
+
+// this hand is drawn as part of the held gun this frame
+static qboolean CG_VR_HandOnGun( int h ) {
+	const vrHandPose_t *hp = CG_VR_GunHands() ? CG_VR_HandPose( cg.predictedPlayerState.weapon ) : NULL;
+
+	if ( !hp ) {
+		return qfalse;
+	}
+	if ( h == CG_VR_DominantHand() ) {
+		return hp->trigPiece != -2;
+	}
+	return hp->supPiece != -2 && cgVR->twoHanded;
 }
 
 /*
@@ -216,7 +230,7 @@ static qboolean CG_VR_GunHands( void ) {
 CG_VR_PieceHandFx
 
 Which of the held weapon's hands to draw on one of its pieces (piece -1: the gun model):
-RF_VR_NOSLEEVES keeps the hand and leaves the sleeve to BJ's arm, RF_VR_NOHANDS hides both.
+0 draws that first person arm (hand and sleeve), RF_VR_NOHANDS hides it.
 =================
 */
 int CG_VR_PieceHandFx( int weapon, int piece ) {
@@ -227,49 +241,12 @@ int CG_VR_PieceHandFx( int weapon, int piece ) {
 	}
 	hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
 	if ( hp && piece == hp->trigPiece ) {
-		return RF_VR_NOSLEEVES;
+		return 0;       // the whole first person arm, hand and sleeve
 	}
 	if ( hp && piece == hp->supPiece && cgVR->twoHanded ) {
-		return RF_VR_NOSLEEVES;
+		return 0;
 	}
 	return RF_VR_NOHANDS;
-}
-
-/*
-=================
-CG_VR_ArmTargets
-
-Where BJ's arms reach while the gun's own hands are drawn: the wrists of those hands, on
-the gun as it is posed this frame. Returns for each hand whether it has a target (its own
-hand is then hidden).
-=================
-*/
-void CG_VR_ArmTargets( qboolean has[2], vec3_t wrist[2], vec3_t dir[2] ) {
-	const vrHandPose_t *hp;
-	vec3_t origin, axis[3];
-	int weapon = cg.predictedPlayerState.weapon;
-	int dom = CG_VR_DominantHand();
-
-	has[0] = has[1] = qfalse;
-	trap_Cvar_Update( &vr_drawHands );
-	if ( !cgvr.active || cgVR->dualWield || !vr_drawHands.integer || cgVR->menuPointer || cg.cameraMode ) {
-		return;
-	}
-	hp = CG_VR_HandPose( weapon );
-	if ( !hp ) {
-		return;
-	}
-	CG_VR_WeaponPose( weapon, origin, axis );
-	if ( hp->trigPiece != -2 && cgVR->handValid[dom] ) {
-		BG_VR_ModelPoint( origin, axis, hp->trigWrist, wrist[dom] );
-		VectorNormalize2( axis[0], dir[dom] );
-		has[dom] = qtrue;
-	}
-	if ( hp->supPiece != -2 && cgVR->twoHanded && cgVR->handValid[!dom] ) {
-		BG_VR_ModelPoint( origin, axis, hp->supWrist, wrist[!dom] );
-		VectorNormalize2( axis[0], dir[!dom] );
-		has[!dom] = qtrue;
-	}
 }
 
 // tracked hand models are available and wanted
@@ -294,8 +271,8 @@ void CG_VR_AddHands( void ) {
 	}
 
 	for ( h = 0; h < 2; h++ ) {
-		if ( !cgVR->handValid[h] || !cgvr.handModel[h] || CG_VR_BodyDrawn() ) {
-			continue;   // with the full body, its own arms and hands reach the controllers
+		if ( !cgVR->handValid[h] || !cgvr.handModel[h] || CG_VR_HandOnGun( h ) ) {
+			continue;   // the gun's own first person arm is this hand
 		}
 		memset( &ent, 0, sizeof( ent ) );
 		ent.hModel = cgvr.handModel[h];
@@ -312,10 +289,7 @@ void CG_VR_AddHands( void ) {
 			VectorScale( ent.axis[2], s, ent.axis[2] );
 			ent.nonNormalizedAxes = qtrue;
 		}
-		ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN;
-		if ( CG_VR_BodyDrawn() ) {
-			ent.renderfx |= RF_VR_NOSLEEVES;    // the full body's arms lead up to the hands
-		}
+		ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN;     // with its sleeve: the body has no arms
 		trap_R_AddRefEntityToScene( &ent );
 	}
 
