@@ -320,6 +320,8 @@ typedef struct {
 	int vrAkimbo;           // dual pistols: 0 the usual alternation, 1 right gun, 2 left gun
 	int vrHandsLow;         // dual wielding in VR: both hands down at the waist, so the reload
 	                        // button reloads (BG_VR_HandsLow); no reload starts on its own
+	float vrLadderHead[2];  // VR ladders: the head's pitch and yaw minus the aim, so walking into
+	                        // a ladder and looking up or down climbs it like the flat game
 
 	// for fixed msec Pmove
 	int pmove_fixed;

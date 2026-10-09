@@ -624,6 +624,8 @@ void CG_PredictPlayerState( void ) {
 		cg_pmove.vrChambered = cgVR->chambered;
 		cg_pmove.vrAkimbo = cgVR->akimboLeft ? 2 : 1;
 		cg_pmove.vrHandsLow = BG_VR_HandsLow( cgVR );
+		cg_pmove.vrLadderHead[0] = AngleSubtract( cgVR->hmdAngles[PITCH], cgVR->weaponAngles[PITCH] );
+		cg_pmove.vrLadderHead[1] = AngleSubtract( cgVR->hmdAngles[YAW], cgVR->weaponAngles[YAW] );
 	}
 	cg_pmove.pmove_msec = pmove_msec.integer;
 

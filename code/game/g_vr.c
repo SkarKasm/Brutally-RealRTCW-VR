@@ -239,32 +239,6 @@ void G_VR_OnFire( gentity_t *ent ) {
 
 /*
 =================
-G_VR_HandAtWeaponHip
-
-The off hand across at the weapon hand's hip (where a second gun is drawn from): 45..95cm
-under the eyes, at least 10cm over to the weapon hand's side, beside the body.
-=================
-*/
-static qboolean G_VR_HandAtWeaponHip( gentity_t *ent, int hand ) {
-	float ws = gVR->worldScale > 0 ? gVR->worldScale : 32.0f;
-	float yaw = DEG2RAD( gVR->hmdAngles[YAW] );
-	vec3_t rel;
-	float ahead, left;
-
-	if ( !gVR->handValid[hand] ) {
-		return qfalse;
-	}
-	VectorSubtract( gVR->handOrigin[hand], gVR->hmdOrigin, rel );     // play space: x forward, y left
-	ahead = rel[0] * cos( yaw ) + rel[1] * sin( yaw );
-	left = -rel[0] * sin( yaw ) + rel[1] * cos( yaw );
-	if ( gVR->rightHanded ) {
-		left = -left;   // over to the right
-	}
-	return rel[2] < -0.45f * ws && rel[2] > -0.95f * ws && left > 0.10f * ws && ahead < 0.15f * ws && ahead > -0.25f * ws;
-}
-
-/*
-=================
 G_VR_Reload
 
 Hand reloading for the current weapon. Returns qtrue if the off hand's grip press was
@@ -994,13 +968,7 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 
 	used = ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_Reload( ent, offHand, pressed, released, dom );
 
-	// the off hand drawing a second pistol / SMG from the weapon hand's hip, or putting it back
-	if ( pressed && !used && ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_HandAtWeaponHip( ent, off ) &&
-		 ( ent->client->ps.persistant[PERS_DUAL] || BG_DualCapable( ent->client->ps.weapon ) ) ) {
-		G_DualToggle( ent );
-		G_VR_Haptic( off, 0.6f, 50 );
-		used = qtrue;
-	}
+	// (a second pistol / SMG: a double press of the off hand grip, cl_vr.c)
 
 	// a prop in the hand (GORE & EXTRAS): carried, then dropped or thrown
 	if ( G_VRX_PropHeld( ent ) >= 0 ) {
@@ -1135,8 +1103,8 @@ void G_VR_GrenadeThrow( gentity_t *ent, int weapon, vec3_t start, vec3_t dir ) {
 =================
 G_DualToggle
 
-A second pistol / SMG in the other hand, or back to one ("dualwield", or in VR the off
-hand's grip at the weapon hand's hip: a cross draw). Putting the second gun away puts the
+A second pistol / SMG in the other hand, or back to one ("dualwield", which VR sends for a
+double press of the off hand grip). Putting the second gun away puts the
 rounds its magazine held back with the rest.
 =================
 */

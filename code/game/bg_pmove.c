@@ -4442,6 +4442,19 @@ void PM_UpdateViewAngles( playerState_t *ps, usercmd_t *cmd, void( trace ) ( tra
 	PM_UpdateLean( ps, cmd, &tpm );
 }
 
+// RealRTCW-VR: ladders follow the head, not the gun: walk in and look up or down
+static void PM_LadderView( vec3_t forward, vec3_t right ) {
+	vec3_t angles;
+
+	VectorCopy( pm->ps->viewangles, angles );
+	if ( pm->vrAim ) {
+		angles[PITCH] += pm->vrLadderHead[0];
+		angles[YAW] += pm->vrLadderHead[1];
+		angles[ROLL] = 0;
+	}
+	AngleVectors( angles, forward, right, NULL );
+}
+
 /*
 ================
 PM_CheckLadderMove
@@ -4504,8 +4517,7 @@ void PM_CheckLadderMove( void ) {
 	}
 
 	// check for ladder
-	flatforward[0] = pml.forward[0];
-	flatforward[1] = pml.forward[1];
+	PM_LadderView( flatforward, NULL );
 	flatforward[2] = 0;
 	VectorNormalize( flatforward );
 
@@ -4586,7 +4598,7 @@ PM_LadderMove
 void PM_LadderMove( void ) {
 	float wishspeed, scale;
 	vec3_t wishdir, wishvel;
-	float upscale;
+	float upscale, forwardmove, rightmove;
 
 	if (pm->ps->aiChar == AICHAR_DOG || pm->ps->aiChar == AICHAR_XSHEPHERD) {
 		return;
@@ -4597,6 +4609,26 @@ void PM_LadderMove( void ) {
 		VectorScale( laddervec, -200.0, wishvel );
 		pm->ps->velocity[0] = wishvel[0];
 		pm->ps->velocity[1] = wishvel[1];
+	}
+
+	forwardmove = pm->cmd.forwardmove;
+	rightmove = pm->cmd.rightmove;
+	if ( pm->vrAim ) {
+		// RealRTCW-VR: the stick moves relative to the head, which the ladder follows too
+		vec3_t move, hf, hr;
+		pml.forward[2] = pml.right[2] = 0;
+		VectorNormalize( pml.forward );
+		VectorNormalize( pml.right );
+		VectorScale( pml.forward, forwardmove, move );
+		VectorMA( move, rightmove, pml.right, move );
+		PM_LadderView( hf, hr );
+		VectorCopy( hf, pml.forward );
+		VectorCopy( hr, pml.right );
+		hf[2] = hr[2] = 0;
+		VectorNormalize( hf );
+		VectorNormalize( hr );
+		forwardmove = DotProduct( move, hf );
+		rightmove = DotProduct( move, hr );
 	}
 
 	upscale = ( pml.forward[2] + 0.5 ) * 2.5;
@@ -4618,32 +4650,28 @@ void PM_LadderMove( void ) {
 	scale = PM_CmdScale( &pm->cmd );
 	VectorClear( wishvel );
 
-	if ( pm->cmd.forwardmove ) {
+	if ( forwardmove ) {
 		if ( pm->ps->aiChar ) {
-			wishvel[2] = 0.5 * upscale * scale * (float)pm->cmd.forwardmove;
+			wishvel[2] = 0.5 * upscale * scale * forwardmove;
 		} else { // player speed
 	            #ifdef GAMEDLL
 				if (g_realism.value) {
-			    wishvel[2] = 0.8 * upscale * scale * (float)pm->cmd.forwardmove;
+			    wishvel[2] = 0.8 * upscale * scale * forwardmove;
 		        } else {
-			    wishvel[2] = 0.9 * upscale * scale * (float)pm->cmd.forwardmove;
+			    wishvel[2] = 0.9 * upscale * scale * forwardmove;
 		        }
 				#endif
 				 #ifdef CGAMEDLL
 				if (cg_realism.value) {
-			    wishvel[2] = 0.8 * upscale * scale * (float)pm->cmd.forwardmove;
+			    wishvel[2] = 0.8 * upscale * scale * forwardmove;
 		        } else {
-			    wishvel[2] = 0.9 * upscale * scale * (float)pm->cmd.forwardmove;
+			    wishvel[2] = 0.9 * upscale * scale * forwardmove;
 		        }
 				#endif
 		}
 	}
 
-	// RealRTCW-VR: hands pulling on the ladder (cl_vr.c sends how fast as upmove)
-	if ( pm->vrAim && pm->cmd.upmove ) {
-		wishvel[2] = 3.0f * (float)pm->cmd.upmove;
-	}
-	if ( pm->cmd.rightmove ) {
+	if ( rightmove ) {
 		// strafe, so we can jump off ladder
 		vec3_t ladder_right, ang;
 		vectoangles( laddervec, ang );
@@ -4654,7 +4682,7 @@ void PM_LadderMove( void ) {
 			VectorInverse( ladder_right );
 		}
 
-		VectorMA( wishvel, 0.5 * scale * (float)pm->cmd.rightmove, pml.right, wishvel );
+		VectorMA( wishvel, 0.5 * scale * rightmove, pml.right, wishvel );
 	}
 
 	// do strafe friction

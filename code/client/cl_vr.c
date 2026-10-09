@@ -1555,19 +1555,20 @@ static const struct {
 	const char *cvar;
 	const char *def;
 } vrActions[VRA_COUNT] = {
-	{ "vr_bind_jump",     "A" },
-	{ "vr_bind_crouch",   "RDOWN" },
-	{ "vr_bind_stand",    "RUP" },
-	{ "vr_bind_use",      "X" },
-	{ "vr_bind_reload",   "B Y" },
-	{ "vr_bind_weapnext", "RCLICK" },
-	{ "vr_bind_weapprev", "G+RCLICK" },
+	// the RTCWQuest layout
+	{ "vr_bind_jump",     "B" },
+	{ "vr_bind_crouch",   "A" },
+	{ "vr_bind_stand",    "none" },
+	{ "vr_bind_use",      "RCLICK" },
+	{ "vr_bind_reload",   "none" },
+	{ "vr_bind_weapnext", "RDOWN" },
+	{ "vr_bind_weapprev", "RUP" },
 	{ "vr_bind_kick",     "LCLICK" },
-	{ "vr_bind_notebook", "G+Y" },
+	{ "vr_bind_notebook", "Y" },
 	{ "vr_bind_hud",      "G+A" },
 	{ "vr_bind_useitem",  "G+X" },
 	{ "vr_bind_itemnext", "G+B" },
-	{ "vr_bind_altfire",  "G+RTRIG" },
+	{ "vr_bind_altfire",  "X" },
 };
 
 static const struct {
@@ -1733,83 +1734,124 @@ static qboolean VR_CommandHeld( const char *cmd ) {
 =================
 VR weapon wheel
 
-Holding the next weapon button (right stick click) opens the game's own weapon wheel on
-the HUD; tap it as before for the next weapon. Tilt the weapon hand stick towards a gun
-and let the stick go back to the middle to switch to it. While the wheel is open the
-stick doesn't turn or crouch, and until it's back in the middle afterwards.
+Holding the gun hand grip opens the game's own weapon wheel on the HUD (a tap still
+reloads), as in RTCWQuest. Move the hand towards a weapon (or tilt the gun hand stick) and
+let go of the grip, or pull the trigger, to switch to it. The stick doesn't turn while the
+wheel is open, or until it's back in the middle afterwards. Any other button (A / B / X / Y, a stick click) closes it without switching,
+and still does its own job, so the grip combos work as before.
 =================
 */
 #define VR_WHEEL_HOLD_MS    300
+#define VR_DOUBLE_PRESS_MS  350
+#define VR_WHEEL_REACH      0.12f       // metres of hand travel for a full pick
 
 static struct {
-	qboolean    pressing;   // the button is down, not yet decided tap or hold
-	int         pressTime;
 	qboolean    open;
-	qboolean    tilted;     // the stick has pointed at something since it opened
 	qboolean    quiet;      // closed, the stick still has to come back to the middle
+	float       start[2];   // the hand in head space (x right, y up) when it opened
 } vrWheel;
 
-static void VR_WheelClose( void ) {
+static qboolean VR_WheelHand( int dom, float out[2] ) {
+	XrQuaternionf inv;
+	float rel[3], local[3];
+
+	if ( !xr.hands[dom].gripValid || !xr.headValid ) {
+		return qfalse;
+	}
+	rel[0] = xr.hands[dom].grip.position.x - xr.head.position.x;
+	rel[1] = xr.hands[dom].grip.position.y - xr.head.position.y;
+	rel[2] = xr.hands[dom].grip.position.z - xr.head.position.z;
+	inv = xr.head.orientation;
+	inv.x = -inv.x;
+	inv.y = -inv.y;
+	inv.z = -inv.z;
+	VR_QuatRotate( &inv, rel, local );      // head space: x right, y up, -z forward
+	out[0] = local[0];
+	out[1] = local[1];
+	return qtrue;
+}
+
+static void VR_WheelClose( qboolean pick ) {
 	if ( vrWheel.open ) {
-		Cbuf_AddText( "-weaponwheel\n" );     // switches to the weapon picked
+		Cbuf_AddText( pick ? "-weaponwheel\n" : "vrweaponwheelcancel\n" );
 	}
 	vrWheel.open = qfalse;
 	vrWheel.quiet = qtrue;
 }
 
-// the weapon hand stick goes to the wheel instead of turning while it's open
-static void VR_WheelStick( int dom ) {
-	vrHand_t *d = &xr.hands[dom];
-	float len = sqrt( d->stick[0] * d->stick[0] + d->stick[1] * d->stick[1] );
+// the stick belongs to the wheel while it's open: no turning or stick buttons
+static void VR_WheelQuietStick( vrHand_t *d ) {
 	int b;
 
-	if ( vrWheel.open ) {
-		if ( cgvm ) {
-			VM_Call( cgvm, CG_JOYSTICK_EVENT, 2, (int)( d->stick[0] * 32767.0f ) );
-			VM_Call( cgvm, CG_JOYSTICK_EVENT, 3, (int)( -d->stick[1] * 32767.0f ) );     // screen y is down
-		}
-		if ( len > 0.5f ) {
-			vrWheel.tilted = qtrue;
-		} else if ( vrWheel.tilted && len < 0.25f && !vrWheel.pressing ) {
-			VR_WheelClose();
-		}
-	} else if ( vrWheel.quiet && len < 0.3f ) {
+	if ( !vrWheel.open && vrWheel.quiet &&
+		 sqrt( d->stick[0] * d->stick[0] + d->stick[1] * d->stick[1] ) < 0.3f ) {
 		vrWheel.quiet = qfalse;
 	}
-
 	if ( vrWheel.open || vrWheel.quiet ) {
 		d->stick[0] = d->stick[1] = 0.0f;
-		for ( b = VRB_STICK_UP; b <= VRB_STICK_LEFT; b++ ) {
+		for ( b = VRB_STICK_UP; b <= VRB_STICK_RIGHT; b++ ) {
 			d->down[b] = d->wasDown[b] = qfalse;
 		}
 	}
 }
 
-// tap: next weapon; hold: the wheel
-static void VR_WheelButton( void ) {
-	if ( VR_ActionPressed( VRA_WEAPNEXT ) ) {
-		if ( vrWheel.open ) {
-			VR_WheelClose();        // clicked again: done
-			return;
+// qtrue when the wheel took this frame's trigger
+static qboolean VR_Wheel( int dom ) {
+	static const vrButton_t cancel[] = { VRB_LOWER, VRB_UPPER, VRB_STICK, VRB_MENU };
+	vrHand_t *d = &xr.hands[dom];
+	float pos[2], x, y, len;
+	int h, i;
+
+	if ( !vrWheel.open ) {
+		// (rightGripCombo: a combo or the wheel already used this hold, see VR_GameControls)
+		if ( d->down[VRB_SQUEEZE] && !xr.rightGripCombo &&
+			 cls.realtime - d->downTime[VRB_SQUEEZE] >= VR_WHEEL_HOLD_MS && VR_WheelHand( dom, vrWheel.start ) ) {
+			Cbuf_AddText( "+weaponwheel\n" );
+			vrWheel.open = qtrue;
+			xr.rightGripCombo = qtrue;      // not a grip tap reload
+			VR_Haptic( dom, 0.3f, 30 );
 		}
-		vrWheel.pressing = qtrue;
-		vrWheel.pressTime = cls.realtime;
+		return qfalse;
 	}
-	if ( !vrWheel.pressing ) {
-		return;
+
+	if ( !d->down[VRB_SQUEEZE] ) {
+		VR_WheelClose( qtrue );
+		return qfalse;
 	}
-	if ( !VR_ActionDown( VRA_WEAPNEXT ) ) {
-		vrWheel.pressing = qfalse;
-		if ( !vrWheel.open ) {
-			Cbuf_AddText( "weapnext\n" );
-		} else if ( vrWheel.tilted ) {
-			VR_WheelClose();
+	if ( VR_Pressed( dom, VRB_TRIGGER ) ) {
+		VR_WheelClose( qtrue );
+		return qtrue;
+	}
+	for ( h = 0; h < 2; h++ ) {
+		for ( i = 0; i < ARRAY_LEN( cancel ); i++ ) {
+			if ( VR_Pressed( h, cancel[i] ) ) {
+				VR_WheelClose( qfalse );
+				return qfalse;
+			}
 		}
-	} else if ( !vrWheel.open && cls.realtime - vrWheel.pressTime >= VR_WHEEL_HOLD_MS ) {
-		Cbuf_AddText( "+weaponwheel\n" );
-		vrWheel.open = qtrue;
-		vrWheel.tilted = qfalse;
 	}
+
+	if ( sqrt( d->stick[0] * d->stick[0] + d->stick[1] * d->stick[1] ) > 0.5f ) {
+		x = d->stick[0];
+		y = d->stick[1];
+	} else if ( VR_WheelHand( dom, pos ) ) {
+		x = ( pos[0] - vrWheel.start[0] ) / VR_WHEEL_REACH;
+		y = ( pos[1] - vrWheel.start[1] ) / VR_WHEEL_REACH;
+	} else {
+		x = y = 0.0f;
+	}
+	{
+		len = sqrt( x * x + y * y );
+		if ( len > 1.0f ) {
+			x /= len;
+			y /= len;
+		}
+		if ( cgvm ) {
+			VM_Call( cgvm, CG_JOYSTICK_EVENT, 2, (int)( x * 32767.0f ) );
+			VM_Call( cgvm, CG_JOYSTICK_EVENT, 3, (int)( -y * 32767.0f ) );     // screen y is down
+		}
+	}
+	return qfalse;
 }
 
 // in-game controls (see vr_controls.cfg for the layout)
@@ -1821,15 +1863,17 @@ static void VR_GameControls( void ) {
 
 	VR_UpdateBindings();
 
-	// the weapon wheel takes the stick while it's open; the trigger closes it
-	VR_WheelButton();
-	if ( vrWheel.open && VR_Pressed( dom, VRB_TRIGGER ) ) {
-		VR_WheelClose();
+	if ( VR_Pressed( dom, VRB_SQUEEZE ) ) {
+		xr.rightGripCombo = qfalse;
+	}
+
+	// the weapon wheel: hold the grip, move the hand, let go (or pull the trigger)
+	if ( VR_Wheel( dom ) ) {
 		xr.attackHeld = qfalse;
-		VR_WheelStick( dom );
+		VR_WheelQuietStick( d );
 		return;
 	}
-	VR_WheelStick( dom );
+	VR_WheelQuietStick( d );
 
 	// weapon hand
 	// firing doesn't go through the command buffer (+attack would only reach the usercmd
@@ -1851,9 +1895,6 @@ static void VR_GameControls( void ) {
 		Cbuf_AddText( "weapalt\n" );                // altfire moved off the trigger
 	}
 
-	if ( VR_Pressed( dom, VRB_SQUEEZE ) ) {
-		xr.rightGripCombo = qfalse;
-	}
 	if ( VR_Released( dom, VRB_SQUEEZE ) && !xr.rightGripCombo &&
 		 cls.realtime - d->downTime[VRB_SQUEEZE] < 400 ) {
 		// tap grip: drop the magazine for weapons reloaded by hand (the game decides),
@@ -1871,11 +1912,10 @@ static void VR_GameControls( void ) {
 		Cbuf_AddText( "+reload\nwait\n-reload\n" );
 	}
 
-	// crouch stays on until stand (or a jump)
-	if ( VR_ActionPressed( VRA_CROUCH ) ) {
-		VR_ButtonCommand( "movedown", qtrue );
-	}
+	// crouch while held (stand, when bound, also lets go of it)
+	VR_ActionHold( VRA_CROUCH, "movedown" );
 	if ( VR_ActionPressed( VRA_STAND ) && VR_CommandHeld( "movedown" ) ) {
+		vrActionHeld[VRA_CROUCH] = qfalse;
 		VR_ButtonCommand( "movedown", qfalse );
 	}
 	if ( VR_ActionPressed( VRA_JUMP ) ) {
@@ -1890,7 +1930,9 @@ static void VR_GameControls( void ) {
 	VR_ActionHold( VRA_USE, "activate" );
 	VR_ActionHold( VRA_KICK, "kick" );
 
-	// (VRA_WEAPNEXT: VR_WheelButton)
+	if ( VR_ActionPressed( VRA_WEAPNEXT ) ) {
+		Cbuf_AddText( "weapnext\n" );
+	}
 	if ( VR_ActionPressed( VRA_WEAPPREV ) ) {
 		Cbuf_AddText( "weapprev\n" );
 	}
@@ -1913,6 +1955,18 @@ static void VR_GameControls( void ) {
 		Cbuf_AddText( "notebook\n" );
 	}
 
+	// a double press of the off hand grip: a second pistol / SMG, or back to one
+	if ( VR_Pressed( off, VRB_SQUEEZE ) ) {
+		static int lastPress;
+		if ( lastPress && cls.realtime - lastPress < VR_DOUBLE_PRESS_MS ) {
+			Cbuf_AddText( "dualwield\n" );
+			VR_Haptic( off, 0.6f, 50 );
+			lastPress = 0;
+		} else {
+			lastPress = cls.realtime;
+		}
+	}
+
 	if ( com_vr.dualWield ) {
 		// a gun in this hand too: its trigger fires it
 		if ( VR_Pressed( off, VRB_TRIGGER ) ) {
@@ -1924,9 +1978,13 @@ static void VR_GameControls( void ) {
 		if ( VR_Released( off, VRB_TRIGGER ) ) {
 			VR_ButtonCommand( "sprint", qfalse );   // in case it was sprinting before the switch
 		}
+		VR_Hold( "sprint", off, VRB_SQUEEZE );      // the grip sprints instead, as in RTCWQuest
 	} else {
 		xr.attackOffHeld = qfalse;
 		VR_Hold( "sprint", off, VRB_TRIGGER );      // trigger: sprint
+		if ( VR_Released( off, VRB_SQUEEZE ) && !xr.hands[off].down[VRB_TRIGGER] ) {
+			VR_ButtonCommand( "sprint", qfalse );   // in case it was sprinting with two guns
+		}
 	}
 }
 
@@ -2032,31 +2090,6 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 	if ( !vr_seated->integer && vr_crouchHeight->value > 0 && xr.headHeight > 0.2f &&
 		 xr.headHeight < vr_crouchHeight->value && cmd->upmove <= 0 ) {
 		cmd->upmove = -127;
-	}
-
-	// ladders: a hand gripping pulls the body up (or lets it down) as far as it moves
-	{
-		static float lastZ[2];
-		static qboolean had[2];
-		float climb = 0, best = 0;
-		int h;
-
-		for ( h = 0; h < 2; h++ ) {
-			qboolean grip = com_vr.onLadder && com_vr.handValid[h] && xr.hands[h].down[VRB_SQUEEZE];
-			if ( grip && had[h] && frameSeconds > 0 ) {
-				float v = -( com_vr.handOrigin[h][2] - lastZ[h] ) / frameSeconds;    // units/s, up
-				if ( fabs( v ) > fabs( best ) ) {
-					best = v;
-				}
-			}
-			had[h] = grip;
-			lastZ[h] = com_vr.handOrigin[h][2];
-		}
-		if ( best != 0 ) {
-			climb = best / 3.0f;
-			cmd->upmove = ClampChar( (int)climb );
-			cmd->forwardmove = 0;
-		}
 	}
 
 	// teleport: push the off stick forward to aim (cgame draws the arc), let go to go there

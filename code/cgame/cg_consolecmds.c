@@ -258,6 +258,13 @@ static void CG_WeaponWheelUp_f( void ) {
 	}
 }
 
+// RealRTCW-VR: the wheel closed by another button: nothing picked
+static void CG_WeaponWheelCancel_f( void ) {
+	cg.weaponWheel.latchedWeapon = 0;
+	cg.weaponWheel.hoveredWeapon = 0;
+	CG_WeaponWheelUp_f();
+}
+
 static void CG_TellTarget_f( void ) {
 	int clientNum;
 	char command[128];
@@ -821,7 +828,8 @@ static consoleCommand_t commands[] = {
 	{"listsounds", CG_ListSounds_f},
 	{"deletesound", CG_DeleteSound_f},
 	{"+weaponwheel", CG_WeaponWheelDown_f},
-	{"-weaponwheel", CG_WeaponWheelUp_f}
+	{"-weaponwheel", CG_WeaponWheelUp_f},
+	{"vrweaponwheelcancel", CG_WeaponWheelCancel_f}
 };
 
 /*
