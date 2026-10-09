@@ -51,6 +51,11 @@ qboolean CG_VR_2DPass( void ) {
 	return cgVR && cgVR->active && cgVR->pass == VR_PASS_2D;
 }
 
+// a cutscene drawn flat on the 2D layer (a screen in front of the player, cl_vr.c)
+qboolean CG_VR_FlatCutscene( void ) {
+	return cgVR && cgVR->active && cgVR->flatCutscene && cg.cameraMode;
+}
+
 // switch to another weapon when the current one runs dry (always outside VR)
 qboolean CG_VR_EmptySwitch( void ) {
 	if ( !CG_VR_Active() ) {
@@ -104,15 +109,97 @@ void CG_VR_Init( void ) {
 	cgvr.lastMagDrop = cgVR ? cgVR->magDropCount : 0;
 }
 
-// the current weapon's measured geometry (see bg_vr.c)
-// the chosen weapon size (one of the presets, so co-op servers can match it)
-float CG_VR_WeaponScale( void ) {
-	char buf[16];
-	float s;
+/*
+=================
+CG_VR_ScaleFor
 
-	trap_Cvar_VariableStringBuffer( "vr_weaponScale", buf, sizeof( buf ) );
-	s = buf[0] ? atof( buf ) : 1.0f;
-	s = BG_VR_WeaponScale( BG_VR_ScalePreset( s ) );
+The flat game's first person models aren't drawn to one scale (a pistol's hand is nearly
+twice the size of the MP40's), so each gun is drawn at the size that makes its own hand life
+size: the hand's longest span (misc/vr/vr_hand_size.py) brought to VR_HAND_SPAN. The guns
+come out close to their real lengths that way too. VR OPTIONS, Weapon size, multiplies it
+(vr_gunSize: one of the BG_VR_WeaponScale presets).
+=================
+*/
+#define VR_HAND_SPAN        8.0f        // game units, about 20cm: a gloved hand around a grip
+#define VR_FREE_HAND_SPAN_R 10.9f       // the free hands (hand_r / hand_l, from the MP40)
+#define VR_FREE_HAND_SPAN_L 10.3f
+
+typedef struct {
+	const char  *weap;
+	float       span;
+} vrHandSpan_t;
+
+static const vrHandSpan_t vrHandSpans[] = {
+	{ "akimbo.weap", 17.6f },
+	{ "bar.weap", 16.2f },
+	{ "browning.weap", 19.9f },
+	{ "colt.weap", 18.6f },
+	{ "dualtt33.weap", 15.1f },
+	{ "dynamite.weap", 17.8f },
+	{ "dynamite_eng.weap", 17.8f },
+	{ "fg42.weap", 12.3f },
+	{ "fg42scope.weap", 12.3f },
+	{ "flamethrower.weap", 12.3f },
+	{ "g43.weap", 9.2f },
+	{ "garand.weap", 8.3f },
+	{ "grenade.weap", 11.5f },
+	{ "hdm.weap", 18.8f },
+	{ "ithaca.weap", 17.4f },
+	{ "knife.weap", 11.3f },
+	{ "luger.weap", 17.6f },
+	{ "luger_silenced.weap", 17.6f },
+	{ "m1garand.weap", 17.6f },
+	{ "m7.weap", 17.6f },
+	{ "mauser.weap", 20.9f },
+	{ "mg42m.weap", 23.8f },
+	{ "mosin.weap", 11.6f },
+	{ "mp34.weap", 17.2f },
+	{ "mp40.weap", 10.9f },
+	{ "mp44.weap", 13.6f },
+	{ "panzerfaust.weap", 9.0f },
+	{ "pineapple.weap", 11.3f },
+	{ "poisongas.weap", 14.1f },
+	{ "ppsh.weap", 14.0f },
+	{ "revolver.weap", 16.4f },
+	{ "smokebomb.weap", 14.1f },
+	{ "sniperrifle.weap", 20.9f },
+	{ "snooper.weap", 8.3f },
+	{ "sten.weap", 17.4f },
+	{ "tesla.weap", 11.0f },
+	{ "thompson.weap", 11.0f },
+	{ "tt33.weap", 15.1f },
+	{ "venom.weap", 13.2f },
+};
+
+static float CG_VR_GunSize( void ) {
+	char buf[16];
+
+	trap_Cvar_VariableStringBuffer( "vr_gunSize", buf, sizeof( buf ) );
+	return BG_VR_WeaponScale( BG_VR_ScalePreset( buf[0] ? atof( buf ) : 1.0f ) );
+}
+
+float CG_VR_ScaleFor( int weapon ) {
+	const char *file = weapon > WP_NONE ? BG_GetWeaponFilename( weapon ) : NULL;
+	float s = 0.45f;
+	int i;
+
+	if ( file && *file && !cg_vanilla_guns.integer ) {
+		file = COM_SkipPath( (char *)file );
+		for ( i = 0; i < ARRAY_LEN( vrHandSpans ); i++ ) {
+			if ( !Q_stricmp( vrHandSpans[i].weap, file ) ) {
+				s = VR_HAND_SPAN / vrHandSpans[i].span;
+				break;
+			}
+		}
+	}
+	s *= CG_VR_GunSize();
+	return s < 0.3f ? 0.3f : ( s > 1.0f ? 1.0f : s );
+}
+
+// the held gun's size, also for the game's reloading (g_vr.c)
+float CG_VR_WeaponScale( void ) {
+	float s = CG_VR_ScaleFor( cg.predictedPlayerState.weapon );
+
 	if ( cgVR ) {
 		cgVR->weaponScale = s;
 	}
@@ -121,7 +208,7 @@ float CG_VR_WeaponScale( void ) {
 
 void CG_VR_Geom( int weapon, vrWeaponGeom_t *g ) {
 	BG_VR_WeaponGeom( weapon, cg_vanilla_guns.integer, g );
-	g->scale = CG_VR_WeaponScale();
+	g->scale = CG_VR_ScaleFor( weapon );
 }
 
 /*
@@ -281,9 +368,9 @@ void CG_VR_AddHands( void ) {
 		VectorCopy( ent.origin, ent.oldorigin );
 		VectorCopy( ent.origin, ent.lightingOrigin );
 		AnglesToAxis( cgvr.handAngles[h], ent.axis );
-		// the hands come from the same oversized first person models as the guns
-		if ( CG_VR_WeaponScale() != 1.0f ) {
-			float s = CG_VR_WeaponScale();
+		// the free hands are life size too, like the hands on the guns (CG_VR_ScaleFor)
+		{
+			float s = VR_HAND_SPAN * CG_VR_GunSize() / ( h == VR_HAND_LEFT ? VR_FREE_HAND_SPAN_L : VR_FREE_HAND_SPAN_R );
 			VectorScale( ent.axis[0], s, ent.axis[0] );
 			VectorScale( ent.axis[1], s, ent.axis[1] );
 			VectorScale( ent.axis[2], s, ent.axis[2] );
@@ -390,6 +477,7 @@ void CG_VR_BeginFrame( void ) {
 	}
 
 	CG_VR_ReloadSounds();
+	CG_VR_WeaponScale();        // for the game's reloading too
 	CG_VRX_KnifeFrame();        // GORE & EXTRAS: the blade through a dead body's neck
 
 	// the off hand just came onto something it can take: a light buzz
@@ -551,11 +639,13 @@ qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_
 	cls = BG_VR_ReloadClass( weapon );
 
 	if ( part == geom.magPart ) {
-		// how the magazine sits in the gun, for drawing it in the hand / falling out
+		// how the magazine sits in the gun, for drawing it in the hand / falling out; both
+		// axes carry the gun's size (CG_VR_ScaleFor), which mustn't count twice
 		int i, j;
 		for ( i = 0; i < 3; i++ ) {
 			for ( j = 0; j < 3; j++ ) {
-				cgvr.magAxis[i][j] = DotProduct( ent->axis[i], parent->axis[j] );
+				float len = VectorLengthSquared( parent->axis[j] );
+				cgvr.magAxis[i][j] = len > 0.0f ? DotProduct( ent->axis[i], parent->axis[j] ) / len : 0.0f;
 			}
 		}
 		cgvr.magAxisValid = qtrue;
@@ -737,6 +827,7 @@ void CG_VR_AddReloadItems( void ) {
 			VectorSubtract( magPoint, re->origin, re->origin );
 			re->hModel = model;
 			re->renderfx = RF_MINLIGHT;
+			re->nonNormalizedAxes = qtrue;
 
 			le->leType = LE_FRAGMENT;
 			le->startTime = cg.time;
@@ -767,6 +858,7 @@ void CG_VR_AddReloadItems( void ) {
 		VectorCopy( ent.origin, ent.oldorigin );
 		VectorCopy( ent.origin, ent.lightingOrigin );
 		ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN;
+		ent.nonNormalizedAxes = qtrue;
 		trap_R_AddRefEntityToScene( &ent );
 	}
 	// spare magazines in the chest pouch, where the off hand takes them from (g_vr.c)
@@ -785,8 +877,10 @@ void CG_VR_AddReloadItems( void ) {
 			memset( &ent, 0, sizeof( ent ) );
 			ent.hModel = model;
 			AxisCopy( axisDefault, ent.axis );
-			VectorCopy( fwd, ent.axis[0] );
-			VectorScale( right, -1, ent.axis[1] );
+			VectorScale( fwd, geom.scale, ent.axis[0] );
+			VectorScale( right, -geom.scale, ent.axis[1] );
+			VectorScale( ent.axis[2], geom.scale, ent.axis[2] );
+			ent.nonNormalizedAxes = qtrue;
 			// low on the chest, inside the server's pouch (VR_CHEST_DROP), side by side
 			VectorMA( cg.refdef.vieworg, 5.0f, fwd, pouch );
 			VectorMA( pouch, ( i - ( spare - 1 ) * 0.5f ) * 2.6f, right, pouch );

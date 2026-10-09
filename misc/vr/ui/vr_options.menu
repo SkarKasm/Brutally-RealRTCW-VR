@@ -385,8 +385,8 @@
 			name vr_opt
 			type ITEM_TYPE_MULTI
 			text "Weapon size:"
-			cvar "vr_weaponScale"
-			cvarFloatList { "Original" 1 "Smaller" 0.7 "Realistic" 0.4375 }
+			cvar "vr_gunSize"
+			cvarFloatList { "Realistic" 1 "Larger" 1.15 "Smaller" 0.87 }
 			rect 330 324 290 14
 			textalign ITEM_ALIGN_RIGHT
 			textalignx 150

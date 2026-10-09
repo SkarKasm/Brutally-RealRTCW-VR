@@ -301,6 +301,7 @@ static cvar_t *vr_worldScale;
 static cvar_t *vr_rightHanded;
 static cvar_t *vr_binoculars;       // off hand to the eyes: binoculars
 static cvar_t *vr_hipNotebook;      // off hand grip at the hip: the notebook
+static cvar_t *vr_flatCutscenes;    // cutscenes on a screen in front of the player
 static cvar_t *vr_teleport;         // move by pointing the off hand stick and letting go
 static cvar_t *vr_seated;           // playing seated: stand the view up, no physical crouch
 static cvar_t *vr_seatedHeight;     // metres added to the head when seated
@@ -1202,7 +1203,8 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_scopes", "1", CVAR_ARCHIVE );         // cg_vrscope.c
 	Cvar_Get( "vr_recoil", "1", CVAR_ARCHIVE );         // cg_vrrecoil.c
 	vr_binoculars = Cvar_Get( "vr_binoculars", "1", CVAR_ARCHIVE );
-	vr_hipNotebook = Cvar_Get( "vr_hipNotebook", "1", CVAR_ARCHIVE );
+	vr_hipNotebook = Cvar_Get( "vr_notebookAtHip", "0", CVAR_ARCHIVE );   // off by default (Y opens it)
+	vr_flatCutscenes = Cvar_Get( "vr_flatCutscenes", "1", CVAR_ARCHIVE );
 	vr_teleport = Cvar_Get( "vr_teleport", "0", CVAR_ARCHIVE );
 	vr_seated = Cvar_Get( "vr_seated", "0", CVAR_ARCHIVE );
 	vr_seatedHeight = Cvar_Get( "vr_seatedHeight", "0.5", CVAR_ARCHIVE );
@@ -1210,7 +1212,7 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_vignette", "0", CVAR_ARCHIVE );            // cg_vrcomfort.c
 	Cvar_Get( "vr_wristHud", "1", CVAR_ARCHIVE );           // cg_vrwrist.c
 	Cvar_Get( "vr_pouchMags", "1", CVAR_ARCHIVE );          // spare magazines shown in the pouch
-	Cvar_Get( "vr_weaponScale", "0.42", CVAR_ARCHIVE );        // guns and hands: 1, 0.7 or 0.42 (life size)
+	Cvar_Get( "vr_gunSize", "1", CVAR_ARCHIVE );       // guns and hands: 1 life size, 1.15 larger, 0.87 smaller
 	VR_InitBindings();
 	Cbuf_AddText( "exec vr_controls.cfg\n" );              // the player's button layout
 
@@ -1743,12 +1745,13 @@ and still does its own job, so the grip combos work as before.
 */
 #define VR_WHEEL_HOLD_MS    300
 #define VR_DOUBLE_PRESS_MS  350
-#define VR_WHEEL_REACH      0.12f       // metres of hand travel for a full pick
+#define VR_WHEEL_REACH      0.10f       // metres of hand travel for a full pick
 
 static struct {
 	qboolean    open;
 	qboolean    quiet;      // closed, the stick still has to come back to the middle
 	float       start[2];   // the hand in head space (x right, y up) when it opened
+	float       point[2];   // where it points on the wheel, smoothed
 } vrWheel;
 
 static qboolean VR_WheelHand( int dom, float out[2] ) {
@@ -1808,6 +1811,7 @@ static qboolean VR_Wheel( int dom ) {
 			 cls.realtime - d->downTime[VRB_SQUEEZE] >= VR_WHEEL_HOLD_MS && VR_WheelHand( dom, vrWheel.start ) ) {
 			Cbuf_AddText( "+weaponwheel\n" );
 			vrWheel.open = qtrue;
+			vrWheel.point[0] = vrWheel.point[1] = 0.0f;
 			xr.rightGripCombo = qtrue;      // not a grip tap reload
 			VR_Haptic( dom, 0.3f, 30 );
 		}
@@ -1835,8 +1839,11 @@ static qboolean VR_Wheel( int dom ) {
 		x = d->stick[0];
 		y = d->stick[1];
 	} else if ( VR_WheelHand( dom, pos ) ) {
-		x = ( pos[0] - vrWheel.start[0] ) / VR_WHEEL_REACH;
-		y = ( pos[1] - vrWheel.start[1] ) / VR_WHEEL_REACH;
+		// smoothed: the hand's small shakes don't jitter the pick
+		vrWheel.point[0] += ( ( pos[0] - vrWheel.start[0] ) / VR_WHEEL_REACH - vrWheel.point[0] ) * 0.35f;
+		vrWheel.point[1] += ( ( pos[1] - vrWheel.start[1] ) / VR_WHEEL_REACH - vrWheel.point[1] ) * 0.35f;
+		x = vrWheel.point[0];
+		y = vrWheel.point[1];
 	} else {
 		x = y = 0.0f;
 	}
@@ -2061,9 +2068,14 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 	cl.viewangles[YAW] = com_vr.weaponAngles[YAW];
 	cl.viewangles[ROLL] = 0;
 
-	// the trigger, sampled this frame
+	// the trigger, sampled this frame. The knife slashes by swinging it, so its trigger
+	// throws one instead (the flat game's alt fire: hold, let go to throw)
 	if ( xr.attackHeld && !Key_GetCatcher() ) {
-		cmd->buttons |= BUTTON_ATTACK;
+		if ( cl.snap.ps.weapon == WP_KNIFE ) {
+			cmd->wbuttons |= WBUTTON_ATTACK2;
+		} else {
+			cmd->buttons |= BUTTON_ATTACK;
+		}
 	}
 	if ( !Key_GetCatcher() && VR_BinocularGesture( off ) ) {
 		cmd->wbuttons |= WBUTTON_ZOOM;
@@ -2572,6 +2584,20 @@ qboolean CL_VR_RenderFrame( void ) {
 
 	uiFullscreen = uivm && VM_Call( uivm, UI_IS_FULLSCREEN );
 	worldVisible = clc.state == CA_ACTIVE && cls.cgameStarted && !uiFullscreen;
+
+	// cutscenes play flat on the 2D layer, a screen hanging in front of the player, so the
+	// scripted camera doesn't swing the world around the head
+	{
+		static qboolean wasFlat;
+		com_vr.flatCutscene = worldVisible && cl.cameraMode && vr_flatCutscenes->integer;
+		if ( com_vr.flatCutscene && !wasFlat ) {
+			xr.menuPlaced = qfalse;
+		}
+		wasFlat = com_vr.flatCutscene;
+		if ( com_vr.flatCutscene ) {
+			worldVisible = qfalse;
+		}
+	}
 	uiInWorld = xr.menuMode || !worldVisible;
 	if ( uiInWorld && !xr.menuPlaced ) {
 		VR_PlaceMenu();

@@ -81,6 +81,7 @@ typedef struct vrShared_s {
 	// written by cgame every frame
 	//
 	int     cutscene;           // scripted camera active, head look is free
+	int     flatCutscene;       // ...and shown on a flat screen in front of the player (cl_vr.c)
 	float   eyeHeight;          // eye height above ps->origin used for the view (game units)
 	int     zoomed;             // scope / binocular view active
 	int     twoHandAllowed;     // current weapon can be steadied with the off hand (not pistols)

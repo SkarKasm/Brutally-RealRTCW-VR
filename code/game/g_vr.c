@@ -678,6 +678,66 @@ static void G_VR_HandUse( gentity_t *ent, const vec3_t hand ) {
 	g_vrHandUse = qfalse;
 }
 
+// the use button in VR: from the eyes along the head's look (false without a headset)
+qboolean G_VR_LookRay( gentity_t *ent, float dist, vec3_t from, vec3_t to ) {
+	vec3_t angles, fwd;
+
+	if ( !G_VR_IsPlayer( ent ) ) {
+		return qfalse;
+	}
+	G_VR_Eye( ent, from );
+	angles[PITCH] = gVR->hmdAngles[PITCH];
+	angles[YAW] = gVR->hmdAngles[YAW] + SHORT2ANGLE( ent->client->ps.delta_angles[YAW] );
+	angles[ROLL] = 0;
+	AngleVectors( angles, fwd, NULL, NULL );
+	VectorMA( from, dist, fwd, to );
+	return qtrue;
+}
+
+/*
+=================
+G_VR_PushDoors
+
+A hand pushed into a closed door opens it, the way a hand on a door would.
+=================
+*/
+#define VR_PUSH_SPEED   0.3f        // metres per second into the door
+
+static void G_VR_PushDoors( gentity_t *ent ) {
+	static vec3_t last[2];
+	static int lastTime, nextPush;
+	static qboolean valid;
+	vec3_t hand, dir, to;
+	trace_t tr;
+	gentity_t *door;
+	int h, now = ent->client->ps.commandTime;
+	float dt = ( now - lastTime ) * 0.001f;
+
+	for ( h = 0; h < 2; h++ ) {
+		G_VR_HandWorld( ent, h, hand );
+		if ( valid && dt > 0.0f && dt < 0.2f && now >= nextPush && gVR->handValid[h] &&
+			 ent->client->ps.stats[STAT_HEALTH] > 0 ) {
+			VectorSubtract( hand, last[h], dir );
+			if ( VectorLength( dir ) / gVR->worldScale / dt >= VR_PUSH_SPEED ) {
+				VectorNormalize( dir );
+				VectorMA( hand, 3.0f, dir, to );
+				trap_Trace( &tr, last[h], NULL, NULL, to, ent->s.number, CONTENTS_SOLID );
+				door = tr.fraction < 1.0f && tr.entityNum < ENTITYNUM_WORLD ? &g_entities[tr.entityNum] : NULL;
+				if ( door && door->classname && DotProduct( dir, tr.plane.normal ) < -0.3f &&
+					 ( !Q_stricmp( door->classname, "func_door" ) || !Q_stricmp( door->classname, "func_door_rotating" ) ) &&
+					 ( door->moverState == MOVER_POS1 || door->moverState == MOVER_POS1ROTATE ) ) {
+					G_TryDoor( door, ent, ent );
+					G_VR_Haptic( h, 0.5f, 40 );
+					nextPush = now + 1000;
+				}
+			}
+		}
+		VectorCopy( hand, last[h] );
+	}
+	lastTime = now;
+	valid = qtrue;
+}
+
 /*
 =================
 G_VR_FlatGrab
@@ -966,6 +1026,7 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 	released = !down && vrp.gripWas;
 	vrp.gripWas = down;
 
+	G_VR_PushDoors( ent );
 	used = ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_Reload( ent, offHand, pressed, released, dom );
 
 	// (a second pistol / SMG: a double press of the off hand grip, cl_vr.c)

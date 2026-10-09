@@ -1221,7 +1221,9 @@ static int CG_CalcViewValues( void ) {
 			angles[ROLL] = 0;
 			angles[PITCH] = -angles[PITCH];     // (SA) compensate for reversed pitch (this makes the game match the editor, however I'm guessing the real fix is to be done there)
 			VectorCopy( angles, cg.refdefViewAngles );
-			CG_VR_CutsceneView( cg.refdef.vieworg, cg.refdefViewAngles );   // RealRTCW-VR: free look
+			if ( !CG_VR_FlatCutscene() ) {
+				CG_VR_CutsceneView( cg.refdef.vieworg, cg.refdefViewAngles );   // RealRTCW-VR: free look
+			}
 			AnglesToAxis( cg.refdefViewAngles, cg.refdef.viewaxis );
 
 			if ( cg_fixedAspect.integer ) {
@@ -1732,7 +1734,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 	// RealRTCW-VR: the headset's 2D layer (HUD) must not get any 3D rendering, the
 	// skybox portal in particular renders a full scene of its own
-	build3D = !CG_VR_2DPass();
+	build3D = !CG_VR_2DPass() || CG_VR_FlatCutscene();    // a flat cutscene is drawn there
 
 	// RF, draw the skyboxportal
 	if ( build3D ) {

@@ -1843,6 +1843,7 @@ typedef struct {
 extern cgVRState_t cgvr;
 
 qboolean CG_VR_Active( void );
+qboolean CG_VR_FlatCutscene( void );
 qboolean CG_VR_EmptySwitch( void );
 qboolean CG_VR_EyePass( void );
 qboolean CG_VR_2DPass( void );
@@ -2374,6 +2375,7 @@ void CG_HoldableUsedupChange( void ); //----(SA)	added
 void CG_UpdateWeaponWheelSelection( float cursorx, float cursory );
 
 int CG_CollectWeaponWheelWeapons( int *visibleWeapons, int maxWeapons );
+void CG_WeaponWheelSlot( int idx, int numVisible, float *x, float *y );
 
 //----(SA) added to header to access from outside cg_weapons.c
 void CG_AddDebris( vec3_t origin, vec3_t dir, int speed, int duration, int count );

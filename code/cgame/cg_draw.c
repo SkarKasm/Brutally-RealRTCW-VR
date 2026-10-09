@@ -4429,8 +4429,9 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 		return;
 	}
 
-	// RealRTCW-VR: the 2D layer only gets the HUD, the eyes only the world
-	if ( CG_VR_2DPass() ) {
+	// RealRTCW-VR: the 2D layer only gets the HUD, the eyes only the world (a flat cutscene
+	// is drawn whole on the 2D layer, like on a monitor)
+	if ( CG_VR_2DPass() && !CG_VR_FlatCutscene() ) {
 		CG_Draw2D( stereoView );
 		return;
 	}
@@ -4635,15 +4636,41 @@ static const char *CG_WeaponWheelName( int weap ) {
 	return cgs.itemPrintNames[itemNum];
 }
 
+// where icon idx of numVisible sits on the wheel, as a direction scaled by the radius
+// (RealRTCW-VR: shared with the VR selection, which picks the icon the hand points at)
+void CG_WeaponWheelSlot( int idx, int numVisible, float *x, float *y ) {
+	static const float three[3][2] = { { 0, -1 }, { 0.85f, 0.55f }, { -0.85f, 0.55f } };
+	static const float four[4][2] = { { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } };
+
+	if ( numVisible == 1 ) {
+		*x = 0;
+		*y = -1;
+	} else if ( numVisible == 2 ) {
+		*x = idx == 0 ? -1 : 1;
+		*y = 0;
+	} else if ( numVisible == 3 ) {
+		*x = three[idx][0];
+		*y = three[idx][1];
+	} else if ( numVisible == 4 ) {
+		*x = four[idx][0];
+		*y = four[idx][1];
+	} else {
+		float angle = ( (float)idx / (float)numVisible ) * 2.0f * M_PI + M_PI / numVisible - M_PI * 0.5f;
+		*x = cosf( angle );
+		*y = sinf( angle );
+	}
+}
+
 void CG_DrawWeaponWheel( void ) {
 	float cx, cy;
 	float radius;
+	qboolean vr = CG_VR_Active();
 
 	if ( !cg.weaponWheel.active ) {
 		return;
 	}
 
-	cx = SCREEN_WIDTH * 0.35f;
+	cx = SCREEN_WIDTH * ( vr ? 0.5f : 0.35f );     // RealRTCW-VR: in front of the eyes
 	cy = SCREEN_HEIGHT * 0.5f;
 
 	int visibleWeapons[MAX_WEAPONS];
@@ -4728,53 +4755,21 @@ void CG_DrawWeaponWheel( void ) {
 		float h = 40.0f * scale * selectedScale;
 		float w = wideweap ? ( h * 2.0f ) : h;
 
-		float x = cx;
-		float y = cy;
+		float x, y;
 
-		if ( numVisible == 1 ) {
-			x = cx;
-			y = cy - radius;
-		} else if ( numVisible == 2 ) {
-			if ( idx == 0 ) {
-				x = cx - radius;
-				y = cy;
-			} else {
-				x = cx + radius;
-				y = cy;
-			}
-		} else if ( numVisible == 3 ) {
-			if ( idx == 0 ) {
-				x = cx;
-				y = cy - radius;
-			} else if ( idx == 1 ) {
-				x = cx + radius * 0.85f;
-				y = cy + radius * 0.55f;
-			} else {
-				x = cx - radius * 0.85f;
-				y = cy + radius * 0.55f;
-			}
-		} else if ( numVisible == 4 ) {
-			if ( idx == 0 ) {
-				x = cx;
-				y = cy - radius;
-			} else if ( idx == 1 ) {
-				x = cx + radius;
-				y = cy;
-			} else if ( idx == 2 ) {
-				x = cx;
-				y = cy + radius;
-			} else {
-				x = cx - radius;
-				y = cy;
-			}
-		} else {
-			float angleOffset = ( 2.0f * M_PI ) / (float)numVisible * 0.5f;
-			float angle = ( (float)idx / (float)numVisible ) * 2.0f * M_PI;
-			angle += angleOffset;
-			angle -= M_PI * 0.5f;
+		CG_WeaponWheelSlot( idx, numVisible, &x, &y );
+		x = cx + x * radius;
+		y = cy + y * radius;
 
-			x = cx + cosf( angle ) * radius;
-			y = cy + sinf( angle ) * radius;
+		// RealRTCW-VR: a clear box behind the weapon being picked
+		if ( vr && weap == cg.weaponWheel.hoveredWeapon ) {
+			static const float hl[4] = { 1.0f, 0.75f, 0.2f, 0.35f };
+			static const float edge[4] = { 1.0f, 0.8f, 0.3f, 0.9f };
+			CG_FillRect( x - w * 0.5f - 4, y - h * 0.5f - 4, w + 8, h + 8, hl );
+			CG_FillRect( x - w * 0.5f - 4, y - h * 0.5f - 4, w + 8, 2, edge );
+			CG_FillRect( x - w * 0.5f - 4, y + h * 0.5f + 2, w + 8, 2, edge );
+			CG_FillRect( x - w * 0.5f - 4, y - h * 0.5f - 4, 2, h + 8, edge );
+			CG_FillRect( x + w * 0.5f + 2, y - h * 0.5f - 4, 2, h + 8, edge );
 		}
 
 		qhandle_t icon;
@@ -4849,7 +4844,17 @@ void CG_DrawWeaponWheel( void ) {
 	}
 
 	// --- cursor ---
-	if ( fabsf( cg.weaponWheel.stickX ) <= 0.2f && fabsf( cg.weaponWheel.stickY ) <= 0.2f )
+	if ( vr ) {
+		// RealRTCW-VR: a dot where the hand points, on a track to the picked weapon
+		float sx = cg.weaponWheel.stickX, sy = cg.weaponWheel.stickY;
+		float l = sqrtf( sx * sx + sy * sy );
+		static const float dot[4] = { 1.0f, 0.85f, 0.3f, 1.0f };
+		if ( l > 1.0f ) {
+			sx /= l;
+			sy /= l;
+		}
+		CG_FillRect( cx + sx * radius * 0.8f - 4, cy + sy * radius * 0.8f - 4, 8, 8, dot );
+	} else if ( fabsf( cg.weaponWheel.stickX ) <= 0.2f && fabsf( cg.weaponWheel.stickY ) <= 0.2f )
 	{
 		CG_DrawPic(
 			cgs.cursorX - 8.0f,

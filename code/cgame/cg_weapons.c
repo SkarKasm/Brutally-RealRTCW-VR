@@ -2448,7 +2448,7 @@ CG_AddWeaponWithPowerups
 ========================
 */
 static void CG_AddWeaponWithPowerups( refEntity_t *gun, int powerups, playerState_t *ps, centity_t *cent ) {
-	// RealRTCW-VR: a gun drawn smaller (vr_weaponScale) has shortened axes
+	// RealRTCW-VR: a gun drawn at another size (CG_VR_ScaleFor) has shortened axes
 	{
 		float len = VectorLengthSquared( gun->axis[0] );
 		if ( len < 0.98f || len > 1.02f ) {
@@ -5739,6 +5739,39 @@ void CG_UpdateWeaponWheelSelection( float cursorx, float cursory ) {
 		cg.weaponWheel.hoveredWeapon = visibleWeapons[0];
 		cg.weaponWheel.latchedWeapon = visibleWeapons[0];
 		cg.weaponWheel.lastWeapon = visibleWeapons[0];
+		return;
+	}
+
+	// RealRTCW-VR: the hand (or stick) points at an icon: the nearest one by direction, and
+	// it only gives way to a neighbour once that's clearly nearer, so it doesn't flicker
+	if ( CG_VR_Active() ) {
+		float sx = cg.weaponWheel.stickX, sy = cg.weaponWheel.stickY, a, best = 1e9f, cur = 1e9f;
+		int i, pick = 0;
+
+		if ( sqrtf( sx * sx + sy * sy ) < 0.3f ) {
+			cg.weaponWheel.hoveredWeapon = cg.weaponWheel.latchedWeapon;
+			return;
+		}
+		a = atan2f( sy, sx );
+		for ( i = 0; i < numVisible; i++ ) {
+			float x, y, d;
+			CG_WeaponWheelSlot( i, numVisible, &x, &y );
+			d = fabsf( AngleNormalize180( RAD2DEG( atan2f( y, x ) - a ) ) );
+			if ( d < best ) {
+				best = d;
+				pick = visibleWeapons[i];
+			}
+			if ( visibleWeapons[i] == cg.weaponWheel.latchedWeapon ) {
+				cur = d;
+			}
+		}
+		if ( cur < 1e9f && cur - best < 12.0f ) {
+			pick = cg.weaponWheel.latchedWeapon;
+		}
+		if ( pick != cg.weaponWheel.latchedWeapon ) {
+			CG_VR_Haptic( CG_VR_DominantHand(), 0.2f, 15 );    // a tick for each new weapon
+		}
+		cg.weaponWheel.latchedWeapon = cg.weaponWheel.lastWeapon = cg.weaponWheel.hoveredWeapon = pick;
 		return;
 	}
 

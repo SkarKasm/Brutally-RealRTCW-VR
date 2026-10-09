@@ -1406,10 +1406,13 @@ void Cmd_Activate_f( gentity_t *ent ) {
 
 	VectorMA( offset, 96, forward, end );
 
-	// RealRTCW-VR: a hand reaching for it
+	// RealRTCW-VR: a hand reaching for it, or the use button along where the head looks
+	// (not where the gun points)
 	if ( g_vrHandUse ) {
 		VectorCopy( g_vrHandFrom, offset );
 		VectorCopy( g_vrHandTo, end );
+	} else {
+		G_VR_LookRay( ent, 96, offset, end );
 	}
 
 	trap_Trace( &tr, offset, NULL, NULL, end, ent->s.number, ( CONTENTS_SOLID | CONTENTS_BODY | CONTENTS_CORPSE | CONTENTS_TRIGGER ) );
