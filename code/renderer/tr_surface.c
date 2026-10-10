@@ -952,7 +952,7 @@ static void RB_SurfaceMesh( md3Surface_t *surface ) {
 	RB_CHECKOVERFLOW( surface->numVerts, surface->numTriangles * 3 );
 
 	LerpMeshVertexes( surface, backlerp );
-	if ( backEnd.currentEntity->e.vrBendMagic == VR_BEND_MAGIC && R_VR_IsSleeveSurface( surface->name ) ) {
+	if ( backEnd.currentEntity->e.vrBendMagic == VR_BEND_MAGIC && R_VR_IsHandSurface( surface->name ) ) {
 		R_VR_BendArm( backEnd.currentEntity->e.vrBend, tess.numVertexes, surface->numVerts );
 	}
 
@@ -1170,7 +1170,7 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 	RB_CHECKOVERFLOW( surface->numVerts, surface->numTriangles * 3 );
 
 	LerpCMeshVertexes( surface, backlerp );
-	if ( backEnd.currentEntity->e.vrBendMagic == VR_BEND_MAGIC && R_VR_IsSleeveSurface( surface->name ) ) {
+	if ( backEnd.currentEntity->e.vrBendMagic == VR_BEND_MAGIC && R_VR_IsHandSurface( surface->name ) ) {
 		R_VR_BendArm( backEnd.currentEntity->e.vrBend, tess.numVertexes, surface->numVerts );
 	}
 

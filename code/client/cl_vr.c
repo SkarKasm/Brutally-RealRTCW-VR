@@ -1550,6 +1550,8 @@ typedef enum {
 	VRA_USEITEM,
 	VRA_ITEMNEXT,
 	VRA_ALTFIRE,
+	VRA_MAGDOM,
+	VRA_MAGOFF,
 	VRA_COUNT
 } vrAction_t;
 
@@ -1558,19 +1560,21 @@ static const struct {
 	const char *def;
 } vrActions[VRA_COUNT] = {
 	// the RTCWQuest layout
-	{ "vr_bind_jump",     "B" },
-	{ "vr_bind_crouch",   "A" },
+	{ "vr_bind_jump",     "RUP" },
+	{ "vr_bind_crouch",   "RDOWN" },
 	{ "vr_bind_stand",    "none" },
 	{ "vr_bind_use",      "RCLICK" },
 	{ "vr_bind_reload",   "none" },
-	{ "vr_bind_weapnext", "RDOWN" },
-	{ "vr_bind_weapprev", "RUP" },
+	{ "vr_bind_weapnext", "none" },
+	{ "vr_bind_weapprev", "none" },
 	{ "vr_bind_kick",     "LCLICK" },
 	{ "vr_bind_notebook", "Y" },
 	{ "vr_bind_hud",      "G+A" },
 	{ "vr_bind_useitem",  "G+X" },
 	{ "vr_bind_itemnext", "G+B" },
-	{ "vr_bind_altfire",  "X" },
+	{ "vr_bind_altfire",  "none" },
+	{ "vr_bind_magdom",   "A" },      // the weapon hand's gun drops its magazine
+	{ "vr_bind_magoff",   "X" },      // the off hand's gun (dual wielding), or the one gun
 };
 
 static const struct {
@@ -1902,12 +1906,17 @@ static void VR_GameControls( void ) {
 		Cbuf_AddText( "weapalt\n" );                // altfire moved off the trigger
 	}
 
-	if ( VR_Released( dom, VRB_SQUEEZE ) && !xr.rightGripCombo &&
-		 cls.realtime - d->downTime[VRB_SQUEEZE] < 400 ) {
-		// tap grip: drop the magazine for weapons reloaded by hand (the game decides),
-		// a normal reload for the rest
+	// magazine release: drops the magazine of a gun reloaded by hand (the game decides),
+	// a normal reload for the rest. Dual wielding, each hand's button is its own gun's and
+	// the guns are reloaded at the hips (g_vr.c)
+	if ( VR_ActionPressed( VRA_MAGDOM ) || ( VR_ActionPressed( VRA_MAGOFF ) && !com_vr.dualWield ) ) {
 		com_vr.ejectCount++;
-		Cbuf_AddText( "+reload\nwait\n-reload\n" );
+		if ( !com_vr.dualWield ) {
+			Cbuf_AddText( "+reload\nwait\n-reload\n" );
+		}
+	}
+	if ( VR_ActionPressed( VRA_MAGOFF ) && com_vr.dualWield ) {
+		com_vr.ejectOffCount++;
 	}
 
 	// slide release: reload (two guns reload only with both hands down at the waist;
@@ -2083,6 +2092,10 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 
 	// dual pistols: the off hand's trigger fires the off hand's gun, aimed where it points
 	com_vr.akimboLeft = 0;
+	com_vr.akimboBoth = com_vr.dualWield && xr.attackOffHeld && xr.attackHeld && !Key_GetCatcher();
+	if ( com_vr.akimboBoth ) {
+		xr.akimboLastLeft = !xr.akimboLastLeft;     // both triggers: the guns take turns
+	}
 	if ( com_vr.dualWield && xr.attackOffHeld && ( !xr.attackHeld || xr.akimboLastLeft ) &&
 		 com_vr.handValid[off] && !Key_GetCatcher() ) {
 		cmd->buttons |= BUTTON_ATTACK;

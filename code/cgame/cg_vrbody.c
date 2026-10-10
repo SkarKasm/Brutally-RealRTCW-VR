@@ -42,6 +42,7 @@ the Free Software Foundation, either version 3 of the License, or
 enum { SIDE_L, SIDE_R };
 
 static vmCvar_t vr_fullBody;
+static vmCvar_t vr_shoulderSpread;     // how far out the HD arms meet the shoulders
 static vmCvar_t cg_flatLegs;
 static vmCvar_t cg_flatLegsBack;    // flatscreen legs: the neck sits this far further back
 static vmCvar_t cg_flatLegsCut;     // flatscreen legs: 0 whole torso, 1-3 fold away above Spine3/2/1
@@ -69,6 +70,7 @@ static struct {
 void CG_VR_BodyInit( void ) {
 	memset( &vb, 0, sizeof( vb ) );
 	trap_Cvar_Register( &vr_fullBody, "vr_fullBody", "1", CVAR_ARCHIVE );
+	trap_Cvar_Register( &vr_shoulderSpread, "vr_shoulderSpread", "3", CVAR_ARCHIVE );
 	trap_Cvar_Register( &cg_flatLegs, "cg_flatLegs", "1", CVAR_ARCHIVE );
 	trap_Cvar_Register( &cg_flatLegsBack, "cg_flatLegsBack", "6", CVAR_ARCHIVE );
 	trap_Cvar_Register( &cg_flatLegsCut, "cg_flatLegsCut", "0", CVAR_ARCHIVE );
@@ -536,12 +538,19 @@ void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 		if ( gunHand[h] ) {
 			// the flat game's whole HD arm is drawn here: its sleeve bends at the elbow
 			// and runs up to this shoulder (CG_VR_ArmBend), and BJ's own arm folds away
-			int ua = vb.upper[side];
+			int ua = vb.upper[side], fa = vb.fore[side];
 			if ( ua >= 0 ) {
+				float out = h == VR_HAND_RIGHT ? -1.0f : 1.0f;     // axis[1] is the body's left
+				trap_Cvar_Update( &vr_shoulderSpread );
 				for ( i = 0; i < 3; i++ ) {
 					cgvr.shoulder[h][i] = body->origin[i] + vb.pos[ua][0] * body->axis[0][i] +
 										  vb.pos[ua][1] * body->axis[1][i] + vb.pos[ua][2] * body->axis[2][i];
+					cgvr.shoulderOut[h][i] = out * body->axis[1][i];
 				}
+				// the HD sleeves are wider than BJ's: their tops sit further out
+				VectorNormalize( cgvr.shoulderOut[h] );
+				VectorMA( cgvr.shoulder[h], vr_shoulderSpread.value, cgvr.shoulderOut[h], cgvr.shoulder[h] );
+				cgvr.upperArm[h] = fa >= 0 ? Distance( vb.pos[ua], vb.pos[fa] ) * VectorLength( body->axis[0] ) : 0;
 				cgvr.shoulderTime = cg.time;
 			}
 			continue;

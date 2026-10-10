@@ -187,6 +187,13 @@ void R_VR_SetupViewParms( viewParms_t *parms, int rdflags ) {
 	parms->vrFovTan[2] = t[2];
 	parms->vrFovTan[3] = t[3];
 
+	// the 3D sky (skybox portal) is a small set seen from a camera inside it: with the
+	// eyes apart it reads as a miniature right in front of you, so both eyes look from
+	// the same spot and it sits at infinity, like a skybox should
+	if ( rdflags & RDF_SKYBOXPORTAL ) {
+		o = vec3_origin;
+	}
+
 	// the eye sits off the head centre the refdef describes
 	VectorMA( parms->or.origin, o[0], parms->or.axis[0], parms->or.origin );
 	VectorMA( parms->or.origin, o[1], parms->or.axis[1], parms->or.origin );
@@ -219,36 +226,27 @@ qboolean R_VR_IsHandSurface( const char *name ) {
 ==============
 R_VR_BendArm
 
-A first person arm's sleeve, already in tess: everything past the elbow (bend[0..2], along
-bend[3..5]) turns to run along bend[6..8] instead, stretched by bend[9], blended over
-bend[10] either side of the elbow so the sleeve bends instead of tearing.
+A first person arm (hand, forearm, elbow, start of the upper arm), already in tess, posed
+straight by the model. It bends like a skeleton would: past the wrist (bend[0..2]) the
+forearm (along bend[3..5], bend[6] long) turns to run along bend[7..9]; past the elbow
+the upper arm turns to run along bend[10..12], stretched by bend[13]. Each joint blends
+over bend[14] either side so the sleeve bends instead of tearing.
 ==============
 */
-void R_VR_BendArm( const float *bend, int first, int count ) {
-	vec3_t e, a, d, axis, r[3], v, w, n;
-	float s = bend[9], blend = bend[10], c, sn, t, k, x;
+static void R_VR_Rotation( const vec3_t a, const vec3_t d, vec3_t r[3] ) {
+	vec3_t axis;
+	float c, sn, k;
 	int i, j;
 
-	VectorCopy( bend + 0, e );
-	VectorCopy( bend + 3, a );
-	VectorCopy( bend + 6, d );
-	if ( VectorNormalize( a ) < 0.001f || VectorNormalize( d ) < 0.001f ) {
-		return;
-	}
-	if ( blend < 0.01f ) {
-		blend = 0.01f;
-	}
-	// the rotation taking a onto d (Rodrigues)
 	CrossProduct( a, d, axis );
 	sn = VectorNormalize( axis );
 	c = DotProduct( a, d );
 	if ( sn < 0.0001f ) {
+		sn = 0;
 		if ( c > 0 ) {
 			VectorSet( axis, 0, 0, 1 );
-			sn = 0;
 		} else {
 			PerpendicularVector( axis, a );     // straight back: half a turn about anything
-			sn = 0;
 		}
 	}
 	k = 1.0f - c;
@@ -260,33 +258,67 @@ void R_VR_BendArm( const float *bend, int first, int count ) {
 	r[0][1] -= sn * axis[2]; r[1][0] += sn * axis[2];
 	r[0][2] += sn * axis[1]; r[2][0] -= sn * axis[1];
 	r[1][2] -= sn * axis[0]; r[2][1] += sn * axis[0];
+}
+
+static float R_VR_Smooth( float x ) {
+	x = x < 0 ? 0 : ( x > 1 ? 1 : x );
+	return x * x * ( 3 - 2 * x );
+}
+
+static void R_VR_Mul( vec3_t r[3], const vec3_t v, vec3_t out ) {
+	out[0] = DotProduct( r[0], v );
+	out[1] = DotProduct( r[1], v );
+	out[2] = DotProduct( r[2], v );
+}
+
+void R_VR_BendArm( const float *bend, int first, int count ) {
+	vec3_t w, a, d1, d2, r1[3], r2[3], e0, en, v, pf, pu, n1, n2, tmp;
+	float len = bend[6], s = bend[13], blend = bend[14], t, tu, x1, x2;
+	int i, k;
+
+	VectorCopy( bend + 0, w );
+	VectorCopy( bend + 3, a );
+	VectorCopy( bend + 7, d1 );
+	VectorCopy( bend + 10, d2 );
+	if ( VectorNormalize( a ) < 0.001f || VectorNormalize( d1 ) < 0.001f || VectorNormalize( d2 ) < 0.001f ) {
+		return;
+	}
+	if ( blend < 0.01f ) {
+		blend = 0.01f;
+	}
+	R_VR_Rotation( a, d1, r1 );
+	R_VR_Rotation( a, d2, r2 );
+	VectorMA( w, len, a, e0 );
+	VectorMA( w, len, d1, en );
 
 	for ( i = first; i < first + count; i++ ) {
 		float *xyz = tess.xyz[i], *nrm = tess.normal[i];
-		VectorSubtract( xyz, e, v );
+		VectorSubtract( xyz, w, v );
 		t = DotProduct( v, a );
 		if ( t < -blend ) {
-			continue;
+			continue;       // the hand
 		}
-		x = ( t + blend ) / ( 2 * blend );
-		x = x > 1 ? 1 : x;
-		x = x * x * ( 3 - 2 * x );
-		if ( t > 0 ) {
-			VectorMA( v, ( s - 1 ) * t, a, v );
+		x1 = R_VR_Smooth( ( t + blend ) / ( 2 * blend ) );
+		x2 = R_VR_Smooth( ( t - len + blend ) / ( 2 * blend ) );
+		// the forearm, turned at the wrist
+		R_VR_Mul( r1, v, pf );
+		VectorAdd( pf, w, pf );
+		R_VR_Mul( r1, nrm, n1 );
+		// the upper arm, turned at the (moved) elbow and stretched
+		VectorSubtract( xyz, e0, v );
+		tu = DotProduct( v, a );
+		if ( tu > 0 ) {
+			VectorMA( v, ( s - 1 ) * tu, a, v );
 		}
-		w[0] = DotProduct( r[0], v );
-		w[1] = DotProduct( r[1], v );
-		w[2] = DotProduct( r[2], v );
-		VectorAdd( w, e, w );
-		xyz[0] += ( w[0] - xyz[0] ) * x;
-		xyz[1] += ( w[1] - xyz[1] ) * x;
-		xyz[2] += ( w[2] - xyz[2] ) * x;
-		n[0] = DotProduct( r[0], nrm );
-		n[1] = DotProduct( r[1], nrm );
-		n[2] = DotProduct( r[2], nrm );
-		nrm[0] += ( n[0] - nrm[0] ) * x;
-		nrm[1] += ( n[1] - nrm[1] ) * x;
-		nrm[2] += ( n[2] - nrm[2] ) * x;
+		R_VR_Mul( r2, v, pu );
+		VectorAdd( pu, en, pu );
+		R_VR_Mul( r2, nrm, n2 );
+		for ( k = 0; k < 3; k++ ) {
+			tmp[k] = xyz[k] + ( pf[k] - xyz[k] ) * x1;
+			xyz[k] = tmp[k] + ( pu[k] - tmp[k] ) * x2;
+			tmp[k] = nrm[k] + ( n1[k] - nrm[k] ) * x1;
+			nrm[k] = tmp[k] + ( n2[k] - tmp[k] ) * x2;
+		}
 		VectorNormalize( nrm );
 	}
 }

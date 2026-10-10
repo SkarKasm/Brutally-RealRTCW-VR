@@ -9908,8 +9908,8 @@ int BG_GetMaxClip(const playerState_t *ps, int weapon) {
 		upgradeLevel = 0;
 	}
 
-	// RealRTCW-VR: two guns, two magazines
-	dual = !ps->aiChar && ps->persistant[PERS_DUAL] && BG_DualCapable( weapon ) ? 2 : 1;
+	// RealRTCW-VR: two guns, two magazines: the off hand's is its own (BG_DUAL_LEFT_CLIP)
+	dual = 1;
 
 	if (upgradeLevel >= 1) {
 		maxClip = wt->maxclipUpgraded;

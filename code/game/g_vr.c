@@ -50,6 +50,8 @@ typedef struct {
 	qboolean    magOut[WP_NUM_WEAPONS];
 	int         weapon;             // weapon the shared state describes
 	int         lastEject;
+	int         lastEjectOff;
+	int         hipSince[2];        // dual wielding: when each hand reached its hip, 0 not there
 	qboolean    gripWas;
 
 	int         heldItem;
@@ -133,6 +135,7 @@ static void G_VR_Init( void ) {
 	vrp.weapon = -1;
 	vrp.grabbed = vrp.thrown = -1;
 	vrp.lastEject = gVR->ejectCount;
+	vrp.lastEjectOff = gVR->ejectOffCount;
 	vrp.initialised = qtrue;
 }
 
@@ -235,6 +238,91 @@ void G_VR_OnFire( gentity_t *ent ) {
 		break;
 	}
 	gVR->chambered = vrp.chambered[weapon];
+}
+
+/*
+=================
+G_VR_DualGuns
+
+Dual wielding: the off hand's gun has its own magazine (BG_DUAL_LEFT_CLIP, which pmove fires
+the off hand's shots from). Each hand's magazine button drops its gun's magazine, and a hand
+held down at its hip reloads that gun.
+=================
+*/
+#define VR_HIP_RELOAD_MS    450
+
+void G_DualPutAway( playerState_t *ps ) {
+	int w = ps->ammoclip[BG_DUAL_LEFT_WEAPON];
+
+	if ( w > WP_NONE && w < WP_NUM_WEAPONS ) {
+		ps->ammo[BG_FindAmmoForWeapon( w )] += ps->ammoclip[BG_DUAL_LEFT_CLIP];
+	}
+	ps->ammoclip[BG_DUAL_LEFT_CLIP] = 0;
+	ps->ammoclip[BG_DUAL_LEFT_WEAPON] = 0;
+}
+
+static void G_VR_DualGuns( gentity_t *ent, int dom ) {
+	playerState_t *ps = &ent->client->ps;
+	int weapon = ps->weapon, h, *clip, *reserve, max, n;
+	float drop;
+	qboolean dual = BG_DualActive( ps );
+
+	// the off hand's magazine belongs to the gun in that hand
+	if ( !dual || ps->ammoclip[BG_DUAL_LEFT_WEAPON] != weapon ) {
+		G_DualPutAway( ps );
+		if ( dual ) {
+			// a fresh gun comes up loaded
+			ps->ammoclip[BG_DUAL_LEFT_WEAPON] = weapon;
+			reserve = &ps->ammo[BG_FindAmmoForWeapon( weapon )];
+			n = MIN( BG_GetMaxClip( ps, weapon ), *reserve );
+			ps->ammoclip[BG_DUAL_LEFT_CLIP] = n;
+			*reserve -= n;
+		}
+	}
+	if ( !dual || ps->stats[STAT_HEALTH] <= 0 ) {
+		if ( dual ) {
+			vrp.lastEject = gVR->ejectCount;    // (one gun: G_VR_Reload takes it)
+		}
+		vrp.lastEjectOff = gVR->ejectOffCount;
+		vrp.hipSince[0] = vrp.hipSince[1] = 0;
+		return;
+	}
+
+	reserve = &ps->ammo[BG_FindAmmoForWeapon( weapon )];
+	max = BG_GetMaxClip( ps, weapon );
+	drop = 0.45f * ( gVR->worldScale > 0 ? gVR->worldScale : 32.0f );     // 45cm under the eyes
+
+	for ( h = 0; h < 2; h++ ) {
+		clip = h == dom ? &ps->ammoclip[BG_FindClipForWeapon( weapon )] : &ps->ammoclip[BG_DUAL_LEFT_CLIP];
+
+		// magazine release
+		if ( h == dom ? gVR->ejectCount != vrp.lastEject : gVR->ejectOffCount != vrp.lastEjectOff ) {
+			if ( *clip > 0 ) {
+				*reserve += *clip;      // forgiving: the rounds aren't lost
+				*clip = 0;
+				G_VR_Haptic( h, 0.5f, 40 );
+			}
+		}
+
+		// down at the hip: a new magazine
+		if ( !gVR->handValid[h] || gVR->handOrigin[h][2] > gVR->hmdOrigin[2] - drop ) {
+			vrp.hipSince[h] = 0;
+			continue;
+		}
+		if ( !vrp.hipSince[h] ) {
+			vrp.hipSince[h] = level.time;
+		}
+		if ( level.time - vrp.hipSince[h] >= VR_HIP_RELOAD_MS && *clip < max && *reserve > 0 ) {
+			n = MIN( max - *clip, *reserve );
+			*clip += n;
+			*reserve -= n;
+			G_AddEvent( ent, EV_FILL_CLIP, 0 );
+			G_VR_Haptic( h, 0.8f, 60 );
+			vrp.hipSince[h] = level.time + 100000;      // once per visit to the hip
+		}
+	}
+	vrp.lastEject = gVR->ejectCount;
+	vrp.lastEjectOff = gVR->ejectOffCount;
 }
 
 /*
@@ -1051,6 +1139,7 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 	vrp.gripWas = down;
 
 	G_VR_PushDoors( ent );
+	G_VR_DualGuns( ent, dom );
 	used = ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_Reload( ent, offHand, pressed, released, dom );
 
 	// (a second pistol / SMG: a double press of the off hand grip, cl_vr.c)
@@ -1207,6 +1296,7 @@ void G_DualToggle( gentity_t *ent ) {
 	}
 	ps->persistant[PERS_DUAL] = !ps->persistant[PERS_DUAL];
 	if ( !ps->persistant[PERS_DUAL] ) {
+		G_DualPutAway( ps );
 		for ( w = WP_NONE + 1; w < WP_NUM_WEAPONS; w++ ) {
 			if ( !BG_DualCapable( w ) ) {
 				continue;

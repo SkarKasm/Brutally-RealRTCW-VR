@@ -1234,6 +1234,7 @@ void ClientThink_real( gentity_t *ent ) {
 		pm.vrManualReload = gVR->manualReload;
 		pm.vrChambered = gVR->chambered;
 		pm.vrAkimbo = gVR->akimboLeft ? 2 : 1;
+		pm.vrAkimboBoth = gVR->akimboBoth;
 		pm.vrHandsLow = BG_VR_HandsLow( gVR );
 		pm.vrLadderHead[0] = AngleSubtract( gVR->hmdAngles[PITCH], gVR->weaponAngles[PITCH] );
 		pm.vrLadderHead[1] = AngleSubtract( gVR->hmdAngles[YAW], gVR->weaponAngles[YAW] );

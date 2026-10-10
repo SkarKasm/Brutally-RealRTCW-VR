@@ -472,6 +472,14 @@ void CG_VR_ArmTargets( qboolean has[2], vec3_t end[2], vec3_t dir[2] ) {
 			}
 			cgvr.armStub[h] = len - forearm;
 			VectorMA( hand, -forearm, dir[h], end[h] );
+			// the wrist joint: the free hands' origin is the palm, a little ahead of it
+			if ( CG_VR_HandOnGun( h ) ) {
+				VectorCopy( hand, cgvr.armWrist[h] );
+				cgvr.armForearm[h] = forearm;
+			} else {
+				VectorMA( hand, -3.5f, dir[h], cgvr.armWrist[h] );
+				cgvr.armForearm[h] = forearm - 3.5f;
+			}
 			has[h] = qtrue;
 		}
 	}
@@ -481,48 +489,89 @@ void CG_VR_ArmTargets( qboolean has[2], vec3_t end[2], vec3_t dir[2] ) {
 =================
 CG_VR_ArmBend
 
-The HD arm drawn by ent (hand h) bends at its elbow: the sleeve past it turns to run up to
-BJ's shoulder, stretched to reach it, so hand, forearm, elbow and upper arm are one arm
-that follows the controller. Needs the full body drawn (it places the shoulders).
+The HD arm drawn by ent (hand h) gets a wrist and an elbow, solved like FRIK's arms: the
+hand stays on the controller (or the gun), the shoulder is BJ's, and a two-bone IK puts
+the elbow between them, falling down and out the way the flat game's forearm pointed.
+The renderer (R_VR_BendArm) turns the forearm at the wrist and the sleeve past the elbow
+up to the shoulder, stretched to reach it, so hand, forearm, elbow and upper arm are one
+arm. Needs the full body drawn (it places the shoulders).
 =================
 */
+static void CG_VR_ToEntityDir( refEntity_t *ent, float sc, const vec3_t world, float *out ) {
+	int i;
+	for ( i = 0; i < 3; i++ ) {
+		out[i] = DotProduct( world, ent->axis[i] ) / sc;
+	}
+}
+
 void CG_VR_ArmBend( int h, refEntity_t *ent ) {
 	qboolean has[2];
-	vec3_t elbow[2], dir[2], up, d, p;
-	float len, s, sc;
+	vec3_t elbow0[2], dir[2], fore0, u, pole, elbow, d1, d2, d;
+	float lf, lu, dist, a, hgt, upLen, s, sc;
 	int i;
 
 	ent->vrBendMagic = 0;
 	if ( !CG_VR_BodyArms() || cg.time - cgvr.shoulderTime > 200 ) {
 		return;
 	}
-	CG_VR_ArmTargets( has, elbow, dir );
-	if ( !has[h] || cgvr.armStub[h] < 0.5f ) {
+	CG_VR_ArmTargets( has, elbow0, dir );
+	if ( !has[h] || cgvr.armStub[h] < 0.5f || cgvr.armForearm[h] < 1.0f ) {
 		return;
 	}
-	VectorSubtract( cgvr.shoulder[h], elbow[h], up );
-	len = VectorLength( up );
-	if ( len < 1.0f ) {
-		return;
-	}
-	s = len / cgvr.armStub[h];
-	s = s < 0.5f ? 0.5f : ( s > 3.5f ? 3.5f : s );
 	sc = VectorLength( ent->axis[0] );
 	if ( sc < 0.001f ) {
 		return;
 	}
+	VectorNegate( dir[h], fore0 );      // wrist -> elbow as modelled
+	lf = cgvr.armForearm[h];
+	lu = cgvr.upperArm[h] > 1.0f ? cgvr.upperArm[h] : 11.5f;
+
+	// two-bone IK, wrist -> shoulder
+	VectorSubtract( cgvr.shoulder[h], cgvr.armWrist[h], u );
+	dist = VectorNormalize( u );
+	if ( dist < 1.0f ) {
+		return;
+	}
+	if ( dist > lu + lf - 0.01f ) {
+		a = lf;     // out of reach: straight, the upper arm stretches the rest
+		hgt = 0;
+	} else {
+		float dd = dist < fabs( lu - lf ) + 0.1f ? fabs( lu - lf ) + 0.1f : dist;
+		a = ( lf * lf - lu * lu + dd * dd ) / ( 2 * dd );
+		hgt = lf * lf - a * a;
+		hgt = hgt > 0 ? sqrt( hgt ) : 0;
+	}
+	// the elbow's side: where the modelled forearm points, pulled down and outwards
+	VectorCopy( fore0, pole );
+	pole[2] -= 0.6f;
+	VectorMA( pole, 0.4f, cgvr.shoulderOut[h], pole );
+	VectorMA( pole, -DotProduct( pole, u ), u, pole );
+	if ( VectorNormalize( pole ) < 0.001f ) {
+		VectorSet( pole, 0, 0, -1 );
+		VectorMA( pole, -DotProduct( pole, u ), u, pole );
+		VectorNormalize( pole );
+	}
+	VectorMA( cgvr.armWrist[h], a, u, elbow );
+	VectorMA( elbow, hgt, pole, elbow );
+
+	VectorSubtract( elbow, cgvr.armWrist[h], d1 );
+	VectorNormalize( d1 );
+	VectorSubtract( cgvr.shoulder[h], elbow, d2 );
+	upLen = VectorNormalize( d2 );
+	s = upLen / cgvr.armStub[h];
+	s = s < 0.5f ? 0.5f : ( s > 3.5f ? 3.5f : s );
+
 	// into the entity's model space (its axes may carry a uniform scale)
-	VectorSubtract( elbow[h], ent->origin, d );
+	VectorSubtract( cgvr.armWrist[h], ent->origin, d );
 	for ( i = 0; i < 3; i++ ) {
-		p[i] = DotProduct( d, ent->axis[i] ) / ( sc * sc );
+		ent->vrBend[i] = DotProduct( d, ent->axis[i] ) / ( sc * sc );
 	}
-	VectorCopy( p, ent->vrBend + 0 );
-	for ( i = 0; i < 3; i++ ) {
-		ent->vrBend[3 + i] = -DotProduct( dir[h], ent->axis[i] ) / sc;   // past the elbow
-		ent->vrBend[6 + i] = DotProduct( up, ent->axis[i] ) / ( sc * len );
-	}
-	ent->vrBend[9] = s;
-	ent->vrBend[10] = 1.5f / sc;
+	CG_VR_ToEntityDir( ent, sc, fore0, ent->vrBend + 3 );
+	ent->vrBend[6] = lf / sc;
+	CG_VR_ToEntityDir( ent, sc, d1, ent->vrBend + 7 );
+	CG_VR_ToEntityDir( ent, sc, d2, ent->vrBend + 10 );
+	ent->vrBend[13] = s;
+	ent->vrBend[14] = 1.2f / sc;
 	ent->vrBendMagic = VR_BEND_MAGIC;
 }
 
@@ -1055,7 +1104,31 @@ void CG_VR_AddReloadItems( void ) {
 	if ( cgVR->heldItem && cgVR->handValid[off] ) {
 		memset( &ent, 0, sizeof( ent ) );
 		ent.hModel = model ? model : cgs.media.smallgunBrassModel;
-		CG_VR_MagAxis( cgvr.gunAxis, ent.axis );    // lined up with the gun, ready to go in
+		{
+			// turns with the hand holding it, and lines up with the gun close to its well
+			// so it goes straight in
+			vec3_t handAxis[3], gunMag[3], well;
+			float sc = VectorLength( cgvr.gunAxis[0] ), f;
+			int i;
+
+			AnglesToAxis( cgvr.handAngles[off], handAxis );
+			for ( i = 0; i < 3; i++ ) {
+				VectorScale( handAxis[i], sc, handAxis[i] );
+			}
+			CG_VR_MagAxis( handAxis, ent.axis );
+			CG_VR_MagAxis( cgvr.gunAxis, gunMag );
+			BG_VR_ModelPoint( cgvr.gunOrigin, cgvr.gunAxis, geom.mag, well );
+			f = ( Distance( well, cgvr.handOrigin[off] ) - 4.0f ) / 8.0f;     // 0 at the well
+			f = f < 0 ? 0 : ( f > 1 ? 1 : f );
+			for ( i = 0; i < 3; i++ ) {
+				float len;
+				VectorScale( ent.axis[i], f, ent.axis[i] );
+				VectorMA( ent.axis[i], 1.0f - f, gunMag[i], ent.axis[i] );
+				len = VectorLength( gunMag[i] );
+				VectorNormalize( ent.axis[i] );
+				VectorScale( ent.axis[i], len, ent.axis[i] );
+			}
+		}
 		if ( model ) {
 			BG_VR_ModelDir( ent.axis, geom.magLocal, ent.origin );
 			VectorSubtract( cgvr.handOrigin[off], ent.origin, ent.origin );

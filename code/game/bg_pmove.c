@@ -2708,12 +2708,10 @@ void PM_CheckForReload(int weapon) {
 	qboolean reloadRequested = (pm->cmd.wbuttons & WBUTTON_RELOAD);
 	qboolean autoreload = pm->pmext->bAutoReload || isAutoReloadWeapon(pm->ps->weapon);
 
-	// RealRTCW-VR: two guns in the hands are reloaded with both hands lowered to the waist
+	// RealRTCW-VR: two guns in the hands are reloaded one at a time at the hips (g_vr.c)
 	if ( pm->vrAim && BG_DualActive( pm->ps ) ) {
 		autoreload = qfalse;
-		if ( !pm->vrHandsLow ) {
-			reloadRequested = qfalse;
-		}
+		reloadRequested = qfalse;
 	}
 
 	if (pm->ps->weaponstate == WEAPON_RAISING ||
@@ -2833,6 +2831,16 @@ static void PM_SwitchIfEmpty( void ) {
 }
 
 
+// RealRTCW-VR: the clip a shot comes from: dual wielding in VR, the off hand's gun has its own
+static int PM_ClipSlot( int wp ) {
+	extern int bg_vrAkimbo;
+	if ( bg_vrAkimbo == 1 && pm->vrAim && wp == pm->ps->weapon && BG_DualActive( pm->ps ) &&
+		 pm->ps->ammoclip[BG_DUAL_LEFT_WEAPON] == wp ) {
+		return BG_DUAL_LEFT_CLIP;
+	}
+	return BG_FindClipForWeapon( wp );
+}
+
 /*
 ==============
 PM_WeaponUseAmmo
@@ -2845,7 +2853,7 @@ void PM_WeaponUseAmmo( int wp, int amount ) {
 	if ( pm->noWeapClips ) {
 		pm->ps->ammo[ BG_FindAmmoForWeapon( wp )] -= amount;
 	} else {
-		takeweapon = BG_FindClipForWeapon( wp );
+		takeweapon = PM_ClipSlot( wp );
 		pm->ps->ammoclip[takeweapon] -= amount;
 	}
 }
@@ -2862,7 +2870,7 @@ int PM_WeaponAmmoAvailable( int wp ) {
 	if ( pm->noWeapClips ) {
 		return pm->ps->ammo[ BG_FindAmmoForWeapon( wp )];
 	} else {
-		takeweapon = BG_FindClipForWeapon( wp );
+		takeweapon = PM_ClipSlot( wp );
 		return pm->ps->ammoclip[takeweapon];
 	}
 }
@@ -2879,7 +2887,7 @@ int PM_WeaponClipEmpty( int wp ) {
 			return 1;
 		}
 	} else {
-		if ( !( pm->ps->ammoclip[BG_FindClipForWeapon( wp )] ) ) {
+		if ( !( pm->ps->ammoclip[PM_ClipSlot( wp )] ) ) {
 			return 1;
 		}
 	}
@@ -3819,8 +3827,8 @@ static void PM_Weapon( void ) {
 			if ( pm->vrManualReload ) {
 				reloadingW = qfalse;    // RealRTCW-VR: reloads are done by hand
 			}
-			if ( pm->vrAim && BG_DualActive( pm->ps ) && !( ( pm->cmd.wbuttons & WBUTTON_RELOAD ) && pm->vrHandsLow ) ) {
-				reloadingW = qfalse;    // RealRTCW-VR: dual guns reload with the hands at the waist
+			if ( pm->vrAim && BG_DualActive( pm->ps ) ) {
+				reloadingW = qfalse;    // RealRTCW-VR: dual guns reload at the hips
 			}
 
 			switch ( pm->ps->weapon ) {
@@ -4043,8 +4051,9 @@ static void PM_Weapon( void ) {
 		break;
 	}
 
-	// RealRTCW-VR: without a headset, a dual pair fires in turn, each gun at its own rate
-	if ( BG_DualActive( pm->ps ) && !pm->vrAim ) {
+	// RealRTCW-VR: a dual pair firing in turn (without a headset, or both triggers held),
+	// each gun at its own rate
+	if ( BG_DualActive( pm->ps ) && ( !pm->vrAim || pm->vrAkimboBoth ) ) {
 		addTime /= 2;
 	}
 

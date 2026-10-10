@@ -110,7 +110,8 @@ typedef struct vrShared_s {
 	//
 	// controller buttons, written by the engine
 	//
-	int     ejectCount;         // bumped by the "drop magazine" gesture
+	int     ejectCount;         // bumped by the "drop magazine" gesture (the weapon hand's gun)
+	int     ejectOffCount;      // dual wielding: the off hand's gun drops its magazine
 	int     gripDown[2];        // grip buttons held, indexed by VR_HAND_*
 
 	//
@@ -137,6 +138,7 @@ typedef struct vrShared_s {
 	// written by the engine
 	//
 	int     akimboLeft;         // with dualWield: this shot is the off hand's gun
+	int     akimboBoth;         // with dualWield: both triggers held, the guns take turns
 	int     teleportAiming;     // the teleport stick is held: cgame shows the arc
 	int     pingCount;          // bumped by the ping button: cgame marks where the gun points (co-op)
 

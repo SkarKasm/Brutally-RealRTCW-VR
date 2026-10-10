@@ -1828,6 +1828,10 @@ typedef struct {
 	vec3_t      shoulder[2];        // world, BJ's shoulders, where the HD arms run to
 	int         shoulderTime;       // cg.time they were set (the full body was drawn)
 	float       armStub[2];         // world length of each HD arm's sleeve past its elbow
+	vec3_t      armWrist[2];        // world, each HD arm's wrist joint
+	float       armForearm[2];      // world, its wrist to elbow
+	float       upperArm[2];        // world, BJ's shoulder to elbow
+	vec3_t      shoulderOut[2];     // world, outwards from BJ's chest at each shoulder
 
 	int         gunWeapon;          // first person gun drawn this frame, and its pose
 	qboolean    lastShotLeft;       // dual pistols: the off hand's gun fired last
