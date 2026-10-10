@@ -1816,6 +1816,7 @@ typedef struct {
 	float       yawOffset;          // play space yaw -> world yaw
 	vec3_t      headOrigin;         // world, centre of the head
 	vec3_t      handOrigin[2];      // world, indexed by VR_HAND_*
+	vec3_t      gunGrip;            // world: where the gun's grip is (the gun hand, or held in the off hand)
 	vec3_t      handAngles[2];
 	vec3_t      weaponAngles;       // world aim of the gun
 	vec3_t      muzzle;             // world position of the gun's muzzle this frame

@@ -1916,7 +1916,7 @@ qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out ) {
 	eye[2] += gVR->eyeHeight > 0 ? gVR->eyeHeight : ent->client->ps.viewheight;
 
 	// play space offset from the head, turned into the world by the usercmd delta yaw
-	VectorSubtract( gVR->handOrigin[dom], gVR->hmdOrigin, offset );
+	VectorSubtract( gVR->gunInOffHand && !gVR->dualWield ? gVR->gunOrigin : gVR->handOrigin[dom], gVR->hmdOrigin, offset );
 	yaw = DEG2RAD( SHORT2ANGLE( ent->client->ps.delta_angles[YAW] ) );
 	s = sin( yaw );
 	c = cos( yaw );

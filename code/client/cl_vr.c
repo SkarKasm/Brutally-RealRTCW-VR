@@ -293,6 +293,11 @@ static struct {
 	short           teleportMove[2];
 	qboolean        akimboLastLeft;     // which of the two was pulled last
 	qboolean        steadyLatched;      // off hand grip closed in front of the gun: two handed aim
+	qboolean        gunToOff;           // grip tap: hand the gun to the off hand this frame
+	qboolean        gunInOff;           // the off hand holds the gun alone (to work the bolt)
+	qboolean        gunHandAway;        // ... and the gun hand has moved off its grip since
+	vec3_t          gunInOffPos;        // the gun's grip in the off hand's frame
+	vec3_t          gunInOffAxis[3];    // and its axes
 } xr;
 
 static cvar_t *vr_enable;
@@ -1340,6 +1345,44 @@ static void VR_UpdateTracking( void ) {
 		com_vr.handOrigin[1][2] += up;
 	}
 
+	// the off hand holding the gun alone: until it lets go, or the gun hand takes the grip back
+	// (a grip press there, or just coming back to it)
+	if ( xr.gunInOff ) {
+		vec3_t offAxis[3], gunAxis[3];
+		float away;
+		int i;
+
+		AnglesToAxis( com_vr.handAngles[!dom], offAxis );
+		VectorCopy( com_vr.handOrigin[!dom], com_vr.gunOrigin );
+		for ( i = 0; i < 3; i++ ) {
+			VectorMA( com_vr.gunOrigin, xr.gunInOffPos[i], offAxis[i], com_vr.gunOrigin );
+			VectorScale( offAxis[0], xr.gunInOffAxis[i][0], gunAxis[i] );
+			VectorMA( gunAxis[i], xr.gunInOffAxis[i][1], offAxis[1], gunAxis[i] );
+			VectorMA( gunAxis[i], xr.gunInOffAxis[i][2], offAxis[2], gunAxis[i] );
+		}
+		away = Distance( com_vr.handOrigin[dom], com_vr.gunOrigin );
+		if ( away > 0.15f * vr_worldScale->value ) {
+			xr.gunHandAway = qtrue;
+		}
+		if ( !xr.hands[!dom].down[VRB_SQUEEZE] || !com_vr.handValid[!dom] || !com_vr.handValid[dom] ) {
+			xr.gunInOff = qfalse;       // dropped: back in the gun hand
+		} else if ( away < 0.15f * vr_worldScale->value &&
+					( ( xr.hands[dom].down[VRB_SQUEEZE] && !xr.hands[dom].wasDown[VRB_SQUEEZE] ) ||
+					  ( xr.gunHandAway && away < 0.07f * vr_worldScale->value ) ) ) {
+			xr.gunInOff = qfalse;       // taken back, still held two handed
+			xr.steadyLatched = qtrue;
+			xr.rightGripCombo = qtrue;  // (that grip press doesn't open the weapon wheel)
+		} else {
+			AxisToAngles( gunAxis, com_vr.weaponAngles );
+			com_vr.weaponAngles[PITCH] += com_vr.recoilPitch;
+			com_vr.twoHanded = qfalse;
+			com_vr.gunInOffHand = qtrue;
+			return;
+		}
+	}
+	com_vr.gunInOffHand = qfalse;
+	VectorCopy( com_vr.handOrigin[dom], com_vr.gunOrigin );
+
 	// weapon aim: the dominant grip pose, optionally steadied by the off hand
 	if ( com_vr.handValid[dom] ) {
 		VectorCopy( com_vr.handAngles[dom], com_vr.weaponAngles );
@@ -1384,6 +1427,24 @@ static void VR_UpdateTracking( void ) {
 				com_vr.twoHanded = qtrue;
 			}
 		}
+		// grip tap while held two handed: the off hand takes the gun as it is now
+		if ( xr.gunToOff && com_vr.twoHanded ) {
+			vec3_t offAxis[3], gunAxis[3], d;
+			int i, j;
+
+			AnglesToAxis( com_vr.handAngles[!dom], offAxis );
+			AnglesToAxis( com_vr.weaponAngles, gunAxis );
+			VectorSubtract( com_vr.handOrigin[dom], com_vr.handOrigin[!dom], d );
+			for ( i = 0; i < 3; i++ ) {
+				xr.gunInOffPos[i] = DotProduct( d, offAxis[i] );
+				for ( j = 0; j < 3; j++ ) {
+					xr.gunInOffAxis[i][j] = DotProduct( gunAxis[i], offAxis[j] );
+				}
+			}
+			xr.gunInOff = qtrue;
+			xr.gunHandAway = qfalse;
+		}
+		xr.gunToOff = qfalse;
 		// recoil, from cgame (cg_vrrecoil.c): the shots go where the kicked gun points
 		com_vr.weaponAngles[PITCH] += com_vr.recoilPitch;
 	} else {
@@ -1895,12 +1956,13 @@ static void VR_GameControls( void ) {
 	}
 	VR_WheelQuietStick( d );
 
-	// a tap of the gun hand grip: the off hand lets go of a gun held two handed (it keeps its
-	// grip closed; close it again to take hold), free to work the bolt with its trigger
-	if ( VR_Released( dom, VRB_SQUEEZE ) && !xr.rightGripCombo &&
-		 cls.realtime - d->downTime[VRB_SQUEEZE] < VR_WHEEL_HOLD_MS && xr.steadyLatched ) {
-		xr.steadyLatched = qfalse;
-		VR_Haptic( off, 0.3f, 25 );
+	// a tap of the gun hand grip with the gun held two handed: the gun hand lets go and the
+	// off hand holds it alone, so the gun hand can work the bolt with its trigger, like a real
+	// rifle. A grip press back on the grip (or just coming back to it) takes it again.
+	if ( VR_Released( dom, VRB_SQUEEZE ) && !xr.rightGripCombo && !xr.gunInOff &&
+		 cls.realtime - d->downTime[VRB_SQUEEZE] < VR_WHEEL_HOLD_MS && com_vr.twoHanded ) {
+		xr.gunToOff = qtrue;
+		VR_Haptic( dom, 0.3f, 25 );
 	}
 
 	// weapon hand
@@ -1912,7 +1974,7 @@ static void VR_GameControls( void ) {
 				Cbuf_AddText( "weapalt\n" );        // grip + trigger: alternate fire mode
 			}
 			xr.rightGripCombo = qtrue;
-		} else {
+		} else if ( !xr.gunInOff ) {      // (the gun hand's trigger works the bolt then)
 			xr.attackHeld = qtrue;
 			xr.akimboLastLeft = qfalse;
 		}

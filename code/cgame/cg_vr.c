@@ -319,9 +319,10 @@ static qboolean CG_VR_HandOnGun( int h ) {
 		return qfalse;
 	}
 	if ( h == CG_VR_DominantHand() ) {
-		return hp->trigPiece != -2;
+		// (not while the off hand holds the gun alone: the gun hand is free for the bolt)
+		return hp->trigPiece != -2 && !cgVR->gunInOffHand;
 	}
-	return hp->supPiece != -2 && cgVR->twoHanded;
+	return hp->supPiece != -2 && ( cgVR->twoHanded || cgVR->gunInOffHand );
 }
 
 /*
@@ -340,10 +341,10 @@ int CG_VR_PieceHandFx( int weapon, int piece ) {
 		return 0;
 	}
 	hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
-	if ( hp && piece == hp->trigPiece ) {
+	if ( hp && piece == hp->trigPiece && !cgVR->gunInOffHand ) {
 		return 0;       // the whole first person arm, hand and sleeve
 	}
-	if ( hp && piece == hp->supPiece && cgVR->twoHanded ) {
+	if ( hp && piece == hp->supPiece && ( cgVR->twoHanded || cgVR->gunInOffHand ) ) {
 		return 0;
 	}
 	return RF_VR_NOHANDS;
@@ -593,7 +594,7 @@ void CG_VR_PieceArmBend( int weapon, int piece, refEntity_t *ent ) {
 	}
 	if ( piece == hp->trigPiece && CG_VR_HandOnGun( dom ) ) {
 		CG_VR_ArmBend( dom, ent );      // (-3: the rifle hand, CG_VR_AddRifleHand)
-	} else if ( piece == hp->supPiece && cgVR->twoHanded && CG_VR_HandOnGun( !dom ) ) {
+	} else if ( piece == hp->supPiece && CG_VR_HandOnGun( !dom ) ) {
 		CG_VR_ArmBend( !dom, ent );
 	}
 }
@@ -900,6 +901,13 @@ void CG_VR_SetHead( const vec3_t headOrigin, float yawOffset, vec3_t viewAngles 
 		cgvr.handAngles[h][YAW] += yawOffset;
 	}
 
+	VectorCopy( cgvr.handOrigin[CG_VR_DominantHand()], cgvr.gunGrip );
+	if ( cgVR->gunInOffHand && !cgVR->dualWield ) {
+		VectorSubtract( cgVR->gunOrigin, cgVR->hmdOrigin, offset );
+		CG_VR_PlayToWorld( offset, offset );
+		VectorAdd( headOrigin, offset, cgvr.gunGrip );
+	}
+
 	VectorCopy( cgVR->weaponAngles, cgvr.weaponAngles );
 	cgvr.weaponAngles[YAW] += yawOffset;
 }
@@ -956,7 +964,7 @@ void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t axis[3] ) {
 	}
 
 	CG_VR_Geom( weapon, &geom );
-	BG_VR_WeaponFrame( &geom, cgvr.handOrigin[CG_VR_DominantHand()], cgvr.weaponAngles, adj, origin, axis );
+	BG_VR_WeaponFrame( &geom, cgvr.gunGrip, cgvr.weaponAngles, adj, origin, axis );
 	if ( cgVR ) {
 		VectorMA( origin, -cgVR->recoilBack, axis[0], origin );    // the shot's jolt (cg_vrrecoil.c)
 	}
@@ -1297,9 +1305,8 @@ the same spot relative to the weapon hand, so bullets leave the barrel.
 */
 void CG_VR_SetMuzzle( const vec3_t muzzle ) {
 	vec3_t d, aim[3];
-	int dom = CG_VR_DominantHand();
 
-	VectorSubtract( muzzle, cgvr.handOrigin[dom], d );
+	VectorSubtract( muzzle, cgvr.gunGrip, d );
 	if ( VectorLength( d ) > 80.0f ) {
 		cgVR->muzzleValid = qfalse;     // tag missing or the gun is mid animation somewhere odd
 		return;

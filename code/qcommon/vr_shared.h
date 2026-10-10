@@ -74,6 +74,8 @@ typedef struct vrShared_s {
 
 	vec3_t  weaponAngles;       // aim sent as the usercmd angles (play space)
 	int     twoHanded;          // off hand is steadying the weapon
+	int     gunInOffHand;       // the gun hand let go (grip tap): the off hand holds the gun alone
+	vec3_t  gunOrigin;          // play space, where the gun is held (the gun hand, or carried by the off hand)
 
 	int     menuPointer;        // a menu is up: hide the gun, show the laser pointer
 	int     pointerVisible;     // pointerStart/End are valid

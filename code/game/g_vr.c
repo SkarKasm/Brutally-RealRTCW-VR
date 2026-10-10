@@ -153,6 +153,19 @@ static void G_VR_Eye( gentity_t *ent, vec3_t eye ) {
 	eye[2] += gVR->eyeHeight > 0 ? gVR->eyeHeight : ent->client->ps.viewheight;
 }
 
+// a play space point in the world
+static void G_VR_PlayWorld( gentity_t *ent, const vec3_t p, vec3_t out ) {
+	vec3_t offset, eye;
+	float yaw = DEG2RAD( SHORT2ANGLE( ent->client->ps.delta_angles[YAW] ) );
+	float s = sin( yaw ), c = cos( yaw );
+
+	G_VR_Eye( ent, eye );
+	VectorSubtract( p, gVR->hmdOrigin, offset );
+	out[0] = eye[0] + offset[0] * c - offset[1] * s;
+	out[1] = eye[1] + offset[0] * s + offset[1] * c;
+	out[2] = eye[2] + offset[2];
+}
+
 // a tracked hand in the world (not clipped against walls, for interactions)
 static void G_VR_HandWorld( gentity_t *ent, int hand, vec3_t out ) {
 	vec3_t offset, eye;
@@ -345,10 +358,14 @@ static qboolean G_VR_Reload( gentity_t *ent, const vec3_t offHand, qboolean pres
 	int *reserve = &ps->ammo[ammoIndex];
 	vrWeaponGeom_t geom;
 	vec3_t hand, aim, origin, axis[3], magPoint, chargePoint, chargeDir, eye, chest, d;
+	vec3_t workHand;
 	qboolean used = qfalse, wantsAmmo, trigPressed, trigReleased, trigDown;
 	int off = !dom, n;
+	// the free hand's trigger works the action: the off hand's, or the gun hand's while the
+	// off hand holds the gun alone (a grip tap, cl_vr.c)
+	int work = gVR->gunInOffHand ? dom : off;
 
-	trigDown = gVR->triggerDown[off] && gVR->handValid[off];
+	trigDown = gVR->triggerDown[work] && gVR->handValid[work];
 	trigPressed = trigDown && !vrp.triggerWas;
 	trigReleased = !trigDown && vrp.triggerWas;
 	vrp.triggerWas = trigDown;
@@ -367,7 +384,8 @@ static qboolean G_VR_Reload( gentity_t *ent, const vec3_t offHand, qboolean pres
 	BG_VR_WeaponGeom( weapon, trap_Cvar_VariableIntegerValue( "cg_vanilla_guns" ), &geom );
 	geom.scale = gVR->weaponScale > 0 ? gVR->weaponScale : 1.0f;
 	geom.travel *= geom.scale;      // a smaller bolt moves less
-	G_VR_HandWorld( ent, dom, hand );
+	G_VR_PlayWorld( ent, gVR->gunInOffHand ? gVR->gunOrigin : gVR->handOrigin[dom], hand );
+	G_VR_HandWorld( ent, work, workHand );
 	VectorSet( aim, gVR->weaponAngles[PITCH], ps->viewangles[YAW], gVR->weaponAngles[ROLL] );
 	BG_VR_WeaponFrame( &geom, hand, aim, NULL, origin, axis );
 	BG_VR_ModelPoint( origin, axis, geom.mag, magPoint );
@@ -443,22 +461,22 @@ static qboolean G_VR_Reload( gentity_t *ent, const vec3_t offHand, qboolean pres
 
 	// rack the slide / work the bolt / pump
 	if ( cls == VRR_MAG || cls == VRR_BOLT || cls == VRR_PUMP || cls == VRR_SHELLS ) {
-		// the measured handle (the off hand's trigger takes it); unmeasured, anywhere close to
+		// the measured handle (the free hand's trigger takes it); unmeasured, anywhere close to
 		// the gun hand, where slides and bolts are
-		qboolean nearAction = geom.chargePart >= 0 ? Distance( offHand, chargePoint ) < VR_CHARGE_RADIUS :
-							  ( cls != VRR_PUMP && Distance( offHand, hand ) < VR_ACTION_RADIUS );
+		qboolean nearAction = geom.chargePart >= 0 ? Distance( workHand, chargePoint ) < VR_CHARGE_RADIUS :
+							  ( cls != VRR_PUMP && Distance( workHand, hand ) < VR_ACTION_RADIUS );
 
 		if ( trigPressed && !vrp.heldItem && !vrp.chargeHeld && nearAction ) {
 			vrp.chargeHeld = qtrue;
 			vrp.chargeDone = qfalse;
-			VectorCopy( offHand, vrp.chargeStart );
-			G_VR_Haptic( off, 0.3f, 20 );
+			VectorCopy( workHand, vrp.chargeStart );
+			G_VR_Haptic( work, 0.3f, 20 );
 			used = qtrue;
 		}
 		if ( vrp.chargeHeld ) {
 			float pull;
 
-			VectorSubtract( offHand, vrp.chargeStart, d );
+			VectorSubtract( workHand, vrp.chargeStart, d );
 			pull = DotProduct( d, chargeDir ) / geom.travel;
 			gVR->chargePull = pull < 0 ? 0 : ( pull > 1 ? 1 : pull );
 			if ( pull >= VR_CHARGE_PULL && !vrp.chargeDone ) {
@@ -466,8 +484,8 @@ static qboolean G_VR_Reload( gentity_t *ent, const vec3_t offHand, qboolean pres
 				if ( *clip > 0 ) {
 					vrp.chambered[weapon] = qtrue;
 				}
-				G_VR_Haptic( off, 0.9f, 50 );
-				G_VR_Haptic( dom, 0.5f, 50 );
+				G_VR_Haptic( 0, 0.7f, 50 );
+				G_VR_Haptic( 1, 0.7f, 50 );
 			}
 			if ( trigReleased ) {
 				vrp.chargeHeld = qfalse;
