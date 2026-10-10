@@ -305,7 +305,6 @@ static cvar_t *vr_enable;
 static cvar_t *vr_resolutionScale;
 static cvar_t *vr_worldScale;
 static cvar_t *vr_rightHanded;
-static cvar_t *vr_binoculars;       // off hand to the eyes: binoculars
 static cvar_t *vr_hipNotebook;      // off hand grip at the hip: the notebook
 static cvar_t *vr_flatCutscenes;    // cutscenes on a screen in front of the player
 static cvar_t *vr_teleport;         // move by pointing the off hand stick and letting go
@@ -1210,7 +1209,6 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_fullBody", "1", CVAR_ARCHIVE );       // cg_vrbody.c
 	Cvar_Get( "vr_scopes", "1", CVAR_ARCHIVE );         // cg_vrscope.c
 	Cvar_Get( "vr_recoil", "1", CVAR_ARCHIVE );         // cg_vrrecoil.c
-	vr_binoculars = Cvar_Get( "vr_binoculars", "1", CVAR_ARCHIVE );
 	vr_hipNotebook = Cvar_Get( "vr_notebookAtHip", "0", CVAR_ARCHIVE );   // off by default (Y opens it)
 	vr_flatCutscenes = Cvar_Get( "vr_flatCutscenes", "1", CVAR_ARCHIVE );
 	vr_teleport = Cvar_Get( "vr_teleport", "0", CVAR_ARCHIVE );
@@ -2121,22 +2119,22 @@ static void VR_Turning( float frameSeconds ) {
 =================
 VR_BinocularGesture
 
-The off hand held up in front of the eyes: look through the binoculars (the game ignores
-it without them). A little wider to leave than to enter, so it doesn't flicker.
+The binocular hand held up in front of the eyes: look through the binoculars taken from
+the weapon wheel. A little wider to leave than to enter, so it doesn't flicker.
 =================
 */
-static qboolean VR_BinocularGesture( int off ) {
+static qboolean VR_BinocularGesture( int h ) {
 	static qboolean held;
 	XrQuaternionf inv;
 	float rel[3], local[3], slack;
 
-	if ( ( !vr_binoculars->integer && !com_vr.binocsOut ) || !xr.hands[off].gripValid ) {
+	if ( !com_vr.binocsOut || !xr.hands[h].gripValid ) {
 		held = qfalse;
 		return qfalse;
 	}
-	rel[0] = xr.hands[off].grip.position.x - xr.head.position.x;
-	rel[1] = xr.hands[off].grip.position.y - xr.head.position.y;
-	rel[2] = xr.hands[off].grip.position.z - xr.head.position.z;
+	rel[0] = xr.hands[h].grip.position.x - xr.head.position.x;
+	rel[1] = xr.hands[h].grip.position.y - xr.head.position.y;
+	rel[2] = xr.hands[h].grip.position.z - xr.head.position.z;
 	inv = xr.head.orientation;
 	inv.x = -inv.x;
 	inv.y = -inv.y;
@@ -2182,8 +2180,9 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 			cmd->buttons |= BUTTON_ATTACK;
 		}
 	}
-	// (binoculars from the weapon wheel are in the gun hand: that one goes up to the eyes)
-	if ( !Key_GetCatcher() && VR_BinocularGesture( com_vr.binocsOut ? dom : off ) ) {
+	// binoculars from the weapon wheel are in the gun hand: that one goes up to the eyes (an
+	// empty off hand at the eyes does nothing)
+	if ( !Key_GetCatcher() && VR_BinocularGesture( dom ) ) {
 		cmd->wbuttons |= WBUTTON_ZOOM;
 	}
 

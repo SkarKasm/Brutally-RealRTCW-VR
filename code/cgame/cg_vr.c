@@ -188,12 +188,16 @@ typedef struct {
 	float       hands;
 } vrGunSize_t;
 
+// every hand, and every gun not listed below, is drawn this much over life size (RTCW's
+// first person guns and hands come out small next to the world)
+#define VR_HAND_BIG     1.15f
+
 static const vrGunSize_t vrGunSizes[] = {
-	{ "ppsh.weap", 1.33f, 1.0f },
-	{ "garand.weap", 1.3f, 1.0f },
-	{ "snooper.weap", 1.3f, 1.0f },
-	{ "venom.weap", 2.2f, 1.15f },
-	{ "tesla.weap", 2.2f, 1.15f },
+	{ "ppsh.weap", 1.33f, VR_HAND_BIG },
+	{ "garand.weap", 1.3f, VR_HAND_BIG },
+	{ "snooper.weap", 1.3f, VR_HAND_BIG },
+	{ "venom.weap", 2.2f, VR_HAND_BIG },
+	{ "tesla.weap", 2.2f, VR_HAND_BIG },
 };
 
 static const vrGunSize_t *CG_VR_GunSizeRow( const char *file ) {
@@ -209,7 +213,7 @@ static const vrGunSize_t *CG_VR_GunSizeRow( const char *file ) {
 
 static float CG_VR_GunSizeFix( const char *file ) {
 	const vrGunSize_t *g = CG_VR_GunSizeRow( file );
-	return g ? g->size : 1.0f;
+	return g ? g->size : VR_HAND_BIG;
 }
 
 // how much its own hands are scaled on top of the gun's size
@@ -227,12 +231,12 @@ static float CG_VR_GunSize( void ) {
 
 // the free hand models' size (from the MP40, CG_VR_AddHands)
 static float CG_VR_FreeHandScale( int h ) {
-	return VR_HAND_SPAN * CG_VR_GunSize() / ( h == VR_HAND_LEFT ? VR_FREE_HAND_SPAN_L : VR_FREE_HAND_SPAN_R );
+	return VR_HAND_SPAN * VR_HAND_BIG * CG_VR_GunSize() / ( h == VR_HAND_LEFT ? VR_FREE_HAND_SPAN_L : VR_FREE_HAND_SPAN_R );
 }
 
 float CG_VR_ScaleFor( int weapon ) {
 	const char *file = weapon > WP_NONE ? BG_GetWeaponFilename( weapon ) : NULL;
-	float s = 0.45f;
+	float s = 0.45f * VR_HAND_BIG;
 	int i;
 
 	if ( file && *file && !cg_vanilla_guns.integer ) {
@@ -250,7 +254,7 @@ float CG_VR_ScaleFor( int weapon ) {
 		}
 	}
 	s *= CG_VR_GunSize();
-	return s < 0.3f ? 0.3f : ( s > 1.5f ? 1.5f : s );
+	return s < 0.3f ? 0.3f : ( s > 1.75f ? 1.75f : s );
 }
 
 // the held gun's size, also for the game's reloading (g_vr.c)
@@ -301,7 +305,7 @@ static const vrHandPose_t vrHandPoses[] = {
 	{ "fg42scope.weap", -1, { 10.0f, -10.5f, -9.8f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "flamethrower.weap", -3, { -7.1f, -12.7f, -9.7f }, -1, { 4.0f, -3.9f, -11.9f } },
 	{ "g43.weap", -3, { 0.1f, -5.3f, -3.5f }, 0, { 17.4f, -0.6f, -8.2f } },
-	{ "garand.weap", -3, { -0.2f, -4.6f, -5.5f }, 0, { 15.2f, -0.4f, -7.1f } },
+	{ "garand.weap", -3, { -0.5f, -4.9f, -5.3f }, 0, { 15.2f, -0.4f, -7.1f } },
 	{ "grenade.weap", -1, { 14.4f, -14.5f, -17.4f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "hdm.weap", -1, { 12.0f, -12.2f, -13.3f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "ithaca.weap", -3, { 2.0f, -10.7f, -6.7f }, 4, { 34.3f, -0.9f, -14.9f } },
@@ -311,7 +315,7 @@ static const vrHandPose_t vrHandPoses[] = {
 	{ "m1garand.weap", -3, { -0.4f, -11.1f, -6.8f }, -1, { 35.7f, -1.6f, -15.7f } },
 	{ "m7.weap", -3, { -0.4f, -11.1f, -6.8f }, -1, { 35.7f, -1.6f, -15.7f } },
 	{ "mauser.weap", -3, { 0.0f, -12.4f, -8.4f }, -1, { 36.9f, -3.3f, -17.3f } },
-	{ "mg42m.weap", -2, { 0.0f, 0.0f, 0.0f }, 1, { 32.4f, 2.3f, -18.3f } },
+	{ "mg42m.weap", -3, { -7.3f, -11.3f, -17.9f }, 1, { 32.4f, 2.3f, -18.3f } },
 	{ "mosin.weap", -3, { 1.0f, -7.0f, -5.1f }, -1, { 19.2f, -2.3f, -10.8f } },
 	{ "mp34.weap", -3, { 5.2f, -10.3f, -12.7f }, 2, { 33.4f, -2.1f, -21.5f } },
 	{ "mp40.weap", -1, { 1.0f, -8.0f, -9.7f }, 2, { 20.7f, 0.2f, -14.0f } },
@@ -319,16 +323,16 @@ static const vrHandPose_t vrHandPoses[] = {
 	{ "panzerfaust.weap", 4, { 1.2f, -9.0f, -9.1f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "pineapple.weap", -1, { 15.4f, -14.7f, -17.1f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "poisongas.weap", -1, { 9.2f, -15.4f, -15.6f }, -2, { 0.0f, 0.0f, 0.0f } },
-	{ "ppsh.weap", -3, { -3.0f, -8.2f, -7.0f }, 2, { 14.7f, 3.4f, -13.9f } },
+	{ "ppsh.weap", -3, { -3.4f, -8.5f, -6.7f }, 2, { 14.7f, 3.4f, -13.9f } },
 	{ "revolver.weap", -1, { 8.5f, -12.3f, -12.0f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "smokebomb.weap", -1, { 9.2f, -15.4f, -15.6f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "sniperrifle.weap", -3, { 0.0f, -12.4f, -8.4f }, -1, { 36.9f, -3.3f, -17.3f } },
-	{ "snooper.weap", -3, { -0.2f, -4.6f, -5.5f }, 0, { 15.2f, -0.4f, -7.1f } },
+	{ "snooper.weap", -3, { -0.5f, -4.9f, -5.3f }, 0, { 15.2f, -0.4f, -7.1f } },
 	{ "sten.weap", -3, { 6.9f, -10.9f, -9.0f }, 2, { 39.2f, -2.4f, -15.7f } },
-	{ "tesla.weap", -3, { -3.0f, -9.5f, -9.1f }, -1, { 6.5f, -2.7f, -10.1f } },
+	{ "tesla.weap", -3, { -4.6f, -9.9f, -10.1f }, -1, { 6.5f, -2.7f, -10.1f } },
 	{ "thompson.weap", -1, { 5.7f, -6.1f, -7.4f }, 2, { 19.6f, -0.3f, -7.5f } },
 	{ "tt33.weap", -1, { 15.9f, -9.6f, -11.8f }, -2, { 0.0f, 0.0f, 0.0f } },
-	{ "venom.weap", -3, { 2.0f, -10.1f, -13.1f }, 4, { 16.4f, -5.8f, -17.5f } },
+	{ "venom.weap", -3, { 2.0f, -10.7f, -14.1f }, 4, { 16.4f, -5.8f, -17.5f } },
 };
 
 static const vrHandPose_t *CG_VR_HandPose( int weapon ) {
@@ -435,7 +439,7 @@ static const vrArmEnd_t vrArmEnds[] = {
 	{ "fg42scope.weap", 1, { -16.3f, -17.8f, -3.5f }, 0, { 0, 0, 0 } },
 	{ "flamethrower.weap", 1, { -34.4f, -19.6f, 3.1f }, 1, { -18.7f, 16.0f, -10.9f } },
 	{ "g43.weap", 1, { -19.1f, -10.2f, 5.5f }, 1, { 0.3f, 10.4f, -15.5f } },
-	{ "garand.weap", 1, { -14.8f, -8.3f, 1.4f }, 1, { -5.0f, 6.8f, -8.6f } },
+	{ "garand.weap", 1, { -17.4f, -9.1f, 2.6f }, 1, { -5.0f, 6.8f, -8.6f } },
 	{ "grenade.weap", 1, { -12.1f, -30.5f, -21.5f }, 0, { 0, 0, 0 } },
 	{ "hdm.weap", 1, { -19.1f, -36.5f, -14.6f }, 0, { 0, 0, 0 } },
 	{ "ithaca.weap", 1, { -35.0f, -20.0f, 10.6f }, 1, { -0.4f, 23.4f, -13.5f } },
@@ -445,7 +449,7 @@ static const vrArmEnd_t vrArmEnds[] = {
 	{ "m1garand.weap", 1, { -36.5f, -20.3f, 10.1f }, 1, { 3.9f, 17.8f, -26.7f } },
 	{ "m7.weap", 1, { -36.5f, -20.3f, 10.1f }, 1, { 3.9f, 17.8f, -26.7f } },
 	{ "mauser.weap", 1, { -39.7f, -22.4f, 10.1f }, 1, { -2.3f, 16.8f, -28.2f } },
-	{ "mg42m.weap", 0, { 0, 0, 0 }, 1, { -9.0f, 31.2f, -30.5f } },
+	{ "mg42m.weap", 1, { -52.3f, -22.6f, 3.2f }, 1, { -9.0f, 31.2f, -30.5f } },
 	{ "mosin.weap", 1, { -22.1f, -12.8f, 5.7f }, 1, { 5.8f, 9.5f, -15.9f } },
 	{ "mp34.weap", 1, { -27.1f, -18.5f, 2.4f }, 1, { 7.0f, 13.6f, -41.2f } },
 	{ "mp40.weap", 1, { -21.4f, -11.6f, -6.8f }, 1, { 13.6f, 9.9f, -17.5f } },
@@ -453,16 +457,16 @@ static const vrArmEnd_t vrArmEnds[] = {
 	{ "panzerfaust.weap", 1, { -15.7f, -13.2f, -19.3f }, 0, { 0, 0, 0 } },
 	{ "pineapple.weap", 1, { -10.8f, -30.4f, -21.9f }, 0, { 0, 0, 0 } },
 	{ "poisongas.weap", 1, { -21.5f, -17.8f, -23.8f }, 0, { 0, 0, 0 } },
-	{ "ppsh.weap", 1, { -22.7f, -13.1f, 2.2f }, 1, { 0.8f, 17.9f, -29.9f } },
+	{ "ppsh.weap", 1, { -26.0f, -14.2f, 3.9f }, 1, { 0.8f, 17.9f, -29.9f } },
 	{ "revolver.weap", 1, { -25.7f, -23.7f, -12.9f }, 0, { 0, 0, 0 } },
 	{ "smokebomb.weap", 1, { -21.5f, -17.8f, -23.8f }, 0, { 0, 0, 0 } },
 	{ "sniperrifle.weap", 1, { -39.7f, -22.4f, 10.1f }, 1, { -2.3f, 16.8f, -28.2f } },
-	{ "snooper.weap", 1, { -14.8f, -8.3f, 1.4f }, 1, { -5.0f, 6.8f, -8.6f } },
+	{ "snooper.weap", 1, { -17.4f, -9.1f, 2.6f }, 1, { -5.0f, 6.8f, -8.6f } },
 	{ "sten.weap", 1, { -27.3f, -19.5f, 7.0f }, 1, { 6.6f, 19.0f, -21.1f } },
-	{ "tesla.weap", 1, { -16.1f, -12.9f, -3.0f }, 1, { -12.7f, 17.2f, -9.8f } },
+	{ "tesla.weap", 1, { -17.7f, -13.3f, -4.0f }, 1, { -12.7f, 17.2f, -9.8f } },
 	{ "thompson.weap", 1, { -18.0f, -12.8f, -7.0f }, 1, { 17.8f, 2.9f, -8.0f } },
 	{ "tt33.weap", 1, { -9.6f, -27.6f, -14.3f }, 0, { 0, 0, 0 } },
-	{ "venom.weap", 1, { -11.4f, -13.4f, -6.9f }, 1, { -10.0f, 5.2f, -21.7f } },
+	{ "venom.weap", 1, { -11.4f, -14.0f, -7.9f }, 1, { -10.0f, 5.2f, -21.7f } },
 };
 
 #define VR_FOREARM  10.5f       // wrist to elbow, game units (about 27cm)

@@ -66,10 +66,11 @@ RIFLE_PALMS = {
     "ithaca": (7.5, -10.5),
     # only the left (support) hand is on these in the flat game, so VR drew that one on the
     # right controller: (x, y, z), on the pistol grip / back of the receiver, y on the gun
-    "venom": (4.0, -8.5, -14.5),
+    "venom": (4.0, -9.1, -15.5),
     "flamethrower": (-3.0, -9.5, -12.5),
-    "tesla": (-1.0, -8.0, -10.5),
+    "tesla": (-2.6, -8.4, -11.5),
     "browning": (5.0, -6.5, -13.0),
+    "mg42m": (-0.5, -6.0, -22.5),
     # drawn bigger than their own hands make them (cg_vr.c vrGunSizes): the stock's wrist
     "ppsh": (0.0, -9.0),
     "garand": (2.0, -7.0),
@@ -77,11 +78,11 @@ RIFLE_PALMS = {
 }
 
 # cg_vr.c vrGunSizes: these guns are drawn this much bigger, so their trigger hand is made
-# this much smaller here to come out life size
+# this much smaller here to come out the size of every other hand (1.15x life size)
 RIFLE_SHRINK = {
-    "ppsh": 1.33,
-    "garand": 1.3,
-    "snooper": 1.3,
+    "ppsh": 1.33 / 1.15,
+    "garand": 1.3 / 1.15,
+    "snooper": 1.3 / 1.15,
     "venom": 2.2 / 1.15,
     "tesla": 2.2 / 1.15,
 }
