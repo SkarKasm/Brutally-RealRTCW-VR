@@ -99,44 +99,126 @@ void RE_VR_EndPasses( void ) {
 ==============
 RE_VR_PresentMirror
 
-Shows one of the headset images on the desktop window, letterboxed to keep its aspect.
+The desktop window shows one of the headset images. Called with a headset image while it
+is still ours (before the swapchain releases it), that image is copied into the mirror
+buffer, cropped to the window's shape around the eye's line of sight so the window is
+filled edge to edge (vr_mirrorFit 1: the whole image, with bars). Called with 0 at the
+end of the frame, the mirror buffer is shown: presenting the window in the middle of the
+headset passes, between the eyes, could leave it black with some runtimes and drivers.
 ==============
 */
+static GLuint vrMirrorFbo, vrMirrorRb;
+static int vrMirrorW, vrMirrorH;
+static qboolean vrMirrorFilled;
+
+void R_VR_MirrorShutdown( void ) {
+	if ( vrMirrorFbo ) {
+		qglDeleteFramebuffers( 1, &vrMirrorFbo );
+	}
+	if ( vrMirrorRb ) {
+		qglDeleteRenderbuffers( 1, &vrMirrorRb );
+	}
+	vrMirrorFbo = vrMirrorRb = 0;
+	vrMirrorW = vrMirrorH = 0;
+	vrMirrorFilled = qfalse;
+}
+
+static qboolean R_VR_MirrorBuffer( int w, int h ) {
+	if ( vrMirrorFbo && w == vrMirrorW && h == vrMirrorH ) {
+		return qtrue;
+	}
+	R_VR_MirrorShutdown();
+	qglGenRenderbuffers( 1, &vrMirrorRb );
+	qglBindRenderbuffer( GL_RENDERBUFFER, vrMirrorRb );
+	qglRenderbufferStorage( GL_RENDERBUFFER, GL_RGBA8, w, h );
+	qglGenFramebuffers( 1, &vrMirrorFbo );
+	qglBindFramebuffer( GL_FRAMEBUFFER, vrMirrorFbo );
+	qglFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, vrMirrorRb );
+	if ( qglCheckFramebufferStatus( GL_FRAMEBUFFER ) != GL_FRAMEBUFFER_COMPLETE ) {
+		ri.Printf( PRINT_WARNING, "VR: mirror buffer incomplete\n" );
+		R_VR_MirrorShutdown();
+		qglBindFramebuffer( GL_FRAMEBUFFER, 0 );
+		return qfalse;
+	}
+	vrMirrorW = w;
+	vrMirrorH = h;
+	return qtrue;
+}
+
 void RE_VR_PresentMirror( unsigned int sourceFramebuffer, int sourceWidth, int sourceHeight ) {
 	int winW, winH;
-	int dstW, dstH, dstX, dstY;
 
 	R_IssuePendingRenderCommands();
 
 	GLimp_GetWindowPixelSize( &winW, &winH );
-	if ( winW <= 0 || winH <= 0 || sourceWidth <= 0 || sourceHeight <= 0 ) {
+	if ( winW <= 0 || winH <= 0 ) {
 		return;
 	}
-
-	// fit the source into the window
-	dstW = winW;
-	dstH = (int)( (float)winW * sourceHeight / sourceWidth );
-	if ( dstH > winH ) {
-		dstH = winH;
-		dstW = (int)( (float)winH * sourceWidth / sourceHeight );
-	}
-	dstX = ( winW - dstW ) / 2;
-	dstY = ( winH - dstH ) / 2;
-
-	qglBindFramebuffer( GL_DRAW_FRAMEBUFFER, 0 );
 	qglScissor( 0, 0, winW, winH );
 	qglColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
-	qglClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
-	qglClear( GL_COLOR_BUFFER_BIT );
 
-	qglBindFramebuffer( GL_READ_FRAMEBUFFER, sourceFramebuffer );
-	qglBlitFramebuffer( 0, 0, sourceWidth, sourceHeight,
-						dstX, dstY, dstX + dstW, dstY + dstH,
-						GL_COLOR_BUFFER_BIT, GL_LINEAR );
+	if ( sourceFramebuffer ) {
+		// take the headset image
+		int sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1;
+		float winAspect = (float)winW / winH, srcAspect;
+		float cx = 0.5f, cy = 0.5f;
+
+		if ( sourceWidth <= 0 || sourceHeight <= 0 || !R_VR_MirrorBuffer( winW, winH ) ) {
+			return;
+		}
+		srcAspect = (float)sourceWidth / sourceHeight;
+		if ( vrRender.eye >= 0 ) {
+			// where the eye looks straight ahead in its (asymmetric) image
+			const float *t = vrRender.fovTan;
+			if ( t[1] - t[0] > 0.01f && t[2] - t[3] > 0.01f ) {
+				cx = -t[0] / ( t[1] - t[0] );
+				cy = -t[3] / ( t[2] - t[3] );
+			}
+		}
+
+		sx0 = 0; sy0 = 0; sx1 = sourceWidth; sy1 = sourceHeight;
+		dx0 = 0; dy0 = 0; dx1 = winW; dy1 = winH;
+		if ( r_vrMirrorFit && r_vrMirrorFit->integer ) {
+			// the whole image, bars around it
+			if ( srcAspect > winAspect ) {
+				int h = (int)( winW / srcAspect );
+				dy0 = ( winH - h ) / 2; dy1 = dy0 + h;
+			} else {
+				int w = (int)( winH * srcAspect );
+				dx0 = ( winW - w ) / 2; dx1 = dx0 + w;
+			}
+		} else if ( srcAspect < winAspect ) {
+			// a band of the image as wide as it is, around the line of sight
+			int h = (int)( sourceWidth / winAspect );
+			sy0 = (int)( cy * sourceHeight ) - h / 2;
+			sy0 = sy0 < 0 ? 0 : ( sy0 > sourceHeight - h ? sourceHeight - h : sy0 );
+			sy1 = sy0 + h;
+		} else {
+			int w = (int)( sourceHeight * winAspect );
+			sx0 = (int)( cx * sourceWidth ) - w / 2;
+			sx0 = sx0 < 0 ? 0 : ( sx0 > sourceWidth - w ? sourceWidth - w : sx0 );
+			sx1 = sx0 + w;
+		}
+
+		qglBindFramebuffer( GL_DRAW_FRAMEBUFFER, vrMirrorFbo );
+		qglClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
+		qglClear( GL_COLOR_BUFFER_BIT );
+		qglBindFramebuffer( GL_READ_FRAMEBUFFER, sourceFramebuffer );
+		qglBlitFramebuffer( sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, GL_COLOR_BUFFER_BIT, GL_LINEAR );
+		vrMirrorFilled = qtrue;
+	} else {
+		// show it
+		if ( !vrMirrorFilled || winW != vrMirrorW || winH != vrMirrorH ) {
+			return;     // nothing taken this frame yet: keep the window as it is
+		}
+		qglBindFramebuffer( GL_READ_FRAMEBUFFER, vrMirrorFbo );
+		qglBindFramebuffer( GL_DRAW_FRAMEBUFFER, 0 );
+		qglBlitFramebuffer( 0, 0, winW, winH, 0, 0, winW, winH, GL_COLOR_BUFFER_BIT, GL_NEAREST );
+		qglBindFramebuffer( GL_FRAMEBUFFER, 0 );
+		GLimp_EndFrame();
+	}
 
 	qglBindFramebuffer( GL_FRAMEBUFFER, 0 );
-
-	GLimp_EndFrame();
 
 	// FBO_Bind() caches the bound framebuffer, resync it
 	if ( fboEnabled ) {

@@ -135,6 +135,7 @@ cvar_t  *r_primitives;
 cvar_t  *r_texturebits;
 cvar_t  *r_ext_multisample;
 cvar_t  *r_fbo;
+cvar_t  *r_vrMirrorFit;
 
 cvar_t  *r_drawBuffer;
 cvar_t  *r_glIgnoreWicked3D;
@@ -1267,6 +1268,7 @@ void R_Register( void ) {
 	r_ext_multisample = ri.Cvar_Get( "r_ext_multisample", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_ext_multisample, 0, 4, qtrue );
 	r_fbo = ri.Cvar_Get( "r_fbo", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	r_vrMirrorFit = ri.Cvar_Get( "vr_mirrorFit", "0", CVAR_ARCHIVE );
 	ri.Cvar_CheckRange( r_fbo, 0, 1, qtrue );
 	r_overBrightBits = ri.Cvar_Get( "r_overBrightBits", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "0", CVAR_ARCHIVE | CVAR_LATCH );
@@ -1566,6 +1568,7 @@ void RE_Shutdown( qboolean destroyWindow ) {
 	ri.Cmd_RemoveCommand( "fbolist" );
 
 	FBO_Shutdown();
+	R_VR_MirrorShutdown();
 
 	// Ridah
 	ri.Cmd_RemoveCommand( "cropimages" );

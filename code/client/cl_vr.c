@@ -2745,6 +2745,9 @@ qboolean CL_VR_RenderFrame( void ) {
 	com_vr.pass = VR_PASS_FLAT;
 
 	VR_SubmitFrame( qtrue, fbo != 0, uiInWorld );
+	if ( mirror ) {
+		re.VR_PresentMirror( 0, 0, 0 );     // the window, once the headset has its frame
+	}
 	return qtrue;
 }
 

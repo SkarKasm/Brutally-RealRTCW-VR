@@ -1333,6 +1333,8 @@ void     RE_VR_SetEye( int eye, const float *fovTangents, const vec3_t eyeOffset
 void     RE_VR_BeginPass( unsigned int targetFramebuffer, const float *clearColor );
 void     RE_VR_EndPasses( void );
 void     RE_VR_PresentMirror( unsigned int sourceFramebuffer, int sourceWidth, int sourceHeight );
+void     R_VR_MirrorShutdown( void );
+extern cvar_t *r_vrMirrorFit;
 void     *R_VR_GLProc( const char *name );
 unsigned int R_VR_CurrentTarget( void );
 
