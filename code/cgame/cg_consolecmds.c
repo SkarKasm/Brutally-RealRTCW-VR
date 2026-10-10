@@ -252,6 +252,18 @@ static void CG_WeaponWheelUp_f( void ) {
 					 ? cg.weaponWheel.latchedWeapon
 					 : cg.weaponWheel.hoveredWeapon;
 
+	// RealRTCW-VR: the binoculars go in the gun hand, a weapon puts them away
+	if ( weapon == VR_WHEEL_BINOCS ) {
+		if ( cgVR ) {
+			cgVR->binocsOut = 1;
+		}
+		cgvr.binocsWeapon = cg.snap->ps.weapon;
+		return;
+	}
+	if ( weapon > 0 && cgVR ) {
+		cgVR->binocsOut = 0;
+	}
+
 	if (weapon > 0)
 	{
 		CG_FinishWeaponChange(cg.weaponSelect, weapon);

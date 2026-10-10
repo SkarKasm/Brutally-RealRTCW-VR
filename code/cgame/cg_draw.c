@@ -4576,6 +4576,11 @@ int CG_CollectWeaponWheelWeapons( int *visibleWeapons, int maxWeapons ) {
 		visibleWeapons[numVisible++] = w;
 	}
 
+	// RealRTCW-VR: the binoculars, once found, to hold in the gun hand
+	if ( CG_VR_Active() && ( cg.snap->ps.stats[STAT_KEYS] & ( 1 << INV_BINOCS ) ) && numVisible < maxWeapons ) {
+		visibleWeapons[numVisible++] = VR_WHEEL_BINOCS;
+	}
+
 	return numVisible;
 }
 
@@ -4585,7 +4590,7 @@ static void CG_WeaponWheelAmmoText( int weap, char *buffer, int bufferSize ) {
 
 	buffer[0] = '\0';
 
-	if ( isChargeBased( weap ) ) {
+	if ( weap == VR_WHEEL_BINOCS || isChargeBased( weap ) ) {
 		return;
 	}
 
@@ -4618,6 +4623,9 @@ static const char *CG_WeaponWheelName( int weap ) {
 	gitem_t *item;
 	int itemNum;
 
+	if ( weap == VR_WHEEL_BINOCS ) {
+		return "Binoculars";
+	}
 	item = BG_FindItemForWeapon( weap );
 	if ( !item ) {
 		return "";
@@ -4713,7 +4721,9 @@ void CG_DrawWeaponWheel( void ) {
 
 		int weap = visibleWeapons[idx];
 
-		CG_RegisterWeapon( weap, qfalse );
+		if ( weap != VR_WHEEL_BINOCS ) {
+			CG_RegisterWeapon( weap, qfalse );
+		}
 
 		qboolean wideweap;
 
@@ -4774,7 +4784,13 @@ void CG_DrawWeaponWheel( void ) {
 
 		qhandle_t icon;
 
-		if ( weap == cg.weaponWheel.hoveredWeapon ) {
+		if ( weap == VR_WHEEL_BINOCS ) {
+			static qhandle_t binocsIcon;
+			if ( !binocsIcon ) {
+				binocsIcon = trap_R_RegisterShaderNoMip( "icons/binocs" );
+			}
+			icon = binocsIcon;
+		} else if ( weap == cg.weaponWheel.hoveredWeapon ) {
 			icon = cg_weapons[weap].weaponIcon[1];
 		} else {
 			icon = cg_weapons[weap].weaponIcon[0];

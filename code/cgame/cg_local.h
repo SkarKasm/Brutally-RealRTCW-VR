@@ -1818,6 +1818,7 @@ typedef struct {
 	vec3_t      handOrigin[2];      // world, indexed by VR_HAND_*
 	vec3_t      gunGrip;            // world: where the gun's grip is (the gun hand, or held in the off hand)
 	int         dualDraw;           // two guns being drawn: 1 the gun hand's, 2 the off hand's (0: not)
+	int         binocsWeapon;       // the weapon put away for the binoculars (cgVR->binocsOut)
 	vec3_t      handAngles[2];
 	vec3_t      weaponAngles;       // world aim of the gun
 	vec3_t      muzzle;             // world position of the gun's muzzle this frame
@@ -1866,6 +1867,9 @@ void CG_VR_MuzzleFallback( int weapon, const refEntity_t *parent, refEntity_t *f
 void CG_VR_AddReticle( void );
 void CG_VR_AddPointer( void );
 void CG_VR_AddHands( void );
+qboolean CG_VR_Binocs( playerState_t *ps );
+// the weapon wheel's binoculars (VR): not a weapon, they go in the gun hand
+#define VR_WHEEL_BINOCS     ( MAX_WEAPONS + 1 )
 qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_t *ent );
 void CG_VR_AddReloadItems( void );
 qboolean CG_VR_Inspect( playerState_t *ps );

@@ -141,6 +141,7 @@ typedef struct vrShared_s {
 	float   recoilPitch;        // the gun's kick, added to the aim (degrees, negative is up)
 	float   recoilBack;         // and how far it jolts back in the hand (game units)
 	int     dualWield;          // a pistol in each hand: the off hand's trigger fires its own
+	int     binocsOut;          // binoculars picked from the weapon wheel: in the gun hand, the gun put away (cgame sets it)
 	float   weaponScale;        // guns and hands drawn this size (1 = the flat game's models)
 	int     supportValid;       // the held gun has a support hand: the off hand takes hold there
 	float   supportRel[3];      // where, from the gun hand: forward, left, up along the gun (game units)

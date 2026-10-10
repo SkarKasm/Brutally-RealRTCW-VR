@@ -320,7 +320,7 @@ static qboolean CG_VR_GunHands( void ) {
 static qboolean CG_VR_HandOnGun( int h ) {
 	const vrHandPose_t *hp;
 
-	if ( !cgvr.active || !vr_drawHands.integer ) {
+	if ( !cgvr.active || !vr_drawHands.integer || cgVR->binocsOut ) {
 		return qfalse;
 	}
 	if ( cgVR->dualWield ) {
@@ -849,6 +849,43 @@ void CG_VR_AddHands( void ) {
 		ent.renderfx = RF_FIRST_PERSON;
 		trap_R_AddRefEntityToScene( &ent );
 	}
+}
+
+/*
+=================
+CG_VR_Binocs
+
+Binoculars picked from the weapon wheel: the gun is put away and they're held in the gun
+hand (the third person model, which sits on the hand like a gun); raised to the eyes they
+zoom (cl_vr.c). Picking a weapon, or the weapon changing, puts them away.
+=================
+*/
+qboolean CG_VR_Binocs( playerState_t *ps ) {
+	refEntity_t ent;
+	int dom = CG_VR_DominantHand();
+
+	if ( !cgVR->binocsOut ) {
+		return qfalse;
+	}
+	if ( !cgvr.active || ps->weapon != cgvr.binocsWeapon || ( ps->eFlags & EF_DEAD ) ||
+		 !( ps->stats[STAT_KEYS] & ( 1 << INV_BINOCS ) ) ) {
+		cgVR->binocsOut = 0;
+		return qfalse;
+	}
+	cgVR->muzzleValid = qfalse;
+	if ( cg.zoomedBinoc || !cgVR->handValid[dom] || !cgs.media.thirdPersonBinocModel ) {
+		return qtrue;   // (looking through them: the lens view is drawn instead)
+	}
+	memset( &ent, 0, sizeof( ent ) );
+	ent.hModel = cgs.media.thirdPersonBinocModel;
+	AnglesToAxis( cgvr.weaponAngles, ent.axis );
+	VectorCopy( cgvr.handOrigin[dom], ent.origin );
+	VectorMA( ent.origin, 1.5f, ent.axis[2], ent.origin );     // in the palm, not through it
+	VectorCopy( ent.origin, ent.oldorigin );
+	VectorCopy( ent.origin, ent.lightingOrigin );
+	ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN;
+	trap_R_AddRefEntityToScene( &ent );
+	return qtrue;
 }
 
 /*

@@ -1423,7 +1423,7 @@ static void VR_UpdateTracking( void ) {
 
 		com_vr.twoHanded = qfalse;
 		// (not while the off hand is busy reloading or carrying a body)
-		if ( xr.steadyLatched && com_vr.twoHandAllowed &&
+		if ( xr.steadyLatched && com_vr.twoHandAllowed && !com_vr.binocsOut &&
 			 !com_vr.heldItem && !com_vr.chargeHeld && com_vr.grabbedEntity < 0 ) {
 			vec3_t dir, ang;
 			VectorSubtract( com_vr.handOrigin[!dom], com_vr.handOrigin[dom], dir );
@@ -2120,7 +2120,7 @@ static qboolean VR_BinocularGesture( int off ) {
 	XrQuaternionf inv;
 	float rel[3], local[3], slack;
 
-	if ( !vr_binoculars->integer || !xr.hands[off].gripValid ) {
+	if ( ( !vr_binoculars->integer && !com_vr.binocsOut ) || !xr.hands[off].gripValid ) {
 		held = qfalse;
 		return qfalse;
 	}
@@ -2165,24 +2165,25 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 
 	// the trigger, sampled this frame. The knife slashes by swinging it, so its trigger
 	// throws one instead (the flat game's alt fire: hold, let go to throw)
-	if ( xr.attackHeld && !Key_GetCatcher() ) {
+	if ( xr.attackHeld && !Key_GetCatcher() && !com_vr.binocsOut ) {
 		if ( cl.snap.ps.weapon == WP_KNIFE ) {
 			cmd->wbuttons |= WBUTTON_ATTACK2;
 		} else {
 			cmd->buttons |= BUTTON_ATTACK;
 		}
 	}
-	if ( !Key_GetCatcher() && VR_BinocularGesture( off ) ) {
+	// (binoculars from the weapon wheel are in the gun hand: that one goes up to the eyes)
+	if ( !Key_GetCatcher() && VR_BinocularGesture( com_vr.binocsOut ? dom : off ) ) {
 		cmd->wbuttons |= WBUTTON_ZOOM;
 	}
 
 	// dual pistols: the off hand's trigger fires the off hand's gun, aimed where it points
 	com_vr.akimboLeft = 0;
-	com_vr.akimboBoth = com_vr.dualWield && xr.attackOffHeld && xr.attackHeld && !Key_GetCatcher();
+	com_vr.akimboBoth = com_vr.dualWield && !com_vr.binocsOut && xr.attackOffHeld && xr.attackHeld && !Key_GetCatcher();
 	if ( com_vr.akimboBoth ) {
 		xr.akimboLastLeft = !xr.akimboLastLeft;     // both triggers: the guns take turns
 	}
-	if ( com_vr.dualWield && xr.attackOffHeld && ( !xr.attackHeld || xr.akimboLastLeft ) &&
+	if ( com_vr.dualWield && !com_vr.binocsOut && xr.attackOffHeld && ( !xr.attackHeld || xr.akimboLastLeft ) &&
 		 com_vr.handValid[off] && !Key_GetCatcher() ) {
 		cmd->buttons |= BUTTON_ATTACK;
 		com_vr.akimboLeft = 1;

@@ -4143,7 +4143,9 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 						   ps->ammoclip[ps->weapon], ps->ammo[BG_FindAmmoForWeapon( ps->weapon )] );
 			}
 		}
-		if ( ps->weapon <= WP_NONE ) {
+		if ( CG_VR_Binocs( ps ) ) {
+			cgVR->dualWield = 0;    // the guns are put away
+		} else if ( ps->weapon <= WP_NONE ) {
 			cgVR->muzzleValid = qfalse;
 		} else if ( cgVR->dualWield ) {
 			CG_VR_AddDualGuns( ps, CG_VR_DualSingle( ps ) );     // a gun in each hand
@@ -4166,9 +4168,13 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 			}
 			CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity );
 		}
-		CG_VR_IronSights();
+		if ( !cgVR->binocsOut ) {
+			CG_VR_IronSights();
+		}
 		CG_VR_AddHands();
-		CG_VR_AddReticle();
+		if ( !cgVR->binocsOut ) {
+			CG_VR_AddReticle();
+		}
 		CG_VR_AddReloadItems();
 		CG_VR_WristHUD();
 		cg.predictedPlayerEntity.lastWeaponClientFrame = cg.clientFrame;
