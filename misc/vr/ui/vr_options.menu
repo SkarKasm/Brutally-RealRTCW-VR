@@ -390,8 +390,8 @@
 			name vr_opt
 			type ITEM_TYPE_MULTI
 			text "Weapon size:"
-			cvar "vr_weaponScale"
-			cvarFloatList { "Original" 1 "Smaller" 0.7 "Realistic" 0.4375 }
+			cvar "vr_gunSize"
+			cvarFloatList { "Realistic" 1 "Larger" 1.15 "Smaller" 0.87 }
 			rect 330 324 290 14
 			textalign ITEM_ALIGN_RIGHT
 			textalignx 150
@@ -532,6 +532,60 @@
 
 		// ------------------------------------------------------------------ footer
 
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_MULTI
+			text "Height offset:"
+			cvar "vr_heightOffset"
+			cvarFloatList { "-30 cm" -0.3 "-25 cm" -0.25 "-20 cm" -0.2 "-15 cm" -0.15 "-10 cm" -0.1 "-5 cm" -0.05 "None" 0 "+5 cm" 0.05 "+10 cm" 0.1 "+15 cm" 0.15 "+20 cm" 0.2 "+25 cm" 0.25 "+30 cm" 0.3 }
+			rect 20 344 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_MULTI
+			text "Grenade throws:"
+			cvar "vr_throwAim"
+			cvarFloatList { "By hand" 0 "At the reticle" 1 }
+			rect 20 364 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
+
+		itemDef {
+			name vr_opt
+			type ITEM_TYPE_MULTI
+			text "Lean out over body:"
+			cvar "vr_lean"
+			cvarFloatList { "Off" 0 "20 cm" 0.2 "40 cm" 0.4 "60 cm" 0.6 }
+			rect 330 384 290 14
+			textalign ITEM_ALIGN_RIGHT
+			textalignx 150
+			textaligny 11
+			textscale .22
+			textfont UI_FONT_BIG
+			style WINDOW_STYLE_FILLED
+			backcolor 1 1 1 .07
+			forecolor 1 1 1 1
+			visible 1
+		}
 		itemDef {
 			name vr_note
 			text "Settings apply immediately. More VR options will appear here as they are added."
