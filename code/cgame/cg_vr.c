@@ -1871,11 +1871,50 @@ static void CG_VR_DualOffHand( int single, weaponInfo_t *weapon ) {
 	trap_R_AddRefEntityToScene( &ent );
 }
 
+// the y (model space, to the left) of the middle of each dual wielded gun's body, the median
+// of its vertices (scratch measure with make_vr_assets' posing): the mirrored hand closes round
+// the grip mirrored about grip y, so the unmirrored gun moves by twice the difference
+typedef struct {
+	const char  *weap;
+	float       y;
+} vrDualCenter_t;
+
+static const vrDualCenter_t vrDualCenters[] = {
+	{ "luger.weap", -4.69f },
+	{ "luger_silenced.weap", -4.69f },
+	{ "colt.weap", -5.05f },
+	{ "tt33.weap", -5.33f },
+	{ "revolver.weap", -6.16f },
+	{ "hdm.weap", -6.90f },
+	{ "mp40.weap", -5.03f },
+	{ "thompson.weap", -2.78f },
+	{ "sten.weap", -5.36f },
+	{ "ppsh.weap", -4.38f },
+	{ "mp34.weap", -5.91f },
+};
+
+static float CG_VR_DualCenterY( int weapon, float fallback ) {
+	const char *file = BG_GetWeaponFilename( weapon );
+	int i;
+
+	if ( !file || cg_vanilla_guns.integer ) {
+		return fallback;
+	}
+	for ( i = 0; i < (int)ARRAY_LEN( vrDualCenters ); i++ ) {
+		if ( !Q_stricmp( vrDualCenters[i].weap, file ) ) {
+			return vrDualCenters[i].y;
+		}
+	}
+	return fallback;
+}
+
 void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
 	centity_t *cent = &cg.predictedPlayerEntity;
 	weaponInfo_t *weapon;
 	refEntity_t hand;
 	vec3_t angles = { 0, 0, 0 };
+	vrWeaponGeom_t geom;
+	float adj[6] = { 0, 0, 0, 0, 0, 0 };
 	char buf[32];
 	int side, savedWeapon = cent->currentState.weapon, savedFlash = cent->muzzleFlashTime;
 	int off = !CG_VR_DominantHand();
@@ -1895,9 +1934,13 @@ void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
 			}
 			VectorCopy( cgvr.handAngles[off], angles );
 			angles[PITCH] += atof( buf );
-			// the right hand's gun mirrored, as its hand is (CG_VR_DualOffHand): unmirrored
-			// it sat across the left palm
-			CG_VR_DualFrame( off, single, hand.origin, hand.axis );
+			// the gun as modelled (its ejection port and parts where they really are), held by
+			// the mirrored hand (CG_VR_DualOffHand): moved across so its body sits where the
+			// mirrored hand closes round it, not through the left palm
+			CG_VR_Geom( single, &geom );
+			BG_VR_WeaponFrame( &geom, cgvr.handOrigin[off], angles, adj, hand.origin, hand.axis );
+			VectorMA( hand.origin, 2.0f * ( geom.grip[1] - CG_VR_DualCenterY( single, geom.grip[1] ) ),
+					  hand.axis[1], hand.origin );
 			CG_VR_DualOffHand( single, weapon );
 		}
 		cgvr.dualDraw = side == 1 ? 1 : 2;
@@ -1910,9 +1953,6 @@ void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
 		hand.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;
 		if ( CG_VR_DrawHands() ) {
 			hand.renderfx |= RF_VR_NOHANDS;
-		}
-		if ( side == 0 ) {
-			hand.renderfx |= RF_VR_MIRRORED;
 		}
 		// only the gun that fired flashes
 		cent->muzzleFlashTime = ( ( side == 0 ) == cgvr.lastShotLeft ) ? savedFlash : 0;
