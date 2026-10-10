@@ -1549,36 +1549,20 @@ static qboolean CG_VR_OneHanded( int weapon ) {
 static qboolean CG_VR_HasReticle( int weapon ) {
 	return !CG_VR_OneHanded( weapon ) || weapon == WP_LUGER || weapon == WP_SILENCER || weapon == WP_COLT ||
 		   weapon == WP_TT33 || weapon == WP_REVOLVER || weapon == WP_HDM || weapon == WP_AKIMBO ||
-		   weapon == WP_DUAL_TT33;
+		   weapon == WP_DUAL_TT33 ||
+		   // thrown things land on it (G_VR_LobAt)
+		   weapon == WP_KNIFE || weapon == WP_GRENADE_LAUNCHER || weapon == WP_GRENADE_PINEAPPLE ||
+		   weapon == WP_DYNAMITE || weapon == WP_DYNAMITE_ENG || weapon == WP_SMOKE_BOMB || weapon == WP_POISONGAS;
 }
 
-/*
-=================
-CG_VR_AddReticle
-
-A dot where the shot would land: traced from the muzzle along the aim, like the server
-fires it. Kept at the same apparent size at any distance.
-=================
-*/
-void CG_VR_AddReticle( void ) {
+// a dot where a shot from start along angles lands, the same apparent size at any distance
+static void CG_VR_ReticleDot( const vec3_t start, const vec3_t angles ) {
 	refEntity_t ent;
 	trace_t tr;
-	vec3_t start, end, aim[3], toEye;
-	int weapon = cg.predictedPlayerState.weapon;
+	vec3_t end, aim[3], toEye;
 	float dist;
 
-	trap_Cvar_Update( &vr_reticle );
-	if ( !cgvr.active || !vr_reticle.integer || cgVR->menuPointer || cg.cameraMode ||
-		 !CG_VR_HasReticle( weapon ) || cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 ) {
-		return;
-	}
-
-	AnglesToAxis( cgvr.weaponAngles, aim );
-	if ( cgVR->muzzleValid ) {
-		VectorCopy( cgvr.muzzle, start );
-	} else {
-		VectorCopy( cgvr.handOrigin[CG_VR_DominantHand()], start );
-	}
+	AnglesToAxis( angles, aim );
 	VectorMA( start, 8192, aim[0], end );
 	CG_Trace( &tr, start, NULL, NULL, end, cg.predictedPlayerState.clientNum, MASK_SHOT );
 	if ( tr.startsolid ) {
@@ -1602,6 +1586,28 @@ void CG_VR_AddReticle( void ) {
 	ent.shaderRGBA[3] = 255;
 	ent.renderfx = RF_DEPTHHACK | RF_FIRST_PERSON;
 	trap_R_AddRefEntityToScene( &ent );
+}
+
+/*
+=================
+CG_VR_AddReticle
+
+A dot where the shot would land: traced from the muzzle along the aim, like the server
+fires it (and one for the off hand's gun of a pair). Thrown things are lobbed onto it.
+=================
+*/
+void CG_VR_AddReticle( void ) {
+	int weapon = cg.predictedPlayerState.weapon;
+
+	trap_Cvar_Update( &vr_reticle );
+	if ( !cgvr.active || !vr_reticle.integer || cgVR->menuPointer || cg.cameraMode ||
+		 !CG_VR_HasReticle( weapon ) || cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 ) {
+		return;
+	}
+	CG_VR_ReticleDot( cgVR->muzzleValid ? cgvr.muzzle : cgvr.handOrigin[CG_VR_DominantHand()], cgvr.weaponAngles );
+	if ( cgVR->dualWield && cgVR->handValid[!CG_VR_DominantHand()] ) {
+		CG_VR_ReticleDot( cgvr.muzzleOff, cgvr.aimOff );
+	}
 }
 
 /*
@@ -1869,9 +1875,7 @@ void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
 	centity_t *cent = &cg.predictedPlayerEntity;
 	weaponInfo_t *weapon;
 	refEntity_t hand;
-	vrWeaponGeom_t geom;
-	vec3_t angles;
-	float adj[6] = { 0, 0, 0, 0, 0, 0 };
+	vec3_t angles = { 0, 0, 0 };
 	char buf[32];
 	int side, savedWeapon = cent->currentState.weapon, savedFlash = cent->muzzleFlashTime;
 	int off = !CG_VR_DominantHand();
@@ -1891,8 +1895,9 @@ void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
 			}
 			VectorCopy( cgvr.handAngles[off], angles );
 			angles[PITCH] += atof( buf );
-			CG_VR_Geom( single, &geom );
-			BG_VR_WeaponFrame( &geom, cgvr.handOrigin[off], angles, adj, hand.origin, hand.axis );
+			// the right hand's gun mirrored, as its hand is (CG_VR_DualOffHand): unmirrored
+			// it sat across the left palm
+			CG_VR_DualFrame( off, single, hand.origin, hand.axis );
 			CG_VR_DualOffHand( single, weapon );
 		}
 		cgvr.dualDraw = side == 1 ? 1 : 2;
@@ -1905,6 +1910,9 @@ void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
 		hand.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;
 		if ( CG_VR_DrawHands() ) {
 			hand.renderfx |= RF_VR_NOHANDS;
+		}
+		if ( side == 0 ) {
+			hand.renderfx |= RF_VR_MIRRORED;
 		}
 		// only the gun that fired flashes
 		cent->muzzleFlashTime = ( ( side == 0 ) == cgvr.lastShotLeft ) ? savedFlash : 0;

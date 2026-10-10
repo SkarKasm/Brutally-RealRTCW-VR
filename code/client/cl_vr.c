@@ -289,6 +289,7 @@ static struct {
 	qboolean        attackHeld;         // the trigger fires: goes straight into the usercmd
 	qboolean        attackOffHeld;      // dual pistols: the off hand's trigger
 	float           headHeight;         // metres above the floor (physical crouch)
+	float           lean[2];            // world units: head out over the body (room scale)
 	qboolean        teleportPending;    // a teleport goes in the next usercmd
 	short           teleportMove[2];
 	qboolean        akimboLastLeft;     // which of the two was pulled last
@@ -312,6 +313,7 @@ static cvar_t *vr_seated;           // playing seated: stand the view up, no phy
 static cvar_t *vr_seatedHeight;     // metres added to the head when seated
 static cvar_t *vr_heightOffset;     // metres added to (or taken off) the player's height
 static cvar_t *vr_crouchHeight;     // head below this (metres) crouches, 0 off
+static cvar_t *vr_lean;             // metres the head can lean out over the body before it follows
 static cvar_t *vr_snapTurn;
 static cvar_t *vr_turnSpeed;
 static cvar_t *vr_walkDirection;
@@ -1216,6 +1218,8 @@ void CL_VR_Init( void ) {
 	vr_seatedHeight = Cvar_Get( "vr_seatedHeight", "0.5", CVAR_ARCHIVE );
 	vr_heightOffset = Cvar_Get( "vr_heightOffset", "0", CVAR_ARCHIVE );
 	vr_crouchHeight = Cvar_Get( "vr_crouchHeight", "1.1", CVAR_ARCHIVE );
+	vr_lean = Cvar_Get( "vr_lean", "0.4", CVAR_ARCHIVE );
+	Cvar_Get( "vr_throwAim", "1", CVAR_ARCHIVE );      // grenades and knives land on the reticle (g_vr.c)
 	Cvar_Get( "vr_vignette", "0", CVAR_ARCHIVE );            // cg_vrcomfort.c
 	Cvar_Get( "vr_wristHud", "1", CVAR_ARCHIVE );           // cg_vrwrist.c
 	Cvar_Get( "vr_pouchMags", "1", CVAR_ARCHIVE );          // spare magazines shown in the pouch
@@ -2248,7 +2252,29 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 		cmd->rightmove = ClampChar( cmd->rightmove + (int)( 127.0f * ( side * c - fwd * s ) ) );
 	}
 
-	// room-scale: carry the body along with the head, in the usercmd yaw frame
+	// room-scale: the head leans out over the body up to vr_lean (crouching low, going
+	// prone, reaching over a ledge: no shoving the body into what's in front and the view
+	// pushed back with it, cgame stops the view at walls), then the body follows it, in
+	// the usercmd yaw frame
+	if ( vr_roomScale->integer ) {
+		float reach = vr_lean->value * vr_worldScale->value, len;
+
+		xr.lean[0] += xr.pendingMove[0];
+		xr.lean[1] += xr.pendingMove[1];
+		xr.pendingMove[0] = xr.pendingMove[1] = 0;
+		len = sqrt( xr.lean[0] * xr.lean[0] + xr.lean[1] * xr.lean[1] );
+		if ( len > reach && len > 0 ) {
+			float k = ( len - reach ) / len;
+			xr.pendingMove[0] = xr.lean[0] * k;
+			xr.pendingMove[1] = xr.lean[1] * k;
+			xr.lean[0] -= xr.pendingMove[0];
+			xr.lean[1] -= xr.pendingMove[1];
+		}
+	} else {
+		xr.lean[0] = xr.lean[1] = 0;
+	}
+	com_vr.lean[0] = xr.lean[0];
+	com_vr.lean[1] = xr.lean[1];
 	if ( vr_roomScale->integer && ( xr.pendingMove[0] || xr.pendingMove[1] ) ) {
 		float limit = 16.0f;        // per command, anything bigger is a tracking glitch
 		float mx, my;

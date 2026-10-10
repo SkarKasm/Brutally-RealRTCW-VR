@@ -94,6 +94,8 @@ typedef struct vrShared_s {
 	int     cutscene;           // scripted camera active, head look is free
 	int     flatCutscene;       // ...and shown on a flat screen in front of the player (cl_vr.c)
 	float   eyeHeight;          // eye height above ps->origin used for the view (game units)
+	float   lean[2];            // world: how far the head is out over the body (client: wanted, cl_vr.c)
+	float   leanUsed[2];        // world: that, stopped at walls, as the view used it (cgame)
 	int     zoomed;             // scope / binocular view active
 	int     twoHandAllowed;     // current weapon can be steadied with the off hand (not pistols)
 	int     muzzleValid;        // muzzleOffset is set

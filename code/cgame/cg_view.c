@@ -563,6 +563,26 @@ static void CG_VR_OffsetFirstPersonView( void ) {
 	cg.refdef.vieworg[2] += eye;
 	cgVR->eyeHeight = eye;
 
+	// leaning out over the body (crouching, prone, reaching over things: cl_vr.c), up to walls
+	if ( ps->stats[STAT_HEALTH] > 0 && ( cgVR->lean[0] || cgVR->lean[1] ) ) {
+		vec3_t to, mins = { -4, -4, -4 }, maxs = { 4, 4, 4 };
+		trace_t tr;
+
+		VectorCopy( cg.refdef.vieworg, to );
+		to[0] += cgVR->lean[0];
+		to[1] += cgVR->lean[1];
+		CG_Trace( &tr, cg.refdef.vieworg, mins, maxs, to, ps->clientNum, MASK_PLAYERSOLID );
+		if ( tr.startsolid ) {
+			VectorCopy( cg.refdef.vieworg, tr.endpos );
+		}
+		cgVR->leanUsed[0] = tr.endpos[0] - cg.refdef.vieworg[0];
+		cgVR->leanUsed[1] = tr.endpos[1] - cg.refdef.vieworg[1];
+		cg.refdef.vieworg[0] = tr.endpos[0];
+		cg.refdef.vieworg[1] = tr.endpos[1];
+	} else {
+		cgVR->leanUsed[0] = cgVR->leanUsed[1] = 0;
+	}
+
 	CG_StepOffset();
 
 	// shots leave the gun hand, see G_VR_WeaponOrigin

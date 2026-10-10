@@ -151,6 +151,8 @@ static void G_VR_Haptic( int hand, float amplitude, int msec ) {
 static void G_VR_Eye( gentity_t *ent, vec3_t eye ) {
 	VectorCopy( ent->r.currentOrigin, eye );
 	eye[2] += gVR->eyeHeight > 0 ? gVR->eyeHeight : ent->client->ps.viewheight;
+	eye[0] += gVR->leanUsed[0];     // the head leaning out over the body (cg_view.c)
+	eye[1] += gVR->leanUsed[1];
 }
 
 // a play space point in the world
@@ -1248,6 +1250,42 @@ qboolean G_VR_Aiming( gentity_t *ent ) {
 
 /*
 =================
+G_VR_LobAt
+
+The velocity, at this speed, that carries a throw from start onto the reticle (where the
+aim points: a straight trace along the player's aim) on the low arc; out of reach, the
+longest throw that way. qfalse if not a VR player or vr_throwAim is off.
+=================
+*/
+qboolean G_VR_LobAt( gentity_t *ent, const vec3_t start, float speed, float gravity, vec3_t vel ) {
+	vec3_t fwd, end, flat;
+	trace_t tr;
+	float x, y, v2, disc, th;
+
+	if ( !ent || !ent->client || !G_VR_IsPlayer( ent ) || !trap_Cvar_VariableIntegerValue( "vr_throwAim" ) ) {
+		return qfalse;
+	}
+	AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
+	VectorMA( start, 8192, fwd, end );
+	trap_Trace( &tr, start, NULL, NULL, end, ent->s.number, MASK_SHOT );
+	VectorSubtract( tr.endpos, start, flat );
+	y = flat[2];
+	flat[2] = 0;
+	x = VectorNormalize( flat );
+	if ( x < 8.0f ) {
+		VectorScale( fwd, speed, vel );     // straight down (or up)
+		return qtrue;
+	}
+	v2 = speed * speed;
+	disc = v2 * v2 - gravity * ( gravity * x * x + 2.0f * y * v2 );
+	th = disc < 0 ? M_PI * 0.25f : atan2( v2 - sqrt( disc ), gravity * x );
+	VectorScale( flat, speed * cos( th ), vel );
+	vel[2] = speed * sin( th );
+	return qtrue;
+}
+
+/*
+=================
 G_VR_GrenadeThrow
 
 Grenades, dynamite and the rest leave the hand that threw them, as fast as it was moving
@@ -1276,6 +1314,12 @@ void G_VR_GrenadeThrow( gentity_t *ent, int weapon, vec3_t start, vec3_t dir ) {
 	// from the eye, so a hand through a wall can't throw on the far side
 	trap_Trace( &tr, eye, tv( -4, -4, -4 ), tv( 4, 4, 4 ), hand, ent->s.number, MASK_MISSILESHOT );
 	VectorCopy( tr.endpos, start );
+
+	// onto the reticle (vr_throwAim), a little slower for dynamite
+	if ( G_VR_LobAt( ent, start, weapon == WP_DYNAMITE || weapon == WP_DYNAMITE_ENG ? 700.0f : 900.0f,
+					 DEFAULT_GRAVITY, dir ) ) {
+		return;
+	}
 
 	VectorCopy( vrp.throwVel, vel );
 	speed = VectorLength( vel );

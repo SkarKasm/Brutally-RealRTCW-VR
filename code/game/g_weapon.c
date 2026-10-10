@@ -1728,6 +1728,13 @@ void ThrowKnife( gentity_t *ent )
 		speed = MIN_KNIFESPEED;*/
 
 	VectorScale( dir, speed, knife->s.pos.trDelta );
+	// RealRTCW-VR: onto the reticle (vr_throwAim)
+	{
+		vec3_t lob;
+		if ( G_VR_LobAt( ent, muzzleEffect, speed, DEFAULT_GRAVITY * 0.3f, lob ) ) {
+			VectorCopy( lob, knife->s.pos.trDelta );
+		}
+	}
 	SnapVector( knife->s.pos.trDelta );
 
 	// rotation
@@ -1914,6 +1921,8 @@ qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out ) {
 
 	VectorCopy( ent->r.currentOrigin, eye );
 	eye[2] += gVR->eyeHeight > 0 ? gVR->eyeHeight : ent->client->ps.viewheight;
+	eye[0] += gVR->leanUsed[0];     // the head leaning out over the body (cg_view.c)
+	eye[1] += gVR->leanUsed[1];
 
 	// play space offset from the head, turned into the world by the usercmd delta yaw
 	VectorSubtract( gVR->gunInOffHand && !gVR->dualWield ? gVR->gunOrigin : gVR->handOrigin[dom], gVR->hmdOrigin, offset );

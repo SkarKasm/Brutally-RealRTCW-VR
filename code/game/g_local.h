@@ -988,6 +988,7 @@ extern qboolean g_vrHandUse;            // RealRTCW-VR: Cmd_Activate_f from a ha
 extern vec3_t g_vrHandFrom, g_vrHandTo;
 qboolean G_VR_LookRay( gentity_t *ent, float dist, vec3_t from, vec3_t to );   // RealRTCW-VR
 void G_VR_GrenadeThrow( gentity_t *ent, int weapon, vec3_t start, vec3_t dir );   // RealRTCW-VR
+qboolean G_VR_LobAt( gentity_t *ent, const vec3_t start, float speed, float gravity, vec3_t vel );   // RealRTCW-VR
 void G_VR_KnifeStab( gentity_t *ent );                      // RealRTCW-VR
 // g_vr.c
 void G_VR_UpdateWeaponState( gentity_t *ent );
