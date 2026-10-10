@@ -32,10 +32,11 @@ typedef enum {
 	VRX_DISMEMBER,      // 0 off, 1 explosions, 2 explosions and heavy weapons
 	VRX_DECAP,          // knife decapitation of the dead
 	VRX_HEADSCARE,      // thrown heads: 0 nothing, 1 scare, 2 scare and surrender
+	VRX_STOCKGIBS,      // RTCW's own gibbing of soldiers (0 off: bodies stay for our gore)
 	VRX_COUNT
 } vrExtra_t;
 
-#define VRX_DEFAULTS    "111112212"     // a digit per setting, in that order
+#define VRX_DEFAULTS    "1111122120"     // a digit per setting, in that order
 
 // EV_VR_GORE (eventParm): what happened to the body otherEntityNum, the blow along origin2
 typedef enum {
@@ -60,5 +61,12 @@ typedef enum {
 #define VRX_GB_RLEG         16
 #define VRX_GB_SCARED       32      // alive, running from a thrown head
 #define VRX_GB_SURRENDER    64      // alive, weapon dropped, hands up
+#define VRX_GB_BLOWN        256     // killed by a blast close by: torn open (skinned head, ribs, guts)
+
+// the crypt's torn soldier pieces (z_vr_assets.pk3, cut from crypt1.bsp), and who can wear them:
+// men in uniform or plain clothes, not women, monsters or the special ones
+// (co-op: vanilla RTCW's characters, no Russians, mercenaries or trench soldiers)
+#define VRX_HUMAN_MALE( c ) ( ( c ) == AICHAR_SOLDIER || ( c ) == AICHAR_AMERICAN || ( c ) == AICHAR_VENOM || \
+							  ( c ) == AICHAR_BLACKGUARD || ( c ) == AICHAR_PARTISAN )
 
 #endif

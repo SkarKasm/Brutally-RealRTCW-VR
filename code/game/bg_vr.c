@@ -394,3 +394,20 @@ const char *BG_VR_FirstPersonModel( int weapon ) {
 	}
 	return item ? item->world_model[1] : NULL;
 }
+
+/*
+=================
+BG_VR_HandsLow
+
+Both hands down at the waist, 40cm or more under the eyes (dual wielding: the reload button
+reloads the pair). From the usercmd's hands, so the server and the player's prediction agree.
+=================
+*/
+qboolean BG_VR_HandsLow( const usercmd_t *cmd ) {
+	const float drop = 0.40f * 39.37f;  // game units per metre (vr_worldScale's default)
+
+	if ( !( cmd->vrFlags & VRF_ACTIVE ) || !( cmd->vrFlags & VRF_HAND_LEFT ) || !( cmd->vrFlags & VRF_HAND_RIGHT ) ) {
+		return qfalse;
+	}
+	return cmd->vrHand[VR_HAND_LEFT][2] * 0.125f < -drop && cmd->vrHand[VR_HAND_RIGHT][2] * 0.125f < -drop;
+}

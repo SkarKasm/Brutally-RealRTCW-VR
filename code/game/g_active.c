@@ -631,7 +631,11 @@ void ClientEvents( gentity_t *ent, int oldEventSequence ) {
 		case EV_FIRE_WEAPON:
 		case EV_FIRE_WEAPONB:
 		case EV_FIRE_WEAPON_LASTSHOT:
+			// RealRTCW-VR: this player's shot from the off hand gun of a dual pair (only for the
+			// duration of this FireWeapon, so it never leaks to another client's shot)
+			g_dualLeftShot = event == EV_FIRE_WEAPONB && BG_DualActive( &ent->client->ps );
 			FireWeapon( ent );
+			g_dualLeftShot = qfalse;
 			break;
 
 		case EV_GRENADE_SUICIDE:

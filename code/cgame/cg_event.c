@@ -2303,9 +2303,17 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		if ( !( es->otherEntityNum == cg.snap->ps.clientNum && !es->density &&
 				CG_VR_PredictsHits( cg.predictedPlayerState.weapon ) ) &&
 			 es->otherEntityNum >= 0 && es->otherEntityNum < MAX_GENTITIES ) {
-			vec3_t shot;
-			VectorSubtract( es->pos.trBase, cg_entities[es->otherEntityNum].lerpOrigin, shot );
+			vec3_t shot, from;
+			// the shot's path: from the shooter's eyes (their own, for our shots)
+			if ( es->otherEntityNum == cg.snap->ps.clientNum ) {
+				VectorCopy( cg.refdef.vieworg, from );
+			} else {
+				VectorCopy( cg_entities[es->otherEntityNum].lerpOrigin, from );
+				from[2] += DEFAULT_VIEWHEIGHT;
+			}
+			VectorSubtract( es->pos.trBase, from, shot );
 			CG_VRX_Wound( es->eventParm, es->pos.trBase, shot );     // GORE & EXTRAS
+			VectorSubtract( es->pos.trBase, cg_entities[es->otherEntityNum].lerpOrigin, shot );
 			shot[2] *= 0.3f;
 			CG_Ragdoll_Hit( es->eventParm, es->pos.trBase, shot, 160.0f );
 		}

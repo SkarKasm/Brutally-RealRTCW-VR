@@ -1685,8 +1685,12 @@ typedef struct {
 	vec3_t      handAngles[2];
 	vec3_t      weaponAngles;       // world aim of the gun
 	vec3_t      muzzle;             // world position of the gun's muzzle this frame
+	vec3_t      muzzleOff;          // dual guns: the off hand's muzzle, and its aim (world angles)
+	vec3_t      aimOff;
 
 	qhandle_t   handModel[2];       // indexed by VR_HAND_*
+	qhandle_t   handSkin;           // the flatscreen hands' gloves and sleeves for this map
+	qhandle_t   bodySkin;           // HD player body with those sleeves (vr_fullBody)
 
 	int         gunWeapon;          // first person gun drawn this frame, and its pose
 	qboolean    lastShotLeft;       // dual pistols: the off hand's gun fired last
@@ -2537,6 +2541,10 @@ void        CG_VRX_Flinch( int entityNum, const vec3_t point, const vec3_t dir )
 void        CG_VRX_FlinchAngles( centity_t *cent, vec3_t torsoAngles, vec3_t headAngles );
 void        CG_VRX_Wound( int entityNum, const vec3_t point, const vec3_t dir );
 void        CG_VRX_AddWounds( centity_t *cent, refEntity_t *body );
+void        CG_VRX_AddCryptGore( centity_t *cent, refEntity_t *body );
+qboolean    CG_VRX_GoreHead( centity_t *cent, refEntity_t *head );
+qboolean    CG_VRX_HeadSwapped( centity_t *cent );
+void        CG_VRX_AddHeadWounds( int entityNum, refEntity_t *head );
 void        CG_VRX_TestWound_f( void );
 void        CG_VRX_GoreEvent( entityState_t *es );
 int         CG_VRX_GoreBits( centity_t *cent );
@@ -2556,6 +2564,7 @@ qboolean    CG_VR_FullBody( centity_t *cent );
 qboolean    CG_VR_BodyDrawn( void );
 void        CG_VR_BodyAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3] );
 void        CG_VR_BodyApply( centity_t *cent, refEntity_t *body );
+void        CG_FlatLegs( centity_t *cent, const refEntity_t *legs );
 void        CG_VR_Geom( int weapon, vrWeaponGeom_t *g );
 float       CG_VR_WeaponScale( void );
 
@@ -2586,7 +2595,9 @@ qboolean    CG_WeaponWheelMouse( int x, int y );
 void        CG_DrawWeaponWheel( void );
 void        CG_VR_Comfort( void );
 void        CG_VR_PingReceived( int client, const vec3_t pos );
-int         CG_VR_DualSingle( int weapon );
+int         CG_VR_DualSingle( const playerState_t *ps );
+extern qboolean cg_dualOneHand;     // cg_weapons.c: a dual wielded SMG, its supporting arm left out
+qboolean    CG_DualSMG( int weapon );
 void        CG_VR_AddDualGuns( playerState_t *ps, int single );
 #ifdef VR_NET_HANDS
 qboolean    CG_VR_RemoteBody( centity_t *cent );

@@ -240,7 +240,7 @@ void Fill_Clip( playerState_t *ps, int weapon ) {
 	}
 
 	inclip  = ps->ammoclip[BG_FindClipForWeapon( weapon )];
-	maxclip = ammoTable[weapon].maxclip;
+	maxclip = BG_MaxClip( ps, weapon );     // RealRTCW-VR: twice for a dual pair
 
 	ammomove = maxclip - inclip;    // max amount that can be moved into the clip
 
@@ -309,8 +309,8 @@ void Add_Ammo( gentity_t *ent, int weapon, int count, qboolean fillClip ) {
 		}
 	}
 
-	if ( ent->client->ps.ammoclip[ammoweap] > ammoTable[ammoweap].maxclip ) {
-		ent->client->ps.ammoclip[ammoweap] = ammoTable[ammoweap].maxclip;
+	if ( ent->client->ps.ammoclip[ammoweap] > BG_MaxClip( &ent->client->ps, ammoweap ) ) {
+		ent->client->ps.ammoclip[ammoweap] = BG_MaxClip( &ent->client->ps, ammoweap );
 	}
 
 }

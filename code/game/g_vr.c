@@ -212,7 +212,36 @@ static void G_VR_MagDropped( gentity_t *ent ) {
 }
 
 static qboolean G_VR_Manual( gentity_t *ent, int weapon ) {
-	return ( ent->client->pers.cmd.vrFlags & VRF_MANUAL ) && BG_VR_ReloadClass( weapon ) != VRR_NONE;
+	return ( ent->client->pers.cmd.vrFlags & VRF_MANUAL ) && BG_VR_ReloadClass( weapon ) != VRR_NONE &&
+		   !( ent->client->ps.persistant[PERS_DUAL] && BG_DualCapable( weapon ) );   // two guns: reloaded at the waist
+}
+
+/*
+=================
+G_VR_HandAtWeaponHip
+
+The off hand across at the weapon hand's hip (where a second gun is drawn from): 45..95cm
+under the eyes, at least 10cm over to the weapon hand's side, beside the body. From this
+player's usercmd: hands relative to the head and the head's yaw, both in play space.
+=================
+*/
+static qboolean G_VR_HandAtWeaponHip( gentity_t *ent, int hand ) {
+	const usercmd_t *cmd = &ent->client->pers.cmd;
+	const float ws = 39.37f;    // game units per metre (vr_worldScale's default)
+	float yaw = DEG2RAD( SHORT2ANGLE( cmd->vrHead[1] ) );
+	vec3_t rel;
+	float ahead, left;
+
+	if ( !G_VR_HandValid( ent, hand ) ) {
+		return qfalse;
+	}
+	VectorSet( rel, cmd->vrHand[hand][0] * 0.125f, cmd->vrHand[hand][1] * 0.125f, cmd->vrHand[hand][2] * 0.125f );
+	ahead = rel[0] * cos( yaw ) + rel[1] * sin( yaw );
+	left = -rel[0] * sin( yaw ) + rel[1] * cos( yaw );
+	if ( cmd->vrFlags & VRF_RIGHTHANDED ) {
+		left = -left;   // over to the right
+	}
+	return rel[2] < -0.45f * ws && rel[2] > -0.95f * ws && left > 0.10f * ws && ahead < 0.15f * ws && ahead > -0.25f * ws;
 }
 
 /*
@@ -327,7 +356,7 @@ static qboolean G_VR_Reload( gentity_t *ent, vrPlayer_t *vrp, const vec3_t offHa
 
 	clipIndex = BG_FindClipForWeapon( weapon );
 	ammoIndex = BG_FindAmmoForWeapon( weapon );
-	maxclip = ammoTable[weapon].maxclip;
+	maxclip = BG_MaxClip( ps, weapon );
 	clip = &ps->ammoclip[clipIndex];
 	reserve = &ps->ammo[ammoIndex];
 
@@ -929,8 +958,10 @@ static void G_VR_FlatGrab( gentity_t *ent ) {
 				fwd[2] = 0.15f;
 				VectorNormalize( fwd );
 			}
-			VectorScale( fwd, 420.0f, vrp->handVel );
-			vrp->handVel[2] += 140.0f;
+			// (scaled up by VR_THROW_SCALE on release: about 450 forward, enough to get a body
+			// over a castle wall's parapet, not across the room)
+			VectorScale( fwd, 300.0f, vrp->handVel );
+			vrp->handVel[2] += 120.0f;
 			G_VR_ReleaseBody( vrp, body, qtrue );
 			body->s.dl_intensity = 0;
 			vrp->grabbed = -1;
@@ -1082,6 +1113,14 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 
 	used = ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_Reload( ent, vrp, offHand, pressed, released, dom );
 
+	// the off hand drawing a second pistol / SMG from the weapon hand's hip, or putting it back
+	if ( pressed && !used && ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_HandAtWeaponHip( ent, off ) &&
+		 ( ent->client->ps.persistant[PERS_DUAL] || BG_DualCapable( ent->client->ps.weapon ) ) ) {
+		G_DualToggle( ent );
+		G_VR_Haptic( ent, off, 0.6f, 50 );
+		used = qtrue;
+	}
+
 	// a prop in the hand (GORE & EXTRAS): carried, then dropped or thrown
 	if ( G_VRX_PropHeld( ent ) >= 0 ) {
 		if ( down && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
@@ -1206,8 +1245,9 @@ qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out ) {
 	}
 	cmd = &ent->client->pers.cmd;
 	dom = G_VR_DomHand( ent );
-	if ( ( cmd->vrFlags & VRF_AKIMBO_LEFT ) && ent->client->ps.weapon == WP_AKIMBO ) {
-		dom = !dom;     // dual pistols: the off hand's gun fired
+	if ( ( cmd->vrFlags & VRF_AKIMBO_LEFT ) &&
+		 ( ent->client->ps.weapon == WP_AKIMBO || BG_DualActive( &ent->client->ps ) ) ) {
+		dom = !dom;     // dual pistols / SMGs: the off hand's gun fired
 	}
 	if ( !G_VR_HandValid( ent, dom ) ) {
 		return qfalse;
@@ -1461,4 +1501,48 @@ void G_VR_CheckCompletion( void ) {
 			}
 		}
 	}
+}
+
+/*
+=================
+G_DualToggle
+
+A second pistol / SMG in the other hand, or back to one ("dualwield", or in VR the off
+hand's grip at the weapon hand's hip: a cross draw). Putting the second gun away puts the
+rounds its magazine held back with the rest. Per player: PERS_DUAL in their playerState.
+=================
+*/
+void G_DualToggle( gentity_t *ent ) {
+	playerState_t *ps;
+	int w, clip, max;
+
+	if ( !ent || !ent->client || ent->aiCharacter || ent->health <= 0 ) {
+		return;
+	}
+	ps = &ent->client->ps;
+	if ( !ps->persistant[PERS_DUAL] && !BG_DualCapable( ps->weapon ) ) {
+		trap_SendServerCommand( ent - g_entities, "cp \"Only pistols and SMGs can be dual wielded\"" );
+		return;
+	}
+	ps->persistant[PERS_DUAL] = !ps->persistant[PERS_DUAL];
+	if ( !ps->persistant[PERS_DUAL] ) {
+		for ( w = WP_NONE + 1; w < WP_NUM_WEAPONS; w++ ) {
+			if ( !BG_DualCapable( w ) ) {
+				continue;
+			}
+			clip = ps->ammoclip[BG_FindClipForWeapon( w )];
+			max = BG_MaxClip( ps, w );
+			if ( clip > max ) {
+				ps->ammo[BG_FindAmmoForWeapon( w )] += clip - max;
+				ps->ammoclip[BG_FindClipForWeapon( w )] = max;
+			}
+		}
+	}
+	// the guns come up again
+	if ( ps->weapon && ( ps->weaponstate == WEAPON_READY || ps->weaponstate == WEAPON_FIRING ) ) {
+		ps->weaponstate = WEAPON_RAISING;
+		ps->weaponTime = 250;
+		ps->weapAnim = ( ( ps->weapAnim & ANIM_TOGGLEBIT ) ^ ANIM_TOGGLEBIT ) | WEAP_RAISE;
+	}
+	trap_SendServerCommand( ent - g_entities, ps->persistant[PERS_DUAL] ? "cp \"Dual wielding\"" : "cp \"One gun\"" );
 }

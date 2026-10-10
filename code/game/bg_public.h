@@ -311,6 +311,8 @@ typedef struct {
 	int vrManualReload;     // reloads happen by hand: never start one automatically
 	int vrChambered;        // with vrManualReload: qfalse makes the trigger click
 	int vrAkimbo;           // dual pistols: 0 the usual alternation, 1 right gun, 2 left gun
+	int vrHandsLow;         // dual wielding in VR: both hands down at the waist, so the reload
+	                        // button reloads (BG_VR_HandsLow); no reload starts on its own
 
 	// for fixed msec Pmove
 	int pmove_fixed;
@@ -362,6 +364,7 @@ int BG_VR_ScalePreset( float scale );
 
 int  BG_VR_ReloadClass( int weapon );
 qboolean BG_VR_InstantFire( int weapon );
+qboolean BG_VR_HandsLow( const usercmd_t *cmd );
 void BG_VR_WeaponGeom( int weapon, qboolean vanillaGuns, vrWeaponGeom_t *out );
 void BG_VR_WeaponFrame( const vrWeaponGeom_t *g, const vec3_t hand, const vec3_t aimAngles, const float *adj,
 						vec3_t origin, vec3_t axis[3] );
@@ -417,7 +420,8 @@ typedef enum {
 	// Rafael - mg42		// (SA) I don't understand these here.  can someone explain?
 	PERS_HWEAPON_USE,
 	// Rafael wolfkick
-	PERS_WOLFKICK
+	PERS_WOLFKICK,
+	PERS_DUAL                       // RealRTCW-VR: a second pistol / SMG in the other hand (BG_DualActive)
 
 } persEnum_t;
 
@@ -1346,6 +1350,11 @@ weapon_t BG_FindAmmoForWeapon( weapon_t weapon );
 weapon_t BG_FindClipForWeapon( weapon_t weapon );
 
 qboolean BG_AkimboFireSequence( int weapon, int akimboClip, int coltClip );
+// RealRTCW-VR: dual wielding a pistol or SMG (a second one in the off hand, twice the clip)
+qboolean BG_DualCapable( int weapon );
+qboolean BG_DualActive( const playerState_t *ps );
+qboolean BG_DualLeftFires( const playerState_t *ps );
+int BG_MaxClip( const playerState_t *ps, int weapon );
 //qboolean BG_AkimboFireSequence	( playerState_t *ps );	//----(SA)	added
 
 #define ITEM_INDEX( x ) ( ( x ) - bg_itemlist )

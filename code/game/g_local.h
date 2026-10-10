@@ -1027,10 +1027,12 @@ void G_VR_GrabHint( gentity_t *ent );
 
 // g_vrextras.c (RealRTCW-VR: GORE & EXTRAS)
 void G_VRX_Frame( void );
+void G_DualToggle( gentity_t *ent );   // g_vr.c
+extern qboolean g_dualLeftShot;      // g_weapon.c: this shot is a dual pair's off hand gun
 int G_VRX( int which );
 qboolean G_VRX_Gore( int which );
 void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
-				 int mod, int damage );
+				 int mod, int damage, qboolean headshot );
 gentity_t *G_VRX_FindProp( const vec3_t p, float reach );
 qboolean G_VRX_PropGrab( gentity_t *ent, gentity_t *e, const vec3_t hand );
 int G_VRX_PropHeld( gentity_t *ent );

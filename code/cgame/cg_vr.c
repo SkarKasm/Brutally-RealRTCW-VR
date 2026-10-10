@@ -69,6 +69,82 @@ int CG_VR_DominantHand( void ) {
 
 /*
 =================
+CG_VR_MapSkin
+
+RealRTCW picks the hands' and the HD body's gloves and sleeves by map with a .smartskin
+(the renderer's RegisterSmartSkin). The co-op engine has no smart skins, so the profile
+is chosen here from the same file's "profile <name> maps <map> ... {" lists, and a plain
+skin made for it is used: "<smartskin without extension>_<profile>.skin", or
+"..._default.skin" (the base block) for any other map.
+=================
+*/
+static qhandle_t CG_VR_MapSkin( const char *smartSkin, const char *map ) {
+	char base[MAX_QPATH], profile[MAX_QPATH], text[8192];
+	char *p, *tok;
+	fileHandle_t f = 0;
+	int len;
+	qhandle_t skin;
+
+	COM_StripExtension( smartSkin, base, sizeof( base ) );
+	Q_strncpyz( profile, "default", sizeof( profile ) );
+
+	len = trap_FS_FOpenFile( smartSkin, &f, FS_READ );
+	if ( len > 0 && len < (int)sizeof( text ) ) {
+		trap_FS_Read( text, len, f );
+		text[len] = 0;
+		p = text;
+		while ( 1 ) {
+			tok = COM_ParseExt( &p, qtrue );
+			if ( !tok[0] ) {
+				break;
+			}
+			if ( !Q_stricmp( tok, "{" ) ) {
+				SkipBracedSection( &p, 1 );     // the surfaces: not needed here
+				continue;
+			}
+			if ( Q_stricmp( tok, "profile" ) ) {
+				continue;
+			}
+			{
+				char name[MAX_QPATH];
+				qboolean match = qfalse;
+
+				Q_strncpyz( name, COM_ParseExt( &p, qtrue ), sizeof( name ) );
+				if ( Q_stricmp( COM_ParseExt( &p, qtrue ), "maps" ) ) {
+					continue;
+				}
+				while ( 1 ) {
+					tok = COM_ParseExt( &p, qtrue );
+					if ( !tok[0] || !Q_stricmp( tok, "{" ) ) {
+						break;
+					}
+					if ( !Q_stricmp( tok, map ) ) {
+						match = qtrue;
+					}
+				}
+				if ( tok[0] ) {
+					SkipBracedSection( &p, 1 );
+				}
+				if ( match && name[0] ) {
+					Q_strncpyz( profile, name, sizeof( profile ) );
+					break;
+				}
+			}
+		}
+	}
+	if ( f ) {
+		trap_FS_FCloseFile( f );
+	}
+
+	skin = trap_R_RegisterSkin( va( "%s_%s.skin", base, profile ) );
+	if ( !skin && Q_stricmp( profile, "default" ) ) {
+		skin = trap_R_RegisterSkin( va( "%s_default.skin", base ) );
+	}
+	return skin;
+}
+
+/*
+=================
 CG_VR_Init
 =================
 */
@@ -97,6 +173,13 @@ void CG_VR_Init( void ) {
 	// built by misc/vr/make_vr_assets.py into main/z_vr_assets.pk3
 	cgvr.handModel[VR_HAND_LEFT] = trap_R_RegisterModel( "models/vr/hand_l.md3" );
 	cgvr.handModel[VR_HAND_RIGHT] = trap_R_RegisterModel( "models/vr/hand_r.md3" );
+	// green, snow or night gloves and sleeves by map, like the flatscreen first person hands
+	{
+		char map[MAX_QPATH];
+		trap_Cvar_VariableStringBuffer( "mapname", map, sizeof( map ) );
+		cgvr.handSkin = CG_VR_MapSkin( "models/vr/hands.smartskin", map );
+		cgvr.bodySkin = CG_VR_MapSkin( "models/players/player/body_vr.smartskin", map );
+	}
 	cgvr.lastMagDrop = cgVR ? cgVR->magDropCount : 0;
 }
 
@@ -147,6 +230,7 @@ void CG_VR_AddHands( void ) {
 		}
 		memset( &ent, 0, sizeof( ent ) );
 		ent.hModel = cgvr.handModel[h];
+		ent.customSkin = cgvr.handSkin;
 		VectorCopy( cgvr.handOrigin[h], ent.origin );
 		VectorCopy( ent.origin, ent.oldorigin );
 		VectorCopy( ent.origin, ent.lightingOrigin );
@@ -299,7 +383,8 @@ void CG_VR_BeginFrame( void ) {
 	CG_VRX_KnifeFrame();        // GORE & EXTRAS: the blade through a dead body's neck
 
 	cgVR->cutscene = cg.cameraMode;
-	cgVR->twoHandAllowed = !CG_VR_OneHanded( cg.predictedPlayerState.weapon );
+	cgVR->twoHandAllowed = !CG_VR_OneHanded( cg.predictedPlayerState.weapon ) &&
+						   !BG_DualActive( &cg.predictedPlayerState );   // the off hand has its own gun
 	if ( !cg.cameraMode ) {
 		cgvr.cutsceneBaseValid = qfalse;
 	}
@@ -556,6 +641,7 @@ qboolean CG_VR_Inspect( playerState_t *ps ) {
 		refEntity_t h;
 		memset( &h, 0, sizeof( h ) );
 		h.hModel = cgvr.handModel[dom];
+		h.customSkin = cgvr.handSkin;
 		VectorCopy( cgvr.handOrigin[dom], h.origin );
 		AnglesToAxis( cgvr.handAngles[dom], h.axis );
 		h.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;
@@ -937,8 +1023,13 @@ void CG_VR_PredictBullet( int weapon ) {
 	if ( !CG_VR_PredictsHits( weapon ) || !cgVR->muzzleValid ) {
 		return;
 	}
-	VectorCopy( cgvr.muzzle, start );
-	AngleVectors( cgvr.weaponAngles, forward, NULL, NULL );
+	if ( cgvr.lastShotLeft ) {
+		VectorCopy( cgvr.muzzleOff, start );   // the off hand's gun of a pair
+		AngleVectors( cgvr.aimOff, forward, NULL, NULL );
+	} else {
+		VectorCopy( cgvr.muzzle, start );
+		AngleVectors( cgvr.weaponAngles, forward, NULL, NULL );
+	}
 	VectorMA( start, 8192 * 2, forward, end );
 
 	CG_Trace( &tr, start, NULL, NULL, end, self, MASK_SHOT );
@@ -964,17 +1055,17 @@ void CG_VR_PredictBullet( int weapon ) {
 =================
 CG_VR_DualSingle / CG_VR_AddDualGuns
 
-Two pistols: one in each hand, each fired by its own trigger (cl_vr.c, BG_AkimboFireSequence).
-They're drawn as two of the single pistol, since the pair's model has the left gun fixed
-to the right hand.
+Two pistols or SMGs: one in each hand, each fired by its own trigger (cl_vr.c,
+BG_AkimboFireSequence, BG_DualLeftFires). They're drawn as two of the single gun, each its
+own unmirrored copy (the akimbo pair's model has the left gun fixed to the right hand).
 =================
 */
-int CG_VR_DualSingle( int weapon ) {
-	switch ( weapon ) {
+int CG_VR_DualSingle( const playerState_t *ps ) {
+	switch ( ps->weapon ) {
 	case WP_AKIMBO:
 		return WP_COLT;
 	default:
-		return 0;
+		return BG_DualActive( ps ) ? ps->weapon : 0;     // any pistol or SMG, dual wielded
 	}
 }
 
@@ -1020,7 +1111,14 @@ void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
 		// only the gun that fired flashes
 		cent->muzzleFlashTime = ( ( side == 0 ) == cgvr.lastShotLeft ) ? savedFlash : 0;
 		cent->currentState.weapon = single;
+		cg_dualOneHand = CG_DualSMG( single );
 		CG_AddPlayerWeapon( &hand, ps, cent );
+		cg_dualOneHand = qfalse;
+		if ( side == 0 ) {
+			// the off hand's muzzle, for drawing its shots' hits
+			VectorCopy( cgvr.muzzle, cgvr.muzzleOff );
+			VectorCopy( angles, cgvr.aimOff );
+		}
 	}
 	cent->currentState.weapon = savedWeapon;
 	cent->muzzleFlashTime = savedFlash;

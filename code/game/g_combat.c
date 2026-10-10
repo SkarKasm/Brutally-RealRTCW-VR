@@ -35,6 +35,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "g_local.h"
 #include "g_coop.h"
+#include "bg_vrextras.h"
 
 /*
 ============
@@ -235,6 +236,13 @@ void body_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int d
 			self->health = -1;
 			return;
 		}
+	}
+
+	// RealRTCW-VR: with extra gore on and original gibbing off, the body stays whole
+	// so dismemberment (G_VRX_Kill) can take it apart instead
+	if ( self->aiCharacter && G_VRX( VRX_GORE ) && !G_VRX( VRX_STOCKGIBS ) ) {
+		self->health = GIB_HEALTH + 1;
+		return;
 	}
 
 	GibEntity( self, 0 );
@@ -702,8 +710,9 @@ qboolean IsHeadShot( gentity_t *targ, gentity_t *attacker, vec3_t dir, vec3_t po
 		VectorCopy( targ->r.currentAngles, head->s.angles );
 		VectorCopy( head->s.angles, head->s.apos.trBase );
 		VectorCopy( head->s.angles, head->s.apos.trDelta );
-		VectorSet( head->r.mins, -6, -6, -6 ); // JPW NERVE changed this z from -12 to -6 for crouching, also removed standing offset
-		VectorSet( head->r.maxs, 6, 6, 6 ); // changed this z from 0 to 6
+		// RealRTCW-VR: a bigger head box (was 6 each way), so shots that clearly meet the head count
+		VectorSet( head->r.mins, -8, -8, -7 ); // JPW NERVE changed this z from -12 to -6 for crouching, also removed standing offset
+		VectorSet( head->r.maxs, 8, 8, 8 ); // changed this z from 0 to 6
 		head->clipmask = CONTENTS_SOLID;
 		head->r.contents = CONTENTS_SOLID;
 
@@ -915,6 +924,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 	int asave;
 	int knockback;
 	qboolean attackerpain = qfalse;
+	qboolean headShot = qfalse;     // RealRTCW-VR: for the gore (no limb taken by a round through the head)
 
 	if ( !targ->takedamage ) {
 		return;
@@ -1235,6 +1245,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 
 
 	if ( IsHeadShot( targ, attacker, dir, point, mod ) ) {
+		headShot = qtrue;
 		// JPW NERVE -- different headshot behavior in multiplayer
 		if ( g_gametype.integer <= GT_SINGLE_PLAYER ) {
 			// by default, a headshot means damage x2
@@ -1479,7 +1490,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			}
 
 			targ->enemy = attacker;
-			G_VRX_Kill( targ, inflictor, attacker, dir, point, mod, take );    // RealRTCW-VR: GORE & EXTRAS
+			G_VRX_Kill( targ, inflictor, attacker, dir, point, mod, take, headShot );    // RealRTCW-VR: GORE & EXTRAS
 			if ( targ->die ) { // Ridah, mg42 doesn't have die func (FIXME)
 				targ->die( targ, inflictor, attacker, take, mod );
 			}

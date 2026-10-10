@@ -43,6 +43,7 @@ static const char *vrxNames[VRX_COUNT] = {
 	"g_dismember",
 	"g_decapitate",
 	"g_headScare",
+	"g_stockGibs",
 };
 static qboolean vrxRegistered;
 
@@ -130,7 +131,30 @@ static qboolean G_VRX_Blast( int mod ) {
 	}
 }
 
-static void G_VRX_Dismember( gentity_t *targ, gentity_t *inflictor, const vec3_t dir, const vec3_t point, int mod, int damage ) {
+// did a shot from point along dir go through targ's head? (the hit box is far bigger than the
+// body, so the limb it met is guessed from its path, and a path through the head takes no limb)
+static qboolean G_VRX_ShotAtHead( gentity_t *targ, const vec3_t dir, const vec3_t point ) {
+	orientation_t or;
+	vec3_t head, d, rel;
+	float t;
+
+	if ( !point || !dir ) {
+		return qfalse;
+	}
+	if ( trap_GetTag( targ->s.number, "tag_head", &or ) ) {
+		VectorMA( or.origin, 4, or.axis[2], head );     // the tag is at the bottom of the head
+	} else {
+		VectorCopy( targ->r.currentOrigin, head );
+		head[2] += targ->client ? targ->client->ps.viewheight : 40;
+	}
+	VectorNormalize2( dir, d );
+	VectorSubtract( head, point, rel );
+	t = DotProduct( rel, d );
+	VectorMA( rel, -t, d, rel );        // from the path to the head's centre
+	return VectorLength( rel ) < 7.0f;
+}
+
+static void G_VRX_Dismember( gentity_t *targ, gentity_t *inflictor, const vec3_t dir, const vec3_t point, int mod, int damage, qboolean headshot ) {
 	static const int limbs[4] = { VRX_GB_LARM, VRX_GB_RARM, VRX_GB_LLEG, VRX_GB_RLEG };
 	gentity_t *m, *te;
 	int have, cut = 0, high = 0, i, k;
@@ -141,6 +165,9 @@ static void G_VRX_Dismember( gentity_t *targ, gentity_t *inflictor, const vec3_t
 	}
 	if ( !blast && !( G_VRX( VRX_DISMEMBER ) >= 2 && ( mod == MOD_VENOM || damage >= 45 ) ) ) {
 		return;
+	}
+	if ( !blast && ( headshot || G_VRX_ShotAtHead( targ, dir, point ) ) ) {
+		return;     // a round through the head takes no limb
 	}
 	have = G_VRX_GoreBits( targ );
 	if ( blast ) {
@@ -200,7 +227,7 @@ A knife kill from behind, or one that lands high, cuts the throat; one that goes
 =================
 */
 void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
-				 int mod, int damage ) {
+				 int mod, int damage, qboolean headshot ) {
 	gentity_t *te;
 	int gore = VRG_NONE;
 	float neck;
@@ -208,7 +235,12 @@ void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, con
 	if ( !targ->client || !targ->aiCharacter ) {
 		return;
 	}
-	G_VRX_Dismember( targ, inflictor, dir, point, mod, damage );
+	// a blast close by tears the body open (head shots are the cgame's: cg_vrextras.c head wounds)
+	if ( VRX_HUMAN_MALE( targ->aiCharacter ) && G_VRX_Blast( mod ) && G_VRX_Gore( VRX_DISMEMBER ) &&
+		 ( !inflictor || Distance( inflictor->r.currentOrigin, targ->r.currentOrigin ) < 200.0f ) ) {
+		G_VRX_AddGoreBits( targ, VRX_GB_BLOWN );
+	}
+	G_VRX_Dismember( targ, inflictor, dir, point, mod, damage, headshot );
 	if ( !G_VRX_Gore( VRX_THROAT ) ) {
 		return;
 	}

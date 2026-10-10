@@ -453,7 +453,7 @@ void Cmd_Buy_f( gentity_t *ent ) {
 				} else {                 // todo if no amount is given, just fill the current clip
 
 					inclip  = ent->client->ps.ammoclip[BG_FindClipForWeapon( products[i].weapon )];
-					maxclip = ammoTable[products[i].weapon].maxclip;
+					maxclip = BG_MaxClip( &ent->client->ps, products[i].weapon );
 
 					amount = maxclip - inclip;                        // max amount that can be moved into the clip
 					cost = products[i].ammoprice * amount;
@@ -3687,6 +3687,8 @@ void ClientCommand( int clientNum ) {
 		}
 	} else if ( Q_stricmp( cmd, "vrdecap" ) == 0 ) {
 		G_VRX_Decap_f( ent );      // RealRTCW-VR: a knife through a dead body's neck
+	} else if ( Q_stricmp( cmd, "dualwield" ) == 0 ) {
+		G_DualToggle( ent );       // RealRTCW-VR: a pistol / SMG in each hand
 	} else if ( Q_stricmp( cmd, "vrtestdecap" ) == 0 ) {
 		if ( CheatsOk( ent ) ) {
 			G_VRX_TestDecap( ent );     // RealRTCW-VR test aid

@@ -4838,8 +4838,10 @@ void CG_Player( centity_t *cent ) {
 #endif
 		CG_VRX_Dismember( cent, &legs );    // RealRTCW-VR: limbs off, then wounds on the pose being drawn
 		CG_VRX_AddWounds( cent, &legs );
+		CG_VRX_AddCryptGore( cent, &legs );     // the crypt's torn soldier pieces
 
 		CG_AddRefEntityWithPowerups( &legs, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
+		CG_FlatLegs( cent, &legs );     // RealRTCW-VR: your own legs on flatscreen
 
 		cent->pe.legsRefEnt = legs;
 		torso = legs;       // so tag calls use the correct values
@@ -4865,6 +4867,7 @@ void CG_Player( centity_t *cent ) {
 		return;
 	}
 	head.customSkin = ci->headSkin;
+	CG_VRX_GoreHead( cent, &head );     // RealRTCW-VR: a head shot / blast kill's head
 
 	VectorCopy( lightorigin, head.lightingOrigin );
 
@@ -5000,6 +5003,7 @@ void CG_Player( centity_t *cent ) {
 
 	if ( !CG_VRX_Headless( cent ) ) {     // RealRTCW-VR: unless it was cut off
 		CG_AddRefEntityWithPowerups( &head, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
+		CG_VRX_AddHeadWounds( cent->currentState.number, &head );   // bullet holes, a shot off jaw
 	}
 
 	cent->pe.headRefEnt = head;
@@ -5324,8 +5328,8 @@ int parts[] = { 34,
 			}
 		case ACC_MOUTH2:            // hat2
 		case ACC_MOUTH3:            // hat3
-			if ( CG_VRX_Headless( cent ) ) {
-				continue;   // RealRTCW-VR: went with the head
+			if ( CG_VRX_Headless( cent ) || CG_VRX_HeadSwapped( cent ) ) {
+				continue;   // RealRTCW-VR: went with the head / blown off
 			}
 			CG_PositionEntityOnTag( &acc,   &head,  "tag_mouth", 0, NULL );
 			break;

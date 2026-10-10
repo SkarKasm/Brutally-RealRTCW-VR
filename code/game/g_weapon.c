@@ -1780,6 +1780,8 @@ CalcMuzzlePoint
 set muzzle location relative to pivoting eye
 ===============
 */
+qboolean g_dualLeftShot;    // RealRTCW-VR: set around FireWeapon for a dual pair's off hand gun
+
 void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint ) {
 	// RealRTCW-VR: a headset player's shots leave their gun's muzzle
 	if ( G_VR_WeaponOrigin( ent, muzzlePoint ) ) {
@@ -1813,7 +1815,7 @@ void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, 
 		VectorMA( muzzlePoint, -6, right, muzzlePoint );
 		VectorMA( muzzlePoint, -4, up, muzzlePoint );
 	default:
-		VectorMA( muzzlePoint, 6, right, muzzlePoint );
+		VectorMA( muzzlePoint, g_dualLeftShot ? -6 : 6, right, muzzlePoint );   // RealRTCW-VR: dual pair's left gun
 		VectorMA( muzzlePoint, -4, up, muzzlePoint );
 		break;
 	}

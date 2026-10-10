@@ -2224,7 +2224,7 @@ static void PM_ReloadClip( int weapon ) {
 	ammoreserve = pm->ps->ammo[ BG_FindAmmoForWeapon( weapon )];
 	ammoclip    = pm->ps->ammoclip[BG_FindClipForWeapon( weapon )];
 
-	ammomove = ammoTable[weapon].maxclip - ammoclip;
+	ammomove = BG_MaxClip( pm->ps, weapon ) - ammoclip;     // RealRTCW-VR: twice for a dual pair
 
 	if ( ammoreserve < ammomove ) {
 		ammomove = ammoreserve;
@@ -2274,6 +2274,12 @@ void PM_CheckForReload( int weapon ) {
 	// user is forcing a reload (manual reload)
 	reloadRequested = (qboolean)( pm->cmd.wbuttons & WBUTTON_RELOAD );
 
+	// RealRTCW-VR: two guns in the hands are reloaded with both hands lowered to the waist,
+	// never on their own
+	if ( pm->vrAim && BG_DualActive( pm->ps ) && !( reloadRequested && pm->vrHandsLow ) ) {
+		return;
+	}
+
 	switch ( pm->ps->weaponstate ) {
 	case WEAPON_RAISING:
 	case WEAPON_RAISING_TORELOAD:       //----(SA)	added
@@ -2318,12 +2324,12 @@ void PM_CheckForReload( int weapon ) {
 	if ( reloadRequested ) {
 		// don't allow a force reload if it won't have any effect (no more ammo reserves or full clip)
 		if ( pm->ps->ammo[ammoWeap] ) {
-			if ( pm->ps->ammoclip[clipWeap] < ammoTable[weapon].maxclip ) {
+			if ( pm->ps->ammoclip[clipWeap] < BG_MaxClip( pm->ps, weapon ) ) {
 				doReload = qtrue;
 			}
 			if ( weapon == WP_AKIMBO ) {
 				// akimbo should also check Colt status
-				if ( pm->ps->ammoclip[BG_FindClipForWeapon( WP_COLT )] < ammoTable[BG_FindClipForWeapon( WP_COLT )].maxclip ) {
+				if ( pm->ps->ammoclip[BG_FindClipForWeapon( WP_COLT )] < BG_MaxClip( pm->ps, BG_FindClipForWeapon( WP_COLT ) ) ) {
 					doReload = qtrue;
 				}
 			}
@@ -2690,6 +2696,7 @@ static void PM_Weapon( void ) {
 	int aimSpreadScaleAdd;
 	int weapattackanim;
 	qboolean akimboFire;
+	qboolean dualLeft;
 	qboolean gameReloading;
 
 	// don't allow attack until all buttons are up
@@ -2729,6 +2736,7 @@ static void PM_Weapon( void ) {
 	//pm->watertype = 0;
 
 	akimboFire = BG_AkimboFireSequence( pm->ps->weapon, pm->ps->ammoclip[WP_AKIMBO], pm->ps->ammoclip[WP_COLT] );
+	dualLeft = BG_DualLeftFires( pm->ps );     // RealRTCW-VR: the off hand's gun of a dual pair
 
 	if ( 0 ) {
 		switch ( pm->ps->weaponstate ) {
@@ -3079,6 +3087,9 @@ static void PM_Weapon( void ) {
 			if ( pm->vrManualReload ) {
 				reloadingW = qfalse;    // RealRTCW-VR: reloads are done by hand
 			}
+			if ( pm->vrAim && BG_DualActive( pm->ps ) && !( ( pm->cmd.wbuttons & WBUTTON_RELOAD ) && pm->vrHandsLow ) ) {
+				reloadingW = qfalse;    // RealRTCW-VR: dual guns reload with the hands at the waist
+			}
 
 			switch ( pm->ps->weapon ) {
 				// Ridah, only play if using a triggered weapon
@@ -3158,6 +3169,10 @@ static void PM_Weapon( void ) {
 		}
 	}
 
+	// RealRTCW-VR: the off hand's gun of a dual pair: the weapon hand's gun doesn't move
+	if ( dualLeft ) {
+		;
+	} else
 	switch ( pm->ps->weapon ) {
 	case WP_MAUSER:
 	case WP_GRENADE_LAUNCHER:
@@ -3186,6 +3201,8 @@ static void PM_Weapon( void ) {
 		} else {
 			PM_AddEvent( EV_FIRE_WEAPON );
 		}
+	} else if ( dualLeft ) {
+		PM_AddEvent( EV_FIRE_WEAPONB );     // RealRTCW-VR: the off hand's gun
 	} else {
 		if ( PM_WeaponClipEmpty( pm->ps->weapon ) ) {
 			PM_AddEvent( EV_FIRE_WEAPON_LASTSHOT );
@@ -3309,6 +3326,11 @@ static void PM_Weapon( void ) {
 			break;
 		}
 		break;
+	}
+
+	// RealRTCW-VR: without a headset, a dual pair fires in turn, each gun at its own rate
+	if ( BG_DualActive( pm->ps ) && !pm->vrAim ) {
+		addTime /= 2;
 	}
 
 	// check for overheat
@@ -4228,6 +4250,7 @@ int Pmove( pmove_t *pmove ) {
 	pmove->vrAkimbo = !pmove->vrAim ? 0 : ( ( pmove->cmd.vrFlags & VRF_AKIMBO_LEFT ) ? 2 : 1 );
 	pmove->vrManualReload = pmove->vrAim && ( pmove->ps->vrState & VRS_MANUAL );
 	pmove->vrChambered = !pmove->vrManualReload || ( pmove->ps->vrState & VRS_CHAMBERED );
+	pmove->vrHandsLow = pmove->vrAim && BG_VR_HandsLow( &pmove->cmd );
 
 	// Ridah
 	if ( pmove->ps->eFlags & EF_DUMMY_PMOVE ) {

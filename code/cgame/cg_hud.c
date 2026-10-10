@@ -738,7 +738,7 @@ float CG_GetValue( int ownerDraw, int type ) {
 	case CG_PLAYER_AMMOCLIP_VALUE:
 		if ( cent->currentState.weapon ) {
 			if ( type == RANGETYPE_RELATIVE ) {
-				return (float)ps->ammoclip[BG_FindClipForWeapon( cent->currentState.weapon )] / (float)ammoTable[cent->currentState.weapon].maxclip;
+				return (float)ps->ammoclip[BG_FindClipForWeapon( cent->currentState.weapon )] / (float)BG_MaxClip( ps, cent->currentState.weapon );
 			} else {
 				return ps->ammoclip[BG_FindClipForWeapon( cent->currentState.weapon )];
 			}
