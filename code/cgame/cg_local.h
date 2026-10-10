@@ -2774,6 +2774,7 @@ void        CG_Ragdoll_Explosion( const vec3_t origin, float radius, float stren
 // cg_vrbody.c (RealRTCW-VR)
 void        CG_VR_BodyInit( void );
 qboolean    CG_VR_FullBody( centity_t *cent );
+qboolean    CG_VR_BodyArms( void );
 qboolean    CG_VR_BodyDrawn( void );
 void        CG_VR_BodyAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3] );
 void        CG_VR_BodyApply( centity_t *cent, refEntity_t *body );

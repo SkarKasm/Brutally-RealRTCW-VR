@@ -88,6 +88,14 @@ qboolean CG_VR_FullBody( centity_t *cent ) {
 		   !( cent->currentState.eFlags & EF_DEAD );
 }
 
+// BJ's arms are on the body this frame (the HD first person arms show only their hands)
+qboolean CG_VR_BodyArms( void ) {
+	trap_Cvar_Update( &vr_fullBody );
+	return cgvr.active && vr_fullBody.integer && !cg.renderingThirdPerson && !cg.cameraMode &&
+		   cg.predictedPlayerState.stats[STAT_HEALTH] > 0;
+}
+
+
 // the full body was drawn this frame (the VR hands then leave out their sleeves)
 qboolean CG_VR_BodyDrawn( void ) {
 	return vb.drawnTime == cg.time;
@@ -526,8 +534,8 @@ void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 		}
 		side = h == VR_HAND_RIGHT ? SIDE_R : SIDE_L;
 		if ( gunHand[h] ) {
-			// the flat game's HD arm is drawn on this hand (on the gun or free): BJ's arm
-			// comes from the shoulder to where its sleeve ends, so the two make one arm
+			// the flat game's HD hand is drawn here (its sleeve hidden): BJ's own arm bends
+			// from the shoulder to its wrist, lined up with the way the HD forearm ran
 			VectorCopy( gunWrist[h], target );
 			VectorCopy( gunDir[h], handFwd );
 		} else {
@@ -542,7 +550,7 @@ void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 	}
 	// and BJ's own hand folds away where the HD one is drawn
 	for ( h = 0; h < 2; h++ ) {
-		if ( gunHand[h] ) {
+		if ( gunHand[h] && cgVR->handValid[h] ) {
 			VB_Collapse( vb.hand[h == VR_HAND_RIGHT ? SIDE_R : SIDE_L] );
 		}
 	}

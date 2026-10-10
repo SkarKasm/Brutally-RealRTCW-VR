@@ -698,43 +698,67 @@ qboolean G_VR_LookRay( gentity_t *ent, float dist, vec3_t from, vec3_t to ) {
 =================
 G_VR_PushDoors
 
-A hand pushed into a closed door opens it, the way a hand on a door would.
+Either hand touching something the use button works on (doors, buttons, levers and the
+game's other usable spots: func_invisible_user, footlockers, scripted movers) uses it,
+like RTCWQuest: a small box around the hand is swept from where it was to where it is,
+and whatever it newly comes into is used once. A door only opens from shut.
 =================
 */
-#define VR_PUSH_SPEED   0.3f        // metres per second into the door
+#define VR_TOUCH_REACH  3.0f        // half size of the hand's touch box, game units
+
+static qboolean G_VR_Touchable( gentity_t *e ) {
+	if ( !e->classname ) {
+		return qfalse;
+	}
+	if ( !Q_stricmp( e->classname, "func_door" ) || !Q_stricmp( e->classname, "func_door_rotating" ) ) {
+		return e->moverState == MOVER_POS1 || e->moverState == MOVER_POS1ROTATE;
+	}
+	if ( !Q_stricmp( e->classname, "func_button" ) ) {
+		return e->s.apos.trType == TR_STATIONARY && e->s.pos.trType == TR_STATIONARY && !e->active;
+	}
+	return !Q_stricmp( e->classname, "func_invisible_user" ) || !Q_stricmp( e->classname, "props_footlocker" ) ||
+		   !Q_stricmp( e->classname, "script_mover" );
+}
 
 static void G_VR_PushDoors( gentity_t *ent ) {
 	static vec3_t last[2];
-	static int lastTime, nextPush;
+	static int touching[2], nextUse[2];
 	static qboolean valid;
-	vec3_t hand, dir, to;
+	vec3_t hand, mins, maxs, dir;
 	trace_t tr;
-	gentity_t *door;
+	gentity_t *e;
 	int h, now = ent->client->ps.commandTime;
-	float dt = ( now - lastTime ) * 0.001f;
 
+	VectorSet( mins, -VR_TOUCH_REACH, -VR_TOUCH_REACH, -VR_TOUCH_REACH );
+	VectorSet( maxs, VR_TOUCH_REACH, VR_TOUCH_REACH, VR_TOUCH_REACH );
 	for ( h = 0; h < 2; h++ ) {
 		G_VR_HandWorld( ent, h, hand );
-		if ( valid && dt > 0.0f && dt < 0.2f && now >= nextPush && gVR->handValid[h] &&
-			 ent->client->ps.stats[STAT_HEALTH] > 0 ) {
-			VectorSubtract( hand, last[h], dir );
-			if ( VectorLength( dir ) / gVR->worldScale / dt >= VR_PUSH_SPEED ) {
-				VectorNormalize( dir );
-				VectorMA( hand, 3.0f, dir, to );
-				trap_Trace( &tr, last[h], NULL, NULL, to, ent->s.number, CONTENTS_SOLID );
-				door = tr.fraction < 1.0f && tr.entityNum < ENTITYNUM_WORLD ? &g_entities[tr.entityNum] : NULL;
-				if ( door && door->classname && DotProduct( dir, tr.plane.normal ) < -0.3f &&
-					 ( !Q_stricmp( door->classname, "func_door" ) || !Q_stricmp( door->classname, "func_door_rotating" ) ) &&
-					 ( door->moverState == MOVER_POS1 || door->moverState == MOVER_POS1ROTATE ) ) {
-					G_TryDoor( door, ent, ent );
-					G_VR_Haptic( h, 0.5f, 40 );
-					nextPush = now + 1000;
-				}
+		e = NULL;
+		if ( valid && gVR->handValid[h] && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
+			trap_Trace( &tr, last[h], mins, maxs, hand, ent->s.number,
+						CONTENTS_SOLID | CONTENTS_TRIGGER | CONTENTS_PLAYERCLIP );
+			if ( ( tr.fraction < 1.0f || tr.startsolid ) && tr.entityNum < ENTITYNUM_WORLD ) {
+				e = &g_entities[tr.entityNum];
 			}
 		}
+		if ( e && tr.entityNum != touching[h] && now >= nextUse[h] && G_VR_Touchable( e ) ) {
+			// what the use button would do on it, from this hand
+			VectorSubtract( hand, last[h], dir );
+			if ( VectorNormalize( dir ) < 0.01f ) {
+				VectorSubtract( tr.endpos, hand, dir );
+				VectorNormalize( dir );
+			}
+			VectorMA( tr.endpos, -4.0f, dir, g_vrHandFrom );
+			VectorMA( tr.endpos, 8.0f, dir, g_vrHandTo );
+			g_vrHandUse = qtrue;
+			Cmd_Activate_f( ent );
+			g_vrHandUse = qfalse;
+			G_VR_Haptic( h, 0.5f, 40 );
+			nextUse[h] = now + 600;
+		}
+		touching[h] = e ? tr.entityNum : -1;
 		VectorCopy( hand, last[h] );
 	}
-	lastTime = now;
 	valid = qtrue;
 }
 

@@ -4707,6 +4707,16 @@ void CG_Player( centity_t *cent ) {
 		CG_Ragdoll_Apply( cent, &legs );
 		CG_VRX_Surrender( cent, &legs );     // GORE & EXTRAS: hands up
 		if ( CG_VR_FullBody( cent ) ) {
+			// no idle animations on your own body in VR: the swaying stance moves the
+			// shoulders the arms hang from (and standing legs keep still)
+			if ( cent->pe.torso.animation ) {
+				legs.torsoFrame = legs.oldTorsoFrame = cent->pe.torso.animation->firstFrame;
+				legs.torsoBacklerp = 0;
+			}
+			if ( cent->pe.legs.animation && VectorLength( cg.predictedPlayerState.velocity ) < 20.0f ) {
+				legs.frame = legs.oldframe = cent->pe.legs.animation->firstFrame;
+				legs.backlerp = 0;
+			}
 			CG_VR_BodyApply( cent, &legs );
 		}
 #ifdef VR_NET_HANDS
