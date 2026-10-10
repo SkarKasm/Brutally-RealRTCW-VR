@@ -82,6 +82,8 @@ RIFLE_SHRINK = {
     "ppsh": 1.33,
     "garand": 1.3,
     "snooper": 1.3,
+    "venom": 2.2 / 1.15,
+    "tesla": 2.2 / 1.15,
 }
 
 def posed(name):

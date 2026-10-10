@@ -179,28 +179,43 @@ static const vrHandSpan_t vrHandSpans[] = {
 };
 
 // guns whose own hands are modelled too big for the gun (the gun came out a toy next to the
-// MP34 or the M1 Garand): drawn this much bigger, their hands shrunk back to life size (the
-// trigger hand by vr_rifle_hands.py RIFLE_SHRINK, the support hand by CG_VR_StretchHand)
+// MP34 or the M1 Garand, the Venom and Tesla gun far from the heavy weapons they are): drawn
+// size times bigger, their hands brought back to hands times life size (the trigger hand by
+// vr_rifle_hands.py RIFLE_SHRINK = size / hands, the support hand by CG_VR_StretchHand)
 typedef struct {
 	const char  *weap;
 	float       size;
+	float       hands;
 } vrGunSize_t;
 
 static const vrGunSize_t vrGunSizes[] = {
-	{ "ppsh.weap", 1.33f },
-	{ "garand.weap", 1.3f },
-	{ "snooper.weap", 1.3f },
+	{ "ppsh.weap", 1.33f, 1.0f },
+	{ "garand.weap", 1.3f, 1.0f },
+	{ "snooper.weap", 1.3f, 1.0f },
+	{ "venom.weap", 2.2f, 1.15f },
+	{ "tesla.weap", 2.2f, 1.15f },
 };
 
-static float CG_VR_GunSizeFix( const char *file ) {
+static const vrGunSize_t *CG_VR_GunSizeRow( const char *file ) {
 	int i;
 
 	for ( i = 0; i < (int)ARRAY_LEN( vrGunSizes ); i++ ) {
 		if ( !Q_stricmp( vrGunSizes[i].weap, file ) ) {
-			return vrGunSizes[i].size;
+			return &vrGunSizes[i];
 		}
 	}
-	return 1.0f;
+	return NULL;
+}
+
+static float CG_VR_GunSizeFix( const char *file ) {
+	const vrGunSize_t *g = CG_VR_GunSizeRow( file );
+	return g ? g->size : 1.0f;
+}
+
+// how much its own hands are scaled on top of the gun's size
+static float CG_VR_GunHandFix( const char *file ) {
+	const vrGunSize_t *g = CG_VR_GunSizeRow( file );
+	return g ? g->hands / g->size : 1.0f;
 }
 
 static float CG_VR_GunSize( void ) {
@@ -310,10 +325,10 @@ static const vrHandPose_t vrHandPoses[] = {
 	{ "sniperrifle.weap", -3, { 0.0f, -12.4f, -8.4f }, -1, { 36.9f, -3.3f, -17.3f } },
 	{ "snooper.weap", -3, { -0.2f, -4.6f, -5.5f }, 0, { 15.2f, -0.4f, -7.1f } },
 	{ "sten.weap", -3, { 6.9f, -10.9f, -9.0f }, 2, { 39.2f, -2.4f, -15.7f } },
-	{ "tesla.weap", -3, { -4.8f, -10.9f, -7.9f }, -1, { 6.5f, -2.7f, -10.1f } },
+	{ "tesla.weap", -3, { -3.0f, -9.5f, -9.1f }, -1, { 6.5f, -2.7f, -10.1f } },
 	{ "thompson.weap", -1, { 5.7f, -6.1f, -7.4f }, 2, { 19.6f, -0.3f, -7.5f } },
 	{ "tt33.weap", -1, { 15.9f, -9.6f, -11.8f }, -2, { 0.0f, 0.0f, 0.0f } },
-	{ "venom.weap", -3, { 0.2f, -11.5f, -11.9f }, 4, { 16.4f, -5.8f, -17.5f } },
+	{ "venom.weap", -3, { 2.0f, -10.1f, -13.1f }, 4, { 16.4f, -5.8f, -17.5f } },
 };
 
 static const vrHandPose_t *CG_VR_HandPose( int weapon ) {
@@ -444,10 +459,10 @@ static const vrArmEnd_t vrArmEnds[] = {
 	{ "sniperrifle.weap", 1, { -39.7f, -22.4f, 10.1f }, 1, { -2.3f, 16.8f, -28.2f } },
 	{ "snooper.weap", 1, { -14.8f, -8.3f, 1.4f }, 1, { -5.0f, 6.8f, -8.6f } },
 	{ "sten.weap", 1, { -27.3f, -19.5f, 7.0f }, 1, { 6.6f, 19.0f, -21.1f } },
-	{ "tesla.weap", 1, { -30.0f, -17.3f, 3.9f }, 1, { -12.7f, 17.2f, -9.8f } },
+	{ "tesla.weap", 1, { -16.1f, -12.9f, -3.0f }, 1, { -12.7f, 17.2f, -9.8f } },
 	{ "thompson.weap", 1, { -18.0f, -12.8f, -7.0f }, 1, { 17.8f, 2.9f, -8.0f } },
 	{ "tt33.weap", 1, { -9.6f, -27.6f, -14.3f }, 0, { 0, 0, 0 } },
-	{ "venom.weap", 1, { -25.5f, -18.0f, 0.1f }, 1, { -10.0f, 5.2f, -21.7f } },
+	{ "venom.weap", 1, { -11.4f, -13.4f, -6.9f }, 1, { -10.0f, 5.2f, -21.7f } },
 };
 
 #define VR_FOREARM  10.5f       // wrist to elbow, game units (about 27cm)
@@ -724,7 +739,7 @@ float CG_VR_HandStretch( int weapon, qboolean trig ) {
 				f = f > 1.0f ? f : 1.0f;
 			}
 			// a gun drawn bigger than its hands make it: its hands shrunk back
-			return f / CG_VR_GunSizeFix( file );
+			return f * CG_VR_GunHandFix( file );
 		}
 	}
 	return 1.0f;
