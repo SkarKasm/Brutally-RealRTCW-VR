@@ -1817,6 +1817,7 @@ typedef struct {
 	vec3_t      headOrigin;         // world, centre of the head
 	vec3_t      handOrigin[2];      // world, indexed by VR_HAND_*
 	vec3_t      gunGrip;            // world: where the gun's grip is (the gun hand, or held in the off hand)
+	int         dualDraw;           // two guns being drawn: 1 the gun hand's, 2 the off hand's (0: not)
 	vec3_t      handAngles[2];
 	vec3_t      weaponAngles;       // world aim of the gun
 	vec3_t      muzzle;             // world position of the gun's muzzle this frame
@@ -1861,6 +1862,7 @@ void CG_VR_SetHead( const vec3_t headOrigin, float yawOffset, vec3_t viewAngles 
 void CG_VR_CutsceneView( vec3_t origin, vec3_t angles );
 void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t axis[3] );
 void CG_VR_SetMuzzle( const vec3_t muzzle );
+void CG_VR_MuzzleFallback( int weapon, const refEntity_t *parent, refEntity_t *flash );
 void CG_VR_AddReticle( void );
 void CG_VR_AddPointer( void );
 void CG_VR_AddHands( void );
@@ -1874,7 +1876,7 @@ void CG_VR_ArmTargets( qboolean has[2], vec3_t end[2], vec3_t dir[2] );
 void CG_VR_PieceArmBend( int weapon, int piece, refEntity_t *ent );
 void CG_VR_ArmBend( int h, refEntity_t *ent );
 void CG_VR_PieceHandScale( int weapon, int piece, refEntity_t *ent );
-void CG_VR_AddRifleHand( int weapon, refEntity_t *gun );
+void CG_VR_AddRifleHand( int weapon, refEntity_t *gun, const refEntity_t *parent );
 void CG_VR_Haptic( int hand, float amplitude, int msec );
 int CG_VR_DominantHand( void );
 qboolean CG_VR_PredictsHits( int weapon );
@@ -2817,6 +2819,7 @@ void        CG_VR_ComfortInit( void );
 void        CG_VR_Comfort( void );
 void        CG_VR_PingReceived( int client, const vec3_t pos );
 int         CG_VR_DualSingle( const playerState_t *ps );
+void        CG_VR_DualFrame( int h, int single, vec3_t origin, vec3_t axis[3] );
 extern qboolean cg_dualOneHand;     // cg_weapons.c: a dual wielded SMG, its supporting arm left out
 qboolean    CG_DualSMG( int weapon );
 void        CG_VR_AddDualGuns( playerState_t *ps, int single );

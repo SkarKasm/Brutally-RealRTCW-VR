@@ -3293,7 +3293,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 		}
 		if ( ps && cgvr.active ) {
 			CG_VR_PieceArmBend( weaponNum, -1, &gun );
-			CG_VR_AddRifleHand( weaponNum, &gun );
+			CG_VR_AddRifleHand( weaponNum, &gun, parent );
 		}
 		CG_AddWeaponWithPowerups(&gun, cent->currentState.powerups, ps, cent);
 		if ( ps && cgvr.active ) {
@@ -3563,6 +3563,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	// RealRTCW-VR: shots leave the barrel of the gun in the player's hand
 	if ( ps && cgvr.active ) {
+		CG_VR_MuzzleFallback( weaponNum, parent, &flash );
 		CG_VR_SetMuzzle( flash.origin );
 	}
 

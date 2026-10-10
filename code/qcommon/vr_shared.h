@@ -48,6 +48,10 @@ the Free Software Foundation, either version 3 of the License, or
 #define RF_VR_NOHANDS   ( 1 << 12 )
 // refEntity renderfx: don't draw arm / sleeve surfaces, keep the hand (VR hands on a full body)
 #define RF_VR_NOSLEEVES ( 1 << 13 )
+// refEntity renderfx: draw only the hand / arm surfaces (a mirrored copy of a gun's hand)
+#define RF_VR_ONLYHANDS ( 1 << 14 )
+// refEntity renderfx: the axes are mirrored (one negated), cull the other faces
+#define RF_VR_MIRRORED  ( 1 << 15 )
 
 // refEntity_t.vrBendMagic: vrBend holds an elbow bend for the arm surfaces
 #define VR_BEND_MAGIC   0x56524231

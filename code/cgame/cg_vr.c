@@ -305,16 +305,25 @@ static const vrHandPose_t *CG_VR_HandPose( int weapon ) {
 	return NULL;
 }
 
-// the flat game's arms are drawn on the gun (not with two guns: those are held by the
-// free hand models)
+// the flat game's arms are drawn on the gun. With two guns each one has its gun hand: the
+// weapon hand's as modelled, the off hand's a mirrored copy of it (CG_VR_AddDualGuns), and
+// the support hand isn't on either
 static qboolean CG_VR_GunHands( void ) {
-	return cgvr.active && !cgVR->dualWield && vr_drawHands.integer;
+	return cgvr.active && vr_drawHands.integer && ( !cgVR->dualWield || cgvr.dualDraw == 1 );
 }
 
 // this hand is drawn as part of the held gun this frame
 static qboolean CG_VR_HandOnGun( int h ) {
-	const vrHandPose_t *hp = CG_VR_GunHands() ? CG_VR_HandPose( cg.predictedPlayerState.weapon ) : NULL;
+	const vrHandPose_t *hp;
 
+	if ( !cgvr.active || !vr_drawHands.integer ) {
+		return qfalse;
+	}
+	if ( cgVR->dualWield ) {
+		hp = CG_VR_HandPose( CG_VR_DualSingle( &cg.predictedPlayerState ) );
+		return hp && hp->trigPiece != -2 && cgVR->handValid[h];
+	}
+	hp = CG_VR_HandPose( cg.predictedPlayerState.weapon );
 	if ( !hp ) {
 		return qfalse;
 	}
@@ -344,7 +353,7 @@ int CG_VR_PieceHandFx( int weapon, int piece ) {
 	if ( hp && piece == hp->trigPiece && !cgVR->gunInOffHand ) {
 		return 0;       // the whole first person arm, hand and sleeve
 	}
-	if ( hp && piece == hp->supPiece && ( cgVR->twoHanded || cgVR->gunInOffHand ) ) {
+	if ( hp && piece == hp->supPiece && !cgVR->dualWield && ( cgVR->twoHanded || cgVR->gunInOffHand ) ) {
 		return 0;
 	}
 	return RF_VR_NOHANDS;
@@ -431,6 +440,34 @@ static const vrArmEnd_t *CG_VR_ArmEnd( int weapon ) {
 	return NULL;
 }
 
+/*
+=================
+CG_VR_DualFrame
+
+With two guns: the first person frame (hands model space) of hand h's gun. The off hand's
+is mirrored across the grip, so the gun hand modelled for the right hand becomes a left
+hand round the same grip (the gun itself is drawn unmirrored, CG_VR_AddDualGuns).
+=================
+*/
+void CG_VR_DualFrame( int h, int single, vec3_t origin, vec3_t axis[3] ) {
+	vrWeaponGeom_t geom;
+	vec3_t angles;
+	float adj[6] = { 0, 0, 0, 0, 0, 0 };
+	char buf[32];
+
+	if ( h == CG_VR_DominantHand() ) {
+		CG_VR_WeaponPose( single, origin, axis );
+		return;
+	}
+	trap_Cvar_VariableStringBuffer( "vr_weaponPitch", buf, sizeof( buf ) );
+	VectorCopy( cgvr.handAngles[h], angles );
+	angles[PITCH] += atof( buf );
+	CG_VR_Geom( single, &geom );
+	BG_VR_WeaponFrame( &geom, cgvr.handOrigin[h], angles, adj, origin, axis );
+	VectorMA( origin, 2.0f * geom.grip[1], axis[1], origin );
+	VectorNegate( axis[1], axis[1] );
+}
+
 void CG_VR_ArmTargets( qboolean has[2], vec3_t end[2], vec3_t dir[2] ) {
 	const vrHandPose_t *hp;
 	const vrArmEnd_t *ae;
@@ -444,6 +481,9 @@ void CG_VR_ArmTargets( qboolean has[2], vec3_t end[2], vec3_t dir[2] ) {
 	if ( !cgvr.active || cgVR->menuPointer || cg.cameraMode || !CG_VR_DrawHands() ) {
 		return;
 	}
+	if ( cgVR->dualWield ) {
+		weapon = CG_VR_DualSingle( &cg.predictedPlayerState );
+	}
 	hp = CG_VR_HandPose( weapon );
 	ae = CG_VR_ArmEnd( weapon );
 	for ( h = 0; h < 2; h++ ) {
@@ -451,12 +491,17 @@ void CG_VR_ArmTargets( qboolean has[2], vec3_t end[2], vec3_t dir[2] ) {
 			continue;
 		}
 		if ( CG_VR_HandOnGun( h ) ) {
-			// on the gun: its own arm piece, posed with the gun
-			qboolean trig = h == dom;
+			// on the gun: its own arm piece, posed with the gun (two guns: each hand's own,
+			// the off hand's mirrored)
+			qboolean trig = h == dom || cgVR->dualWield;
 			if ( !hp || !ae || !( trig ? ae->hasTrig : ae->hasSup ) ) {
 				continue;
 			}
-			CG_VR_WeaponPose( weapon, origin, axis );
+			if ( cgVR->dualWield ) {
+				CG_VR_DualFrame( h, weapon, origin, axis );
+			} else {
+				CG_VR_WeaponPose( weapon, origin, axis );
+			}
 			BG_VR_ModelPoint( origin, axis, trig ? ae->trig : ae->sup, end[h] );
 			BG_VR_ModelPoint( origin, axis, trig ? hp->trigWrist : hp->supWrist, hand );
 		} else {
@@ -505,16 +550,39 @@ up to the shoulder, stretched to reach it, so hand, forearm, elbow and upper arm
 arm. Needs the full body drawn (it places the shoulders).
 =================
 */
-static void CG_VR_ToEntityDir( refEntity_t *ent, float sc, const vec3_t world, float *out ) {
+// world -> the entity's model space: by the inverse of its axes, which may be scaled, mirrored
+// or (a support hand made narrower) skewed
+static qboolean CG_VR_EntityInverse( const refEntity_t *ent, vec3_t inv[3] ) {
+	vec3_t a[3];
+	float det;
+	int i;
+
+	AxisCopy( (vec3_t *)ent->axis, a );
+	// rows of the inverse of the matrix whose columns are the axes: the cross products
+	CrossProduct( a[1], a[2], inv[0] );
+	CrossProduct( a[2], a[0], inv[1] );
+	CrossProduct( a[0], a[1], inv[2] );
+	det = DotProduct( a[0], inv[0] );
+	if ( fabs( det ) < 1e-6f ) {
+		return qfalse;
+	}
+	for ( i = 0; i < 3; i++ ) {
+		VectorScale( inv[i], 1.0f / det, inv[i] );
+	}
+	return qtrue;
+}
+
+static void CG_VR_ToEntityDir( vec3_t inv[3], const vec3_t world, float *out ) {
 	int i;
 	for ( i = 0; i < 3; i++ ) {
-		out[i] = DotProduct( world, ent->axis[i] ) / sc;
+		out[i] = DotProduct( world, inv[i] );
 	}
+	VectorNormalize( out );
 }
 
 void CG_VR_ArmBend( int h, refEntity_t *ent ) {
 	qboolean has[2];
-	vec3_t elbow0[2], dir[2], fore0, u, pole, elbow, d1, d2, d;
+	vec3_t elbow0[2], dir[2], fore0, u, pole, elbow, d1, d2, d, inv[3];
 	float lf, lu, dist, a, hgt, upLen, s, sc;
 	int i;
 
@@ -526,10 +594,11 @@ void CG_VR_ArmBend( int h, refEntity_t *ent ) {
 	if ( !has[h] || cgvr.armStub[h] < 0.5f || cgvr.armForearm[h] < 1.0f ) {
 		return;
 	}
-	sc = VectorLength( ent->axis[0] );
-	if ( sc < 0.001f ) {
+	if ( !CG_VR_EntityInverse( ent, inv ) ) {
 		return;
 	}
+	sc = VectorLength( ent->axis[0] ) + VectorLength( ent->axis[1] ) + VectorLength( ent->axis[2] );
+	sc /= 3.0f;
 	VectorNegate( dir[h], fore0 );      // wrist -> elbow as modelled
 	lf = cgvr.armForearm[h];
 	lu = cgvr.upperArm[h] > 1.0f ? cgvr.upperArm[h] : 11.5f;
@@ -572,12 +641,12 @@ void CG_VR_ArmBend( int h, refEntity_t *ent ) {
 	// into the entity's model space (its axes may carry a uniform scale)
 	VectorSubtract( cgvr.armWrist[h], ent->origin, d );
 	for ( i = 0; i < 3; i++ ) {
-		ent->vrBend[i] = DotProduct( d, ent->axis[i] ) / ( sc * sc );
+		ent->vrBend[i] = DotProduct( d, inv[i] );
 	}
-	CG_VR_ToEntityDir( ent, sc, fore0, ent->vrBend + 3 );
+	CG_VR_ToEntityDir( inv, fore0, ent->vrBend + 3 );
 	ent->vrBend[6] = lf / sc;
-	CG_VR_ToEntityDir( ent, sc, d1, ent->vrBend + 7 );
-	CG_VR_ToEntityDir( ent, sc, d2, ent->vrBend + 10 );
+	CG_VR_ToEntityDir( inv, d1, ent->vrBend + 7 );
+	CG_VR_ToEntityDir( inv, d2, ent->vrBend + 10 );
 	ent->vrBend[13] = s;
 	ent->vrBend[14] = 1.2f / sc;
 	ent->vrBendMagic = VR_BEND_MAGIC;
@@ -594,7 +663,7 @@ void CG_VR_PieceArmBend( int weapon, int piece, refEntity_t *ent ) {
 	}
 	if ( piece == hp->trigPiece && CG_VR_HandOnGun( dom ) ) {
 		CG_VR_ArmBend( dom, ent );      // (-3: the rifle hand, CG_VR_AddRifleHand)
-	} else if ( piece == hp->supPiece && CG_VR_HandOnGun( !dom ) ) {
+	} else if ( piece == hp->supPiece && !cgVR->dualWield && CG_VR_HandOnGun( !dom ) ) {
 		CG_VR_ArmBend( !dom, ent );
 	}
 }
@@ -603,8 +672,9 @@ void CG_VR_PieceArmBend( int weapon, int piece, refEntity_t *ent ) {
 void CG_VR_PieceHandScale( int weapon, int piece, refEntity_t *ent ) {
 	const vrHandPose_t *hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
 	const char *file = weapon > WP_NONE ? BG_GetWeaponFilename( weapon ) : NULL;
-	vec3_t origin, axis[3], wrist;
-	float k = 0;
+	const vrHandSpan_t *span = NULL;
+	vec3_t origin, axis[3], palm, fwd, d;
+	float k = 0, along;
 	int i;
 
 	if ( !hp || piece != hp->supPiece || piece < 0 || !file || !*file ) {
@@ -613,20 +683,35 @@ void CG_VR_PieceHandScale( int weapon, int piece, refEntity_t *ent ) {
 	file = COM_SkipPath( (char *)file );
 	for ( i = 0; i < ARRAY_LEN( vrHandSpans ); i++ ) {
 		if ( !Q_stricmp( vrHandSpans[i].weap, file ) ) {
-			if ( vrHandSpans[i].trig > 0 && vrHandSpans[i].sup > 0 ) {
-				k = vrHandSpans[i].trig / vrHandSpans[i].sup;
+			span = &vrHandSpans[i];
+			if ( span->trig > 0 && span->sup > 0 ) {
+				k = span->trig / span->sup;
 			}
 			break;
 		}
 	}
-	if ( k <= 0 || fabs( k - 1.0f ) < 0.02f ) {
+	if ( !span || k <= 0 || fabs( k - 1.0f ) < 0.02f ) {
 		return;
 	}
+	// about the palm, where it holds the gun. A hand closed round the gun can't shrink
+	// all over without its fingers sinking into what they hold (the MP40's magazine well),
+	// so a smaller hand is only made narrower, along the gun
 	CG_VR_WeaponPose( weapon, origin, axis );
-	BG_VR_ModelPoint( origin, axis, hp->supWrist, wrist );
-	for ( i = 0; i < 3; i++ ) {
-		ent->origin[i] = wrist[i] + ( ent->origin[i] - wrist[i] ) * k;
-		VectorScale( ent->axis[i], k, ent->axis[i] );
+	BG_VR_ModelPoint( origin, axis, span->supPalm, palm );
+	VectorNormalize2( axis[0], fwd );
+	if ( k > 1.0f ) {
+		for ( i = 0; i < 3; i++ ) {
+			ent->origin[i] = palm[i] + ( ent->origin[i] - palm[i] ) * k;
+			VectorScale( ent->axis[i], k, ent->axis[i] );
+		}
+	} else {
+		VectorSubtract( ent->origin, palm, d );
+		along = DotProduct( d, fwd );
+		VectorMA( ent->origin, ( k - 1.0f ) * along, fwd, ent->origin );
+		for ( i = 0; i < 3; i++ ) {
+			along = DotProduct( ent->axis[i], fwd );
+			VectorMA( ent->axis[i], ( k - 1.0f ) * along, fwd, ent->axis[i] );
+		}
 	}
 	VectorCopy( ent->origin, ent->oldorigin );
 	ent->nonNormalizedAxes = qtrue;
@@ -640,27 +725,44 @@ Long guns whose first person model has no trigger hand on screen get the BAR's, 
 their wrist (models/vr/rhand_<gun>.md3, misc/vr/vr_rifle_hands.py), drawn with the gun.
 =================
 */
-void CG_VR_AddRifleHand( int weapon, refEntity_t *gun ) {
+static qhandle_t CG_VR_RifleHandModel( int weapon ) {
 	static qhandle_t models[WP_NUM_WEAPONS];
 	static qboolean tried[WP_NUM_WEAPONS];
-	const vrHandPose_t *hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
-	refEntity_t ent;
 	char base[MAX_QPATH];
 
-	if ( !hp || hp->trigPiece != -3 || !CG_VR_HandOnGun( CG_VR_DominantHand() ) ||
-		 weapon <= WP_NONE || weapon >= WP_NUM_WEAPONS ) {
-		return;
+	if ( weapon <= WP_NONE || weapon >= WP_NUM_WEAPONS ) {
+		return 0;
 	}
 	if ( !tried[weapon] ) {
 		tried[weapon] = qtrue;
 		COM_StripExtension( COM_SkipPath( (char *)BG_GetWeaponFilename( weapon ) ), base, sizeof( base ) );
 		models[weapon] = trap_R_RegisterModel( va( "models/vr/rhand_%s.md3", base ) );
 	}
-	if ( !models[weapon] ) {
+	return models[weapon];
+}
+
+void CG_VR_AddRifleHand( int weapon, refEntity_t *gun, const refEntity_t *parent ) {
+	const vrHandPose_t *hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
+	qhandle_t model;
+	refEntity_t ent;
+
+	if ( !hp || hp->trigPiece != -3 || !CG_VR_HandOnGun( CG_VR_DominantHand() ) ) {
 		return;
 	}
+	model = CG_VR_RifleHandModel( weapon );
+	if ( !model ) {
+		return;
+	}
+	// (the hand is modelled in the first person view's space, the hands model the gun hangs
+	// from by tag_weapon: placed with the gun it sat off by that tag, forward and turned)
 	ent = *gun;
-	ent.hModel = models[weapon];
+	VectorCopy( parent->origin, ent.origin );
+	VectorCopy( parent->origin, ent.oldorigin );
+	AxisCopy( (vec3_t *)parent->axis, ent.axis );
+	ent.nonNormalizedAxes = parent->nonNormalizedAxes;
+	ent.frame = ent.oldframe = 0;
+	ent.backlerp = 0;
+	ent.hModel = model;
 	ent.customSkin = cgvr.handSkin;
 	ent.renderfx &= ~( RF_VR_NOHANDS | RF_VR_NOSLEEVES );
 	CG_VR_PieceArmBend( weapon, -3, &ent );
@@ -1297,6 +1399,42 @@ void CG_VR_AddReloadItems( void ) {
 
 /*
 =================
+CG_VR_MuzzleFallback
+
+A few first person guns have no tag_flash (the flash and the shots came out of the gun's
+origin, behind the hand): their muzzles, measured from the models (misc/vr), in the hands
+model's space.
+=================
+*/
+static const struct {
+	const char  *weap;
+	vec3_t      muzzle;
+} vrMuzzles[] = {
+	{ "mp40.weap", { 40.5f, -4.85f, -5.5f } },
+	{ "mp44.weap", { 67.1f, -4.95f, -9.9f } },
+};
+
+void CG_VR_MuzzleFallback( int weapon, const refEntity_t *parent, refEntity_t *flash ) {
+	const char *file = weapon > WP_NONE ? BG_GetWeaponFilename( weapon ) : NULL;
+	int i, j;
+
+	if ( !cgvr.active || !file || !*file ) {
+		return;
+	}
+	for ( i = 0; i < ARRAY_LEN( vrMuzzles ); i++ ) {
+		if ( !Q_stricmp( vrMuzzles[i].weap, file ) ) {
+			VectorCopy( parent->origin, flash->origin );
+			for ( j = 0; j < 3; j++ ) {
+				VectorMA( flash->origin, vrMuzzles[i].muzzle[j], parent->axis[j], flash->origin );
+				VectorNormalize2( parent->axis[j], flash->axis[j] );
+			}
+			return;
+		}
+	}
+}
+
+/*
+=================
 CG_VR_SetMuzzle
 
 Called with the first person gun's muzzle (tag_flash) every frame. The server fires from
@@ -1610,6 +1748,44 @@ int CG_VR_DualSingle( const playerState_t *ps ) {
 	}
 }
 
+// the off hand's gun hand: the gun hand's own modelled hand, mirrored into a left hand round
+// the same grip (only the hand is drawn mirrored, the gun stays as modelled)
+static void CG_VR_DualOffHand( int single, weaponInfo_t *weapon ) {
+	const vrHandPose_t *hp = CG_VR_HandPose( single );
+	int off = !CG_VR_DominantHand();
+	refEntity_t parent, ent;
+
+	if ( !CG_VR_HandOnGun( off ) || !CG_VR_DrawHands() || !hp ) {
+		return;
+	}
+	memset( &parent, 0, sizeof( parent ) );
+	CG_VR_DualFrame( off, single, parent.origin, parent.axis );
+	parent.hModel = weapon->handsModel;
+	parent.frame = parent.oldframe = weapon->weapAnimations[WEAP_IDLE1].firstFrame;
+	parent.nonNormalizedAxes = qtrue;
+
+	memset( &ent, 0, sizeof( ent ) );
+	if ( hp->trigPiece == -1 ) {
+		ent.hModel = weapon->weaponModel[W_FP_MODEL].model;
+		ent.customSkin = weapon->handsSkin;
+		CG_PositionEntityOnTag( &ent, &parent, "tag_weapon", 0, NULL );
+	} else if ( hp->trigPiece == -3 ) {
+		ent.hModel = CG_VR_RifleHandModel( single );
+		ent.customSkin = cgvr.handSkin;
+		VectorCopy( parent.origin, ent.origin );
+		AxisCopy( parent.axis, ent.axis );
+	}
+	if ( !ent.hModel ) {
+		return;
+	}
+	VectorCopy( ent.origin, ent.oldorigin );
+	VectorCopy( parent.origin, ent.lightingOrigin );
+	ent.nonNormalizedAxes = qtrue;
+	ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN | RF_VR_ONLYHANDS | RF_VR_MIRRORED;
+	CG_VR_ArmBend( off, &ent );
+	trap_R_AddRefEntityToScene( &ent );
+}
+
 void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
 	centity_t *cent = &cg.predictedPlayerEntity;
 	weaponInfo_t *weapon;
@@ -1638,7 +1814,9 @@ void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
 			angles[PITCH] += atof( buf );
 			CG_VR_Geom( single, &geom );
 			BG_VR_WeaponFrame( &geom, cgvr.handOrigin[off], angles, adj, hand.origin, hand.axis );
+			CG_VR_DualOffHand( single, weapon );
 		}
+		cgvr.dualDraw = side == 1 ? 1 : 2;
 		// (runs the animation state the gun's parts read, with this pistol's own table)
 		CG_WeaponAnimation( ps, weapon, &hand.oldframe, &hand.frame, &hand.backlerp );
 		hand.oldframe = hand.frame = weapon->weapAnimations[WEAP_IDLE1].firstFrame;
@@ -1655,6 +1833,7 @@ void CG_VR_AddDualGuns( playerState_t *ps, int single ) {
 		cg_dualOneHand = CG_DualSMG( single );
 		CG_AddPlayerWeapon( &hand, ps, cent );
 		cg_dualOneHand = qfalse;
+		cgvr.dualDraw = 0;
 		if ( side == 0 ) {
 			// the off hand's muzzle, for drawing its shots' hits
 			VectorCopy( cgvr.muzzle, cgvr.muzzleOff );

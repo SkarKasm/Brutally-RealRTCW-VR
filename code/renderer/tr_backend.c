@@ -127,11 +127,16 @@ void GL_BindMultitexture( image_t *image0, GLuint env0, image_t *image1, GLuint 
 ** GL_Cull
 */
 void GL_Cull( int cullType ) {
-	if ( glState.faceCulling == cullType ) {
+	static qboolean wasMirrored;
+	// RealRTCW-VR: an entity drawn mirrored (a left hand made from a right one)
+	qboolean mirrored = backEnd.currentEntity && ( backEnd.currentEntity->e.renderfx & RF_VR_MIRRORED );
+
+	if ( glState.faceCulling == cullType && mirrored == wasMirrored ) {
 		return;
 	}
 
 	glState.faceCulling = cullType;
+	wasMirrored = mirrored;
 
 	if ( cullType == CT_TWO_SIDED )
 	{
@@ -144,6 +149,10 @@ void GL_Cull( int cullType ) {
 
 		cullFront = (cullType == CT_FRONT_SIDED);
 		if ( backEnd.viewParms.isMirror )
+		{
+			cullFront = !cullFront;
+		}
+		if ( mirrored )
 		{
 			cullFront = !cullFront;
 		}

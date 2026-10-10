@@ -443,7 +443,8 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 		// RealRTCW-VR: the headset draws its own hands at the controllers, so the
 		// first person weapon's built-in hands and sleeves are left out
 		if ( ( ( ent->e.renderfx & RF_VR_NOHANDS ) && R_VR_IsHandSurface( surface->name ) ) ||
-			 ( ( ent->e.renderfx & RF_VR_NOSLEEVES ) && R_VR_IsSleeveSurface( surface->name ) ) ) {
+			 ( ( ent->e.renderfx & RF_VR_NOSLEEVES ) && R_VR_IsSleeveSurface( surface->name ) ) ||
+			 ( ( ent->e.renderfx & RF_VR_ONLYHANDS ) && !R_VR_IsHandSurface( surface->name ) ) ) {
 			surface = ( md3Surface_t * )( (byte *)surface + surface->ofsEnd );
 			continue;
 		}
