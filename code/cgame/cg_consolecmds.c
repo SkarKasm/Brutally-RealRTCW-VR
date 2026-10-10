@@ -708,6 +708,8 @@ static consoleCommand_t commands[] = {
 	{ "vrtestwound", CG_VRX_TestWound_f },       // RealRTCW-VR test aid
 	{ "+weaponwheel", CG_WeaponWheelDown_f },      // RealRTCW-VR
 	{ "-weaponwheel", CG_WeaponWheelUp_f },
+	{ "vrweaponwheelcancel", CG_WeaponWheelCancel_f },
+	{ "vrwheelpage", CG_WeaponWheelPage_f },
 	{ "testgun", CG_TestGun_f },
 	{ "testmodel", CG_TestModel_f },
 	{ "nextframe", CG_TestModelNextFrame_f },

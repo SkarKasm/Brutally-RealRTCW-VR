@@ -177,6 +177,13 @@ typedef struct {
 	const float *ragdollBones;
 	int ragdollMagic;
 
+	// RealRTCW-VR: bend a first person arm at the wrist and the elbow (md3 / mdc hand, arm
+	// and sleeve surfaces), R_VR_BendArm. Model space: wrist, the forearm's direction from
+	// it, forearm length, the forearm's and the upper arm's new directions, stretch of the
+	// upper arm, blend width around each joint. Only used when vrBendMagic is VR_BEND_MAGIC.
+	float vrBend[16];
+	int vrBendMagic;
+
 } refEntity_t;
 
 //----(SA)

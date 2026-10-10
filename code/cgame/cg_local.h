@@ -749,6 +749,9 @@ typedef struct {
 	qboolean active;
 	int hoveredWeapon;
 	int openTime;
+	int vrPage;         // VR: the wheel's page, turned with the stick
+	float stickX;       // VR: where the gun hand points on the wheel (cl_vr.c, CG_JOYSTICK_EVENT)
+	float stickY;
 } weaponWheel_t;
 
 typedef struct {
@@ -1682,6 +1685,9 @@ typedef struct {
 	float       yawOffset;          // play space yaw -> world yaw
 	vec3_t      headOrigin;         // world, centre of the head
 	vec3_t      handOrigin[2];      // world, indexed by VR_HAND_*
+	vec3_t      gunGrip;            // world: where the gun's grip is (the gun hand, or held in the off hand)
+	int         dualDraw;           // two guns being drawn: 1 the gun hand's, 2 the off hand's (0: not)
+	int         binocsWeapon;       // the weapon put away for the binoculars (cgVR->binocsOut)
 	vec3_t      handAngles[2];
 	vec3_t      weaponAngles;       // world aim of the gun
 	vec3_t      muzzle;             // world position of the gun's muzzle this frame
@@ -1691,9 +1697,18 @@ typedef struct {
 	qhandle_t   handModel[2];       // indexed by VR_HAND_*
 	qhandle_t   handSkin;           // the flatscreen hands' gloves and sleeves for this map
 	qhandle_t   bodySkin;           // HD player body with those sleeves (vr_fullBody)
+	vec3_t      shoulder[2];        // world, BJ's shoulders, where the HD arms run to
+	int         shoulderTime;       // cg.time they were set (the full body was drawn)
+	float       armStub[2];         // world length of each HD arm's sleeve past its elbow
+	vec3_t      armWrist[2];        // world, each HD arm's wrist joint
+	float       armForearm[2];      // world, its wrist to elbow
+	float       upperArm[2];        // world, BJ's shoulder to elbow
+	vec3_t      shoulderOut[2];     // world, outwards from BJ's chest at each shoulder
 
 	int         gunWeapon;          // first person gun drawn this frame, and its pose
 	qboolean    lastShotLeft;       // dual pistols: the off hand's gun fired last
+	int         shotTime[2];        // when the gun hand's (0) / off hand's (1) gun last fired
+	int         brassPending;       // a bolt action / pump fired: its case comes out when it's worked (weapon)
 	vec3_t      gunOrigin;
 	vec3_t      gunAxis[3];
 	int         lastMagDrop;        // cgVR->magDropCount already handled
@@ -1709,6 +1724,7 @@ typedef struct {
 extern cgVRState_t cgvr;
 
 qboolean CG_VR_Active( void );
+qboolean CG_VR_FlatCutscene( void );
 qboolean CG_VR_EmptySwitch( void );
 qboolean CG_VR_EyePass( void );
 qboolean CG_VR_2DPass( void );
@@ -1718,14 +1734,33 @@ void CG_VR_SetHead( const vec3_t headOrigin, float yawOffset, vec3_t viewAngles 
 void CG_VR_CutsceneView( vec3_t origin, vec3_t angles );
 void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t axis[3] );
 void CG_VR_SetMuzzle( const vec3_t muzzle );
+void CG_VR_MuzzleFallback( int weapon, const refEntity_t *parent, refEntity_t *flash );
 void CG_VR_AddReticle( void );
 void CG_VR_AddPointer( void );
 void CG_VR_AddHands( void );
+qboolean CG_VR_Binocs( playerState_t *ps );
+// the weapon wheel's binoculars (VR): not a weapon, they go in the gun hand
+#define VR_WHEEL_BINOCS     ( MAX_WEAPONS + 1 )
+// and its quick save / quick load buttons (on the last page, with the binoculars)
+#define VR_WHEEL_QSAVE      ( MAX_WEAPONS + 2 )
+#define VR_WHEEL_QLOAD      ( MAX_WEAPONS + 3 )
+#define VR_WHEEL_ITEM( w )  ( ( w ) >= VR_WHEEL_BINOCS && ( w ) <= VR_WHEEL_QLOAD )
+#define VR_WHEEL_PAGE       6   // weapons on one page of the VR wheel
+int CG_WeaponWheelPages( void );
+qboolean CG_VR_VanillaGuns( void );
+const char *BG_GetWeaponFilename( int weapon );
 qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_t *ent );
 void CG_VR_AddReloadItems( void );
 qboolean CG_VR_Inspect( playerState_t *ps );
 void CG_WeaponAnimation( playerState_t *ps, weaponInfo_t *weapon, int *weapOld, int *weap, float *weapBackLerp );
 qboolean CG_VR_DrawHands( void );
+int CG_VR_PieceHandFx( int weapon, int piece );
+void CG_VR_ArmTargets( qboolean has[2], vec3_t end[2], vec3_t dir[2] );
+void CG_VR_PieceArmBend( int weapon, int piece, refEntity_t *ent );
+void CG_VR_StretchHand( int weapon, int piece, refEntity_t *ent );
+float CG_VR_HandStretch( int weapon, qboolean trig );
+void CG_VR_ArmBend( int h, refEntity_t *ent );
+void CG_VR_AddRifleHand( int weapon, refEntity_t *gun, const refEntity_t *parent );
 void CG_VR_Haptic( int hand, float amplitude, int msec );
 int CG_VR_DominantHand( void );
 qboolean CG_VR_PredictsHits( int weapon );
@@ -2561,6 +2596,7 @@ void        CG_Ragdoll_Explosion( const vec3_t origin, float radius, float stren
 // cg_vrbody.c (RealRTCW-VR)
 void        CG_VR_BodyInit( void );
 qboolean    CG_VR_FullBody( centity_t *cent );
+qboolean    CG_VR_BodyArms( void );
 qboolean    CG_VR_BodyDrawn( void );
 void        CG_VR_BodyAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3] );
 void        CG_VR_BodyApply( centity_t *cent, refEntity_t *body );
@@ -2574,6 +2610,8 @@ void        CG_VR_ScopePiece( int weapon, int part, const refEntity_t *ent );
 void        CG_VR_RenderScope( void );
 qboolean    CG_VR_ScopeActive( void );
 void        CG_VR_IronSights( void );
+qboolean    CG_AdsDebug( void );
+float       CG_AdsFraction( void );           // cg_weapons.c: flat aiming down the sights, 0..1
 
 // cg_vrrecoil.c (RealRTCW-VR)
 void        CG_VR_RecoilInit( void );
@@ -2592,10 +2630,14 @@ int         CG_CollectWeaponWheelWeapons( int *visible, int maxWeapons );
 void        CG_WeaponWheelDown_f( void );
 void        CG_WeaponWheelUp_f( void );
 qboolean    CG_WeaponWheelMouse( int x, int y );
+void        CG_WeaponWheelCancel_f( void );
+void        CG_WeaponWheelPage_f( void );
+void        CG_JoystickEvent( int axis, int value );
 void        CG_DrawWeaponWheel( void );
 void        CG_VR_Comfort( void );
 void        CG_VR_PingReceived( int client, const vec3_t pos );
 int         CG_VR_DualSingle( const playerState_t *ps );
+void        CG_VR_DualFrame( int h, int single, vec3_t origin, vec3_t axis[3] );
 extern qboolean cg_dualOneHand;     // cg_weapons.c: a dual wielded SMG, its supporting arm left out
 qboolean    CG_DualSMG( int weapon );
 void        CG_VR_AddDualGuns( playerState_t *ps, int single );

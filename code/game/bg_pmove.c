@@ -2274,9 +2274,8 @@ void PM_CheckForReload( int weapon ) {
 	// user is forcing a reload (manual reload)
 	reloadRequested = (qboolean)( pm->cmd.wbuttons & WBUTTON_RELOAD );
 
-	// RealRTCW-VR: two guns in the hands are reloaded with both hands lowered to the waist,
-	// never on their own
-	if ( pm->vrAim && BG_DualActive( pm->ps ) && !( reloadRequested && pm->vrHandsLow ) ) {
+	// RealRTCW-VR: two guns in the hands are reloaded one at a time at the hips (g_vr.c)
+	if ( pm->vrAim && BG_DualActive( pm->ps ) ) {
 		return;
 	}
 
@@ -2414,6 +2413,16 @@ static void PM_SwitchIfEmpty( void ) {
 }
 
 
+// RealRTCW-VR: the clip a shot comes from: dual wielding in VR, the off hand's gun has its own
+static int PM_ClipSlot( int wp ) {
+	extern int bg_vrAkimbo;
+	if ( bg_vrAkimbo == 1 && pm->vrAim && wp == pm->ps->weapon && BG_DualActive( pm->ps ) &&
+		 pm->ps->ammoclip[BG_DUAL_LEFT_WEAPON] == wp ) {
+		return BG_DUAL_LEFT_CLIP;
+	}
+	return BG_FindClipForWeapon( wp );
+}
+
 /*
 ==============
 PM_WeaponUseAmmo
@@ -2426,7 +2435,7 @@ void PM_WeaponUseAmmo( int wp, int amount ) {
 	if ( pm->noWeapClips ) {
 		pm->ps->ammo[ BG_FindAmmoForWeapon( wp )] -= amount;
 	} else {
-		takeweapon = BG_FindClipForWeapon( wp );
+		takeweapon = PM_ClipSlot( wp );
 		if ( wp == WP_AKIMBO ) {
 			if ( !BG_AkimboFireSequence( wp, pm->ps->ammoclip[WP_AKIMBO], pm->ps->ammoclip[WP_COLT] ) ) {
 				takeweapon = WP_COLT;
@@ -2451,7 +2460,7 @@ int PM_WeaponAmmoAvailable( int wp ) {
 		return pm->ps->ammo[ BG_FindAmmoForWeapon( wp )];
 	} else {
 //		return pm->ps->ammoclip[BG_FindClipForWeapon( wp )];
-		takeweapon = BG_FindClipForWeapon( wp );
+		takeweapon = PM_ClipSlot( wp );
 		if ( wp == WP_AKIMBO ) {
 			if ( !BG_AkimboFireSequence( pm->ps->weapon, pm->ps->ammoclip[WP_AKIMBO], pm->ps->ammoclip[WP_COLT] ) ) {
 				takeweapon = WP_COLT;
@@ -2474,7 +2483,7 @@ int PM_WeaponClipEmpty( int wp ) {
 			return 1;
 		}
 	} else {
-		if ( !( pm->ps->ammoclip[BG_FindClipForWeapon( wp )] ) ) {
+		if ( !( pm->ps->ammoclip[PM_ClipSlot( wp )] ) ) {
 			return 1;
 		}
 	}
@@ -3087,8 +3096,8 @@ static void PM_Weapon( void ) {
 			if ( pm->vrManualReload ) {
 				reloadingW = qfalse;    // RealRTCW-VR: reloads are done by hand
 			}
-			if ( pm->vrAim && BG_DualActive( pm->ps ) && !( ( pm->cmd.wbuttons & WBUTTON_RELOAD ) && pm->vrHandsLow ) ) {
-				reloadingW = qfalse;    // RealRTCW-VR: dual guns reload with the hands at the waist
+			if ( pm->vrAim && BG_DualActive( pm->ps ) ) {
+				reloadingW = qfalse;    // RealRTCW-VR: dual guns reload at the hips
 			}
 
 			switch ( pm->ps->weapon ) {
@@ -3329,7 +3338,7 @@ static void PM_Weapon( void ) {
 	}
 
 	// RealRTCW-VR: without a headset, a dual pair fires in turn, each gun at its own rate
-	if ( BG_DualActive( pm->ps ) && !pm->vrAim ) {
+	if ( BG_DualActive( pm->ps ) && ( !pm->vrAim || pm->vrAkimboBoth ) ) {
 		addTime /= 2;
 	}
 
@@ -3592,6 +3601,19 @@ void PM_UpdateViewAngles( playerState_t *ps, usercmd_t *cmd, void( trace ) ( tra
 	PM_UpdateLean( ps, cmd, &tpm );
 }
 
+// RealRTCW-VR: ladders follow the head, not the gun: walk in and look up or down
+static void PM_LadderView( vec3_t forward, vec3_t right ) {
+	vec3_t angles;
+
+	VectorCopy( pm->ps->viewangles, angles );
+	if ( pm->vrAim ) {
+		angles[PITCH] += pm->vrLadderHead[0];
+		angles[YAW] += pm->vrLadderHead[1];
+		angles[ROLL] = 0;
+	}
+	AngleVectors( angles, forward, right, NULL );
+}
+
 /*
 ================
 PM_CheckLadderMove
@@ -3647,8 +3669,7 @@ void PM_CheckLadderMove( void ) {
 	}
 
 	// check for ladder
-	flatforward[0] = pml.forward[0];
-	flatforward[1] = pml.forward[1];
+	PM_LadderView( flatforward, NULL );
 	flatforward[2] = 0;
 	VectorNormalize( flatforward );
 
@@ -3729,13 +3750,33 @@ PM_LadderMove
 void PM_LadderMove( void ) {
 	float wishspeed, scale;
 	vec3_t wishdir, wishvel;
-	float upscale;
+	float upscale, forwardmove, rightmove;
 
 	if ( ladderforward ) {
 		// move towards the ladder
 		VectorScale( laddervec, -200.0, wishvel );
 		pm->ps->velocity[0] = wishvel[0];
 		pm->ps->velocity[1] = wishvel[1];
+	}
+
+	forwardmove = pm->cmd.forwardmove;
+	rightmove = pm->cmd.rightmove;
+	if ( pm->vrAim ) {
+		// RealRTCW-VR: the stick moves relative to the head, which the ladder follows too
+		vec3_t move, hf, hr;
+		pml.forward[2] = pml.right[2] = 0;
+		VectorNormalize( pml.forward );
+		VectorNormalize( pml.right );
+		VectorScale( pml.forward, forwardmove, move );
+		VectorMA( move, rightmove, pml.right, move );
+		PM_LadderView( hf, hr );
+		VectorCopy( hf, pml.forward );
+		VectorCopy( hr, pml.right );
+		hf[2] = hr[2] = 0;
+		VectorNormalize( hf );
+		VectorNormalize( hr );
+		forwardmove = DotProduct( move, hf );
+		rightmove = DotProduct( move, hr );
 	}
 
 	upscale = ( pml.forward[2] + 0.5 ) * 2.5;
@@ -3757,20 +3798,16 @@ void PM_LadderMove( void ) {
 	scale = PM_CmdScale( &pm->cmd );
 	VectorClear( wishvel );
 
-	if ( pm->cmd.forwardmove ) {
+	if ( forwardmove ) {
 		if ( pm->ps->aiChar ) {
-			wishvel[2] = 0.5 * upscale * scale * (float)pm->cmd.forwardmove;
+			wishvel[2] = 0.5 * upscale * scale * forwardmove;
 		} else { // player speed
-			wishvel[2] = 0.9 * upscale * scale * (float)pm->cmd.forwardmove;
+			wishvel[2] = 0.9 * upscale * scale * forwardmove;
 		}
 	}
 //Com_Printf("wishvel[2] = %i, fwdmove = %i\n", (int)wishvel[2], (int)pm->cmd.forwardmove );
 
-	// RealRTCW-VR: hands pulling on the ladder (cl_vr.c sends how fast as upmove)
-	if ( pm->vrAim && pm->cmd.upmove ) {
-		wishvel[2] = 3.0f * (float)pm->cmd.upmove;
-	}
-	if ( pm->cmd.rightmove ) {
+	if ( rightmove ) {
 		// strafe, so we can jump off ladder
 		vec3_t ladder_right, ang;
 		vectoangles( laddervec, ang );
@@ -3781,7 +3818,7 @@ void PM_LadderMove( void ) {
 			VectorInverse( ladder_right );
 		}
 
-		VectorMA( wishvel, 0.5 * scale * (float)pm->cmd.rightmove, pml.right, wishvel );
+		VectorMA( wishvel, 0.5 * scale * rightmove, pml.right, wishvel );
 	}
 
 	// do strafe friction
@@ -4251,6 +4288,13 @@ int Pmove( pmove_t *pmove ) {
 	pmove->vrManualReload = pmove->vrAim && ( pmove->ps->vrState & VRS_MANUAL );
 	pmove->vrChambered = !pmove->vrManualReload || ( pmove->ps->vrState & VRS_CHAMBERED );
 	pmove->vrHandsLow = pmove->vrAim && BG_VR_HandsLow( &pmove->cmd );
+	pmove->vrAkimboBoth = pmove->vrAim && ( pmove->cmd.vrFlags2 & VRF2_AKIMBO_BOTH );
+	if ( pmove->vrAim ) {
+		pmove->vrLadderHead[0] = AngleSubtract( SHORT2ANGLE( pmove->cmd.vrHead[0] ), SHORT2ANGLE( pmove->cmd.angles[PITCH] ) );
+		pmove->vrLadderHead[1] = AngleSubtract( SHORT2ANGLE( pmove->cmd.vrHead[1] ), SHORT2ANGLE( pmove->cmd.angles[YAW] ) );
+	} else {
+		pmove->vrLadderHead[0] = pmove->vrLadderHead[1] = 0;
+	}
 
 	// Ridah
 	if ( pmove->ps->eFlags & EF_DUMMY_PMOVE ) {

@@ -1481,11 +1481,14 @@ extern vrRenderState_t vrRender;
 void     R_VR_SetupViewParms( viewParms_t *parms, int rdflags );
 qboolean R_VR_IsHandSurface( const char *name );
 qboolean R_VR_IsSleeveSurface( const char *name );
+void     R_VR_BendArm( const float *bend, int first, int count );
 int      RE_GetSkeleton( const refEntity_t *refent, int maxBones, int *parents, int *flags, char *names, float *bones );
 void     RE_VR_SetEye( int eye, const float *fovTangents, const vec3_t eyeOffset );
 void     RE_VR_BeginPass( unsigned int targetFramebuffer, const float *clearColor );
 void     RE_VR_EndPasses( void );
 void     RE_VR_PresentMirror( unsigned int sourceFramebuffer, int sourceWidth, int sourceHeight );
+void     R_VR_MirrorShutdown( void );
+extern cvar_t *r_vrMirrorFit;
 void     *R_VR_GLProc( const char *name );
 unsigned int R_VR_CurrentTarget( void );
 

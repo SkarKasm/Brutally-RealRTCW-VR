@@ -563,6 +563,26 @@ static void CG_VR_OffsetFirstPersonView( void ) {
 	cg.refdef.vieworg[2] += eye;
 	cgVR->eyeHeight = eye;
 
+	// leaning out over the body (crouching, prone, reaching over things: cl_vr.c), up to walls
+	if ( ps->stats[STAT_HEALTH] > 0 && ( cgVR->lean[0] || cgVR->lean[1] ) ) {
+		vec3_t to, mins = { -4, -4, -4 }, maxs = { 4, 4, 4 };
+		trace_t tr;
+
+		VectorCopy( cg.refdef.vieworg, to );
+		to[0] += cgVR->lean[0];
+		to[1] += cgVR->lean[1];
+		CG_Trace( &tr, cg.refdef.vieworg, mins, maxs, to, ps->clientNum, MASK_PLAYERSOLID );
+		if ( tr.startsolid ) {
+			VectorCopy( cg.refdef.vieworg, tr.endpos );
+		}
+		cgVR->leanUsed[0] = tr.endpos[0] - cg.refdef.vieworg[0];
+		cgVR->leanUsed[1] = tr.endpos[1] - cg.refdef.vieworg[1];
+		cg.refdef.vieworg[0] = tr.endpos[0];
+		cg.refdef.vieworg[1] = tr.endpos[1];
+	} else {
+		cgVR->leanUsed[0] = cgVR->leanUsed[1] = 0;
+	}
+
 	CG_StepOffset();
 
 	// shots leave the gun hand, see G_VR_WeaponOrigin
@@ -1111,7 +1131,9 @@ static int CG_CalcViewValues( void ) {
 			angles[ROLL] = 0;
 			angles[PITCH] = -angles[PITCH];     // (SA) compensate for reversed pitch (this makes the game match the editor, however I'm guessing the real fix is to be done there)
 			VectorCopy( angles, cg.refdefViewAngles );
-			CG_VR_CutsceneView( cg.refdef.vieworg, cg.refdefViewAngles );   // RealRTCW-VR: free look
+			if ( !CG_VR_FlatCutscene() ) {
+				CG_VR_CutsceneView( cg.refdef.vieworg, cg.refdefViewAngles );   // RealRTCW-VR: free look
+			}
 			AnglesToAxis( cg.refdefViewAngles, cg.refdef.viewaxis );
 
 			if ( cg_fixedAspect.integer ) {
@@ -1622,7 +1644,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	// RF, draw the skyboxportal
 	// RealRTCW-VR: the headset's 2D layer (HUD) must not get any 3D rendering, the
 	// skybox portal in particular renders a full scene of its own
-	build3D = !CG_VR_2DPass();
+	build3D = !CG_VR_2DPass() || CG_VR_FlatCutscene();    // a flat cutscene is drawn there
 
 	if ( build3D ) {
 		CG_DrawSkyBoxPortal();

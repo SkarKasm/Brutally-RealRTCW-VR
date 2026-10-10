@@ -1017,9 +1017,12 @@ qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out );
 qboolean G_VR_Aiming( gentity_t *ent );
 void G_VR_CheckCompletion( void );
 int G_VR_BonusHealth( void );
+qboolean G_VR_Player( gentity_t *ent );   // RealRTCW-VR: the headset player
 extern qboolean g_vrHandUse;            // RealRTCW-VR: Cmd_Activate_f from a hand (g_vr.c)
 extern vec3_t g_vrHandFrom, g_vrHandTo;
+qboolean G_VR_LookRay( gentity_t *ent, float dist, vec3_t from, vec3_t to );
 void G_VR_GrenadeThrow( gentity_t *ent, int weapon, vec3_t start, vec3_t dir );
+qboolean G_VR_LobAt( gentity_t *ent, const vec3_t start, float speed, float gravity, vec3_t vel );
 void G_VR_KnifeStab( gentity_t *ent );
 void G_VR_UpdateWeaponState( gentity_t *ent );
 void G_VR_PlayerThink( gentity_t *ent );
@@ -1028,6 +1031,7 @@ void G_VR_GrabHint( gentity_t *ent );
 // g_vrextras.c (RealRTCW-VR: GORE & EXTRAS)
 void G_VRX_Frame( void );
 void G_DualToggle( gentity_t *ent );   // g_vr.c
+void G_DualPutAway( playerState_t *ps );
 extern qboolean g_dualLeftShot;      // g_weapon.c: this shot is a dual pair's off hand gun
 int G_VRX( int which );
 qboolean G_VRX_Gore( int which );

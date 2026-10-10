@@ -42,6 +42,7 @@ the Free Software Foundation, either version 3 of the License, or
 enum { SIDE_L, SIDE_R };
 
 static vmCvar_t vr_fullBody;
+static vmCvar_t vr_shoulderSpread;     // how far out the HD arms meet the shoulders
 static vmCvar_t cg_flatLegs;
 static vmCvar_t cg_flatLegsBack;    // flatscreen legs: the neck sits this far further back
 static vmCvar_t cg_flatLegsCut;     // flatscreen legs: 0 whole torso, 1-3 fold away above Spine3/2/1
@@ -69,6 +70,7 @@ static struct {
 void CG_VR_BodyInit( void ) {
 	memset( &vb, 0, sizeof( vb ) );
 	trap_Cvar_Register( &vr_fullBody, "vr_fullBody", "1", CVAR_ARCHIVE );
+	trap_Cvar_Register( &vr_shoulderSpread, "vr_shoulderSpread", "3", CVAR_ARCHIVE );
 	trap_Cvar_Register( &cg_flatLegs, "cg_flatLegs", "1", CVAR_ARCHIVE );
 	trap_Cvar_Register( &cg_flatLegsBack, "cg_flatLegsBack", "6", CVAR_ARCHIVE );
 	trap_Cvar_Register( &cg_flatLegsCut, "cg_flatLegsCut", "0", CVAR_ARCHIVE );
@@ -87,6 +89,14 @@ qboolean CG_VR_FullBody( centity_t *cent ) {
 		   !cg.renderingThirdPerson && !cg.cameraMode && cg.predictedPlayerState.stats[STAT_HEALTH] > 0 &&
 		   !( cent->currentState.eFlags & EF_DEAD );
 }
+
+// BJ's arms are on the body this frame (the HD first person arms show only their hands)
+qboolean CG_VR_BodyArms( void ) {
+	trap_Cvar_Update( &vr_fullBody );
+	return cgvr.active && vr_fullBody.integer && !cg.renderingThirdPerson && !cg.cameraMode &&
+		   cg.predictedPlayerState.stats[STAT_HEALTH] > 0;
+}
+
 
 // the full body was drawn this frame (the VR hands then leave out their sleeves)
 qboolean CG_VR_BodyDrawn( void ) {
@@ -482,6 +492,8 @@ Called with the local player's skeletal body just before it is drawn.
 */
 void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 	vec3_t fwd, target, dir, handFwd, yaw;
+	vec3_t gunWrist[2], gunDir[2];
+	qboolean gunHand[2];
 	int h, side, i;
 
 	VectorSet( yaw, 0, vb.bodyYaw, 0 );
@@ -517,23 +529,50 @@ void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 	}
 	VectorCopy( body->origin, body->oldorigin );
 
+	CG_VR_ArmTargets( gunHand, gunWrist, gunDir );
 	for ( h = 0; h < 2; h++ ) {
 		if ( !cgVR->handValid[h] ) {
 			continue;
 		}
 		side = h == VR_HAND_RIGHT ? SIDE_R : SIDE_L;
-		AngleVectors( cgvr.handAngles[h], handFwd, NULL, NULL );
-		// the grip pose is the palm; the wrist is behind it
-		VectorMA( cgvr.handOrigin[h], -VB_PALM_TO_WRIST, handFwd, target );
+		if ( gunHand[h] ) {
+			// the flat game's whole HD arm is drawn here: its sleeve bends at the elbow
+			// and runs up to this shoulder (CG_VR_ArmBend), and BJ's own arm folds away
+			int ua = vb.upper[side], fa = vb.fore[side];
+			if ( ua >= 0 ) {
+				float out = h == VR_HAND_RIGHT ? -1.0f : 1.0f;     // axis[1] is the body's left
+				trap_Cvar_Update( &vr_shoulderSpread );
+				for ( i = 0; i < 3; i++ ) {
+					cgvr.shoulder[h][i] = body->origin[i] + vb.pos[ua][0] * body->axis[0][i] +
+										  vb.pos[ua][1] * body->axis[1][i] + vb.pos[ua][2] * body->axis[2][i];
+					cgvr.shoulderOut[h][i] = out * body->axis[1][i];
+				}
+				// the HD sleeves are wider than BJ's: their tops sit further out
+				VectorNormalize( cgvr.shoulderOut[h] );
+				VectorMA( cgvr.shoulder[h], vr_shoulderSpread.value, cgvr.shoulderOut[h], cgvr.shoulder[h] );
+				cgvr.upperArm[h] = fa >= 0 ? Distance( vb.pos[ua], vb.pos[fa] ) * VectorLength( body->axis[0] ) : 0;
+				cgvr.shoulderTime = cg.time;
+			}
+			continue;
+		} else {
+			AngleVectors( cgvr.handAngles[h], handFwd, NULL, NULL );
+			// the grip pose is the palm; the wrist is behind it
+			VectorMA( cgvr.handOrigin[h], -VB_PALM_TO_WRIST, handFwd, target );
+		}
 		VB_ToModel( body, target, target );
 		VB_DirToModel( body, handFwd, dir );
 		VectorNormalize( dir );
 		VB_ReachArm( side, target, dir );
 	}
+	// and BJ's own arm folds away where the HD one is drawn
+	for ( h = 0; h < 2; h++ ) {
+		if ( gunHand[h] && cgVR->handValid[h] ) {
+			VB_Collapse( vb.upper[h == VR_HAND_RIGHT ? SIDE_R : SIDE_L] );
+		}
+	}
 
 	VB_Output( body );
 	body->renderfx &= ~RF_THIRD_PERSON;     // seen from the eyes
-	body->renderfx |= RF_VR_NOHANDS;        // the tracked hands are drawn instead
 	body->renderfx |= RF_FIRST_PERSON;      // only for the eyes: not in mirrors or scopes
 	vb.drawnTime = cg.time;
 }

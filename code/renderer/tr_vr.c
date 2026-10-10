@@ -28,19 +28,48 @@ vrRenderState_t vrRender = { -1 };
 #define VR_GL_FRAMEBUFFER       0x8D40
 #define VR_GL_READ_FRAMEBUFFER  0x8CA8
 #define VR_GL_DRAW_FRAMEBUFFER  0x8CA9
+#define VR_GL_RENDERBUFFER      0x8D41
+#define VR_GL_COLOR_ATTACHMENT0 0x8CE0
+#define VR_GL_FRAMEBUFFER_COMPLETE 0x8CD5
+#define VR_GL_RGBA8             0x8058
 
 typedef void ( APIENTRY *vrBindFramebuffer_t )( GLenum target, GLuint fb );
 typedef void ( APIENTRY *vrBlitFramebuffer_t )( GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum );
+typedef void ( APIENTRY *vrGenObjects_t )( GLsizei n, GLuint *ids );
+typedef void ( APIENTRY *vrDeleteObjects_t )( GLsizei n, const GLuint *ids );
+typedef void ( APIENTRY *vrRenderbufferStorage_t )( GLenum target, GLenum format, GLsizei w, GLsizei h );
+typedef void ( APIENTRY *vrFramebufferRenderbuffer_t )( GLenum target, GLenum attachment, GLenum rbTarget, GLuint rb );
+typedef GLenum ( APIENTRY *vrCheckFramebufferStatus_t )( GLenum target );
 
 static vrBindFramebuffer_t vrBindFramebuffer;
 static vrBlitFramebuffer_t vrBlitFramebuffer;
+static vrBindFramebuffer_t vrBindRenderbuffer;
+static vrGenObjects_t vrGenFramebuffers, vrGenRenderbuffers;
+static vrDeleteObjects_t vrDeleteFramebuffers, vrDeleteRenderbuffers;
+static vrRenderbufferStorage_t vrRenderbufferStorage;
+static vrFramebufferRenderbuffer_t vrFramebufferRenderbuffer;
+static vrCheckFramebufferStatus_t vrCheckFramebufferStatus;
 
 static qboolean R_VR_LoadGL( void ) {
 	if ( !vrBindFramebuffer ) {
 		vrBindFramebuffer = (vrBindFramebuffer_t)GLimp_VR_GetProc( "glBindFramebuffer" );
 		vrBlitFramebuffer = (vrBlitFramebuffer_t)GLimp_VR_GetProc( "glBlitFramebuffer" );
+		vrBindRenderbuffer = (vrBindFramebuffer_t)GLimp_VR_GetProc( "glBindRenderbuffer" );
+		vrGenFramebuffers = (vrGenObjects_t)GLimp_VR_GetProc( "glGenFramebuffers" );
+		vrGenRenderbuffers = (vrGenObjects_t)GLimp_VR_GetProc( "glGenRenderbuffers" );
+		vrDeleteFramebuffers = (vrDeleteObjects_t)GLimp_VR_GetProc( "glDeleteFramebuffers" );
+		vrDeleteRenderbuffers = (vrDeleteObjects_t)GLimp_VR_GetProc( "glDeleteRenderbuffers" );
+		vrRenderbufferStorage = (vrRenderbufferStorage_t)GLimp_VR_GetProc( "glRenderbufferStorage" );
+		vrFramebufferRenderbuffer = (vrFramebufferRenderbuffer_t)GLimp_VR_GetProc( "glFramebufferRenderbuffer" );
+		vrCheckFramebufferStatus = (vrCheckFramebufferStatus_t)GLimp_VR_GetProc( "glCheckFramebufferStatus" );
 	}
 	return vrBindFramebuffer && vrBlitFramebuffer;
+}
+
+static qboolean R_VR_MirrorGL( void ) {
+	return R_VR_LoadGL() && vrBindRenderbuffer && vrGenFramebuffers && vrGenRenderbuffers &&
+		   vrDeleteFramebuffers && vrDeleteRenderbuffers && vrRenderbufferStorage &&
+		   vrFramebufferRenderbuffer && vrCheckFramebufferStatus;
 }
 
 /*
@@ -113,46 +142,129 @@ void RE_VR_EndPasses( void ) {
 ==============
 RE_VR_PresentMirror
 
-Shows one of the headset images on the desktop window, letterboxed to keep its aspect.
+The desktop window shows one of the headset images. Called with a headset image while it
+is still ours (before the swapchain releases it), that image is copied into the mirror
+buffer, cropped to the window's shape around the eye's line of sight so the window is
+filled edge to edge (vr_mirrorFit 1: the whole image, with bars). Called with 0 at the
+end of the frame, the mirror buffer is shown: presenting the window in the middle of the
+headset passes, between the eyes, could leave it black with some runtimes and drivers.
 ==============
 */
+static GLuint vrMirrorFbo, vrMirrorRb;
+static int vrMirrorW, vrMirrorH;
+static qboolean vrMirrorFilled;
+
+void R_VR_MirrorShutdown( void ) {
+	if ( vrMirrorFbo && vrDeleteFramebuffers ) {
+		vrDeleteFramebuffers( 1, &vrMirrorFbo );
+	}
+	if ( vrMirrorRb && vrDeleteRenderbuffers ) {
+		vrDeleteRenderbuffers( 1, &vrMirrorRb );
+	}
+	vrMirrorFbo = vrMirrorRb = 0;
+	vrMirrorW = vrMirrorH = 0;
+	vrMirrorFilled = qfalse;
+}
+
+static qboolean R_VR_MirrorBuffer( int w, int h ) {
+	if ( vrMirrorFbo && w == vrMirrorW && h == vrMirrorH ) {
+		return qtrue;
+	}
+	R_VR_MirrorShutdown();
+	vrGenRenderbuffers( 1, &vrMirrorRb );
+	vrBindRenderbuffer( VR_GL_RENDERBUFFER, vrMirrorRb );
+	vrRenderbufferStorage( VR_GL_RENDERBUFFER, VR_GL_RGBA8, w, h );
+	vrGenFramebuffers( 1, &vrMirrorFbo );
+	vrBindFramebuffer( VR_GL_FRAMEBUFFER, vrMirrorFbo );
+	vrFramebufferRenderbuffer( VR_GL_FRAMEBUFFER, VR_GL_COLOR_ATTACHMENT0, VR_GL_RENDERBUFFER, vrMirrorRb );
+	if ( vrCheckFramebufferStatus( VR_GL_FRAMEBUFFER ) != VR_GL_FRAMEBUFFER_COMPLETE ) {
+		ri.Printf( PRINT_WARNING, "VR: mirror buffer incomplete\n" );
+		R_VR_MirrorShutdown();
+		vrBindFramebuffer( VR_GL_FRAMEBUFFER, 0 );
+		return qfalse;
+	}
+	vrMirrorW = w;
+	vrMirrorH = h;
+	return qtrue;
+}
+
 void RE_VR_PresentMirror( unsigned int sourceFramebuffer, int sourceWidth, int sourceHeight ) {
 	int winW, winH;
-	int dstW, dstH, dstX, dstY;
 
-	if ( !R_VR_LoadGL() ) {
+	if ( !R_VR_MirrorGL() ) {
 		return;
 	}
 	R_IssuePendingRenderCommands();
 
 	GLimp_GetWindowPixelSize( &winW, &winH );
-	if ( winW <= 0 || winH <= 0 || sourceWidth <= 0 || sourceHeight <= 0 ) {
+	if ( winW <= 0 || winH <= 0 ) {
 		return;
 	}
-
-	dstW = winW;
-	dstH = (int)( (float)winW * sourceHeight / sourceWidth );
-	if ( dstH > winH ) {
-		dstH = winH;
-		dstW = (int)( (float)winH * sourceWidth / sourceHeight );
-	}
-	dstX = ( winW - dstW ) / 2;
-	dstY = ( winH - dstH ) / 2;
-
-	vrBindFramebuffer( VR_GL_DRAW_FRAMEBUFFER, 0 );
 	qglScissor( 0, 0, winW, winH );
 	qglColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
-	qglClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
-	qglClear( GL_COLOR_BUFFER_BIT );
 
-	vrBindFramebuffer( VR_GL_READ_FRAMEBUFFER, sourceFramebuffer );
-	vrBlitFramebuffer( 0, 0, sourceWidth, sourceHeight,
-					   dstX, dstY, dstX + dstW, dstY + dstH,
-					   GL_COLOR_BUFFER_BIT, GL_LINEAR );
+	if ( sourceFramebuffer ) {
+		// take the headset image
+		int sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1;
+		float winAspect = (float)winW / winH, srcAspect;
+		float cx = 0.5f, cy = 0.5f;
+
+		if ( sourceWidth <= 0 || sourceHeight <= 0 || !R_VR_MirrorBuffer( winW, winH ) ) {
+			return;
+		}
+		srcAspect = (float)sourceWidth / sourceHeight;
+		if ( vrRender.eye >= 0 ) {
+			// where the eye looks straight ahead in its (asymmetric) image
+			const float *t = vrRender.fovTan;
+			if ( t[1] - t[0] > 0.01f && t[2] - t[3] > 0.01f ) {
+				cx = -t[0] / ( t[1] - t[0] );
+				cy = -t[3] / ( t[2] - t[3] );
+			}
+		}
+
+		sx0 = 0; sy0 = 0; sx1 = sourceWidth; sy1 = sourceHeight;
+		dx0 = 0; dy0 = 0; dx1 = winW; dy1 = winH;
+		if ( r_vrMirrorFit && r_vrMirrorFit->integer ) {
+			// the whole image, bars around it
+			if ( srcAspect > winAspect ) {
+				int h = (int)( winW / srcAspect );
+				dy0 = ( winH - h ) / 2; dy1 = dy0 + h;
+			} else {
+				int w = (int)( winH * srcAspect );
+				dx0 = ( winW - w ) / 2; dx1 = dx0 + w;
+			}
+		} else if ( srcAspect < winAspect ) {
+			// a band of the image as wide as it is, around the line of sight
+			int h = (int)( sourceWidth / winAspect );
+			sy0 = (int)( cy * sourceHeight ) - h / 2;
+			sy0 = sy0 < 0 ? 0 : ( sy0 > sourceHeight - h ? sourceHeight - h : sy0 );
+			sy1 = sy0 + h;
+		} else {
+			int w = (int)( sourceHeight * winAspect );
+			sx0 = (int)( cx * sourceWidth ) - w / 2;
+			sx0 = sx0 < 0 ? 0 : ( sx0 > sourceWidth - w ? sourceWidth - w : sx0 );
+			sx1 = sx0 + w;
+		}
+
+		vrBindFramebuffer( VR_GL_DRAW_FRAMEBUFFER, vrMirrorFbo );
+		qglClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
+		qglClear( GL_COLOR_BUFFER_BIT );
+		vrBindFramebuffer( VR_GL_READ_FRAMEBUFFER, sourceFramebuffer );
+		vrBlitFramebuffer( sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, GL_COLOR_BUFFER_BIT, GL_LINEAR );
+		vrMirrorFilled = qtrue;
+	} else {
+		// show it
+		if ( !vrMirrorFilled || winW != vrMirrorW || winH != vrMirrorH ) {
+			return;     // nothing taken this frame yet: keep the window as it is
+		}
+		vrBindFramebuffer( VR_GL_READ_FRAMEBUFFER, vrMirrorFbo );
+		vrBindFramebuffer( VR_GL_DRAW_FRAMEBUFFER, 0 );
+		vrBlitFramebuffer( 0, 0, winW, winH, 0, 0, winW, winH, GL_COLOR_BUFFER_BIT, GL_NEAREST );
+		vrBindFramebuffer( VR_GL_FRAMEBUFFER, 0 );
+		GLimp_EndFrame();
+	}
 
 	vrBindFramebuffer( VR_GL_FRAMEBUFFER, vrRender.passActive ? vrRender.targetFbo : 0 );
-
-	GLimp_EndFrame();
 }
 
 /*
@@ -194,6 +306,13 @@ void R_VR_SetupViewParms( viewParms_t *parms, int rdflags ) {
 	parms->vrFovTan[2] = t[2];
 	parms->vrFovTan[3] = t[3];
 
+	// the 3D sky (skybox portal) is a small set seen from a camera inside it: with the
+	// eyes apart it reads as a miniature right in front of you, so both eyes look from
+	// the same spot and it sits at infinity, like a skybox should
+	if ( rdflags & RDF_SKYBOXPORTAL ) {
+		o = vec3_origin;
+	}
+
 	// the eye sits off the head centre the refdef describes
 	VectorMA( parms->or.origin, o[0], parms->or.axis[0], parms->or.origin );
 	VectorMA( parms->or.origin, o[1], parms->or.axis[1], parms->or.origin );
@@ -220,4 +339,105 @@ qboolean R_VR_IsSleeveSurface( const char *name ) {
 qboolean R_VR_IsHandSurface( const char *name ) {
 	return Q_stristr( name, "hand" ) || Q_stristr( name, "arm" ) ||
 		   Q_stristr( name, "sleeve" ) || Q_stristr( name, "glove" );
+}
+
+/*
+==============
+R_VR_BendArm
+
+A first person arm (hand, forearm, elbow, start of the upper arm), already in tess, posed
+straight by the model. It bends like a skeleton would: past the wrist (bend[0..2]) the
+forearm (along bend[3..5], bend[6] long) turns to run along bend[7..9]; past the elbow
+the upper arm turns to run along bend[10..12], stretched by bend[13]. Each joint blends
+over bend[14] either side so the sleeve bends instead of tearing.
+==============
+*/
+static void R_VR_Rotation( const vec3_t a, const vec3_t d, vec3_t r[3] ) {
+	vec3_t axis;
+	float c, sn, k;
+	int i, j;
+
+	CrossProduct( a, d, axis );
+	sn = VectorNormalize( axis );
+	c = DotProduct( a, d );
+	if ( sn < 0.0001f ) {
+		sn = 0;
+		if ( c > 0 ) {
+			VectorSet( axis, 0, 0, 1 );
+		} else {
+			PerpendicularVector( axis, a );     // straight back: half a turn about anything
+		}
+	}
+	k = 1.0f - c;
+	for ( i = 0; i < 3; i++ ) {
+		for ( j = 0; j < 3; j++ ) {
+			r[i][j] = k * axis[i] * axis[j] + ( i == j ? c : 0 );
+		}
+	}
+	r[0][1] -= sn * axis[2]; r[1][0] += sn * axis[2];
+	r[0][2] += sn * axis[1]; r[2][0] -= sn * axis[1];
+	r[1][2] -= sn * axis[0]; r[2][1] += sn * axis[0];
+}
+
+static float R_VR_Smooth( float x ) {
+	x = x < 0 ? 0 : ( x > 1 ? 1 : x );
+	return x * x * ( 3 - 2 * x );
+}
+
+static void R_VR_Mul( vec3_t r[3], const vec3_t v, vec3_t out ) {
+	out[0] = DotProduct( r[0], v );
+	out[1] = DotProduct( r[1], v );
+	out[2] = DotProduct( r[2], v );
+}
+
+void R_VR_BendArm( const float *bend, int first, int count ) {
+	vec3_t w, a, d1, d2, r1[3], r2[3], e0, en, v, pf, pu, n1, n2, tmp;
+	float len = bend[6], s = bend[13], blend = bend[14], t, tu, x1, x2;
+	int i, k;
+
+	VectorCopy( bend + 0, w );
+	VectorCopy( bend + 3, a );
+	VectorCopy( bend + 7, d1 );
+	VectorCopy( bend + 10, d2 );
+	if ( VectorNormalize( a ) < 0.001f || VectorNormalize( d1 ) < 0.001f || VectorNormalize( d2 ) < 0.001f ) {
+		return;
+	}
+	if ( blend < 0.01f ) {
+		blend = 0.01f;
+	}
+	R_VR_Rotation( a, d1, r1 );
+	R_VR_Rotation( a, d2, r2 );
+	VectorMA( w, len, a, e0 );
+	VectorMA( w, len, d1, en );
+
+	for ( i = first; i < first + count; i++ ) {
+		float *xyz = tess.xyz[i], *nrm = tess.normal[i];
+		VectorSubtract( xyz, w, v );
+		t = DotProduct( v, a );
+		if ( t < -blend ) {
+			continue;       // the hand
+		}
+		x1 = R_VR_Smooth( ( t + blend ) / ( 2 * blend ) );
+		x2 = R_VR_Smooth( ( t - len + blend ) / ( 2 * blend ) );
+		// the forearm, turned at the wrist
+		R_VR_Mul( r1, v, pf );
+		VectorAdd( pf, w, pf );
+		R_VR_Mul( r1, nrm, n1 );
+		// the upper arm, turned at the (moved) elbow and stretched
+		VectorSubtract( xyz, e0, v );
+		tu = DotProduct( v, a );
+		if ( tu > 0 ) {
+			VectorMA( v, ( s - 1 ) * tu, a, v );
+		}
+		R_VR_Mul( r2, v, pu );
+		VectorAdd( pu, en, pu );
+		R_VR_Mul( r2, nrm, n2 );
+		for ( k = 0; k < 3; k++ ) {
+			tmp[k] = xyz[k] + ( pf[k] - xyz[k] ) * x1;
+			xyz[k] = tmp[k] + ( pu[k] - tmp[k] ) * x2;
+			tmp[k] = nrm[k] + ( n1[k] - nrm[k] ) * x1;
+			nrm[k] = tmp[k] + ( n2[k] - tmp[k] ) * x2;
+		}
+		VectorNormalize( nrm );
+	}
 }

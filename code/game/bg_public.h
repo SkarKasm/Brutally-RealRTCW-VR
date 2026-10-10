@@ -311,8 +311,11 @@ typedef struct {
 	int vrManualReload;     // reloads happen by hand: never start one automatically
 	int vrChambered;        // with vrManualReload: qfalse makes the trigger click
 	int vrAkimbo;           // dual pistols: 0 the usual alternation, 1 right gun, 2 left gun
+	int vrAkimboBoth;       // dual pistols in VR: both triggers held, the guns take turns
 	int vrHandsLow;         // dual wielding in VR: both hands down at the waist, so the reload
 	                        // button reloads (BG_VR_HandsLow); no reload starts on its own
+	float vrLadderHead[2];  // VR ladders: the head's pitch and yaw minus the aim, so walking into
+	                        // a ladder and looking up or down climbs it like the flat game
 
 	// for fixed msec Pmove
 	int pmove_fixed;
@@ -1353,6 +1356,10 @@ qboolean BG_AkimboFireSequence( int weapon, int akimboClip, int coltClip );
 // RealRTCW-VR: dual wielding a pistol or SMG (a second one in the off hand, twice the clip)
 qboolean BG_DualCapable( int weapon );
 qboolean BG_DualActive( const playerState_t *ps );
+// RealRTCW-VR: dual wielding, the off hand's gun has its own magazine in spare ammoclip slots
+// (past WP_NUM_WEAPONS): its rounds, and which weapon they belong to (g_vr.c manages them)
+#define BG_DUAL_LEFT_CLIP   ( MAX_WEAPONS - 1 )
+#define BG_DUAL_LEFT_WEAPON ( MAX_WEAPONS - 2 )
 qboolean BG_DualLeftFires( const playerState_t *ps );
 int BG_MaxClip( const playerState_t *ps, int weapon );
 //qboolean BG_AkimboFireSequence	( playerState_t *ps );	//----(SA)	added

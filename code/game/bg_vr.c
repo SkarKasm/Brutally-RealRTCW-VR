@@ -256,11 +256,11 @@ void BG_VR_WeaponFrame( const vrWeaponGeom_t *g, const vec3_t hand, const vec3_t
 =================
 BG_VR_WeaponScale / BG_VR_ScalePreset
 
-The weapon sizes on offer (VR OPTIONS: Original, Smaller, Realistic). The flat game's first
-person models are about two and a half times life size; co-op sends which one in two bits.
+The weapon sizes on offer (VR OPTIONS: Realistic, Larger, Smaller), multiplying the size
+that makes each gun's hand life size (cg_vr.c); co-op sends which one in two bits.
 =================
 */
-static const float vrWeaponScales[3] = { 1.0f, 0.7f, 0.42f };
+static const float vrWeaponScales[3] = { 1.0f, 1.15f, 0.87f };
 
 float BG_VR_WeaponScale( int preset ) {
 	return ( preset >= 0 && preset < 3 ) ? vrWeaponScales[preset] : 1.0f;

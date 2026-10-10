@@ -40,7 +40,7 @@ the Free Software Foundation, either version 3 of the License, or
 #define VR_CHEST_DROP       22.0f   // the pouch is this far below the eyes (low on the chest,
 									// clear of a shouldered rifle's bolt; cgame draws it there)
 #define VR_INSERT_RADIUS    8.0f    // ~20cm around the magazine well / loading port
-#define VR_CHARGE_RADIUS    11.0f   // ~28cm around the slide / bolt / pump
+#define VR_CHARGE_RADIUS    5.5f    // ~14cm around the slide / bolt / pump handle (its trigger takes it)
 #define VR_ACTION_RADIUS    9.0f    // ~23cm around the gun hand also reaches the action
 #define VR_CHARGE_PULL      0.6f    // fraction of the travel that counts as racked
 #define VR_GRAB_MARGIN      18.0f   // reach around a body's box (its ragdoll lies a little off it)
@@ -54,7 +54,10 @@ typedef struct {
 	qboolean    magOut[WP_NUM_WEAPONS];
 	int         weapon;             // weapon the shared state describes
 	int         lastEject;
+	int         lastEjectOff;
+	int         hipSince[2];        // dual wielding: when each hand reached its hip, 0 not there
 	qboolean    gripWas;
+	qboolean    triggerWas;         // the off hand's trigger: it works the bolt / slide / pump
 
 	int         heldItem;
 	qboolean    chargeHeld;
@@ -82,6 +85,10 @@ typedef struct {
 	int         thrown;             // body flying after a throw, -1 none
 	vec3_t      thrownVel;
 	int         thrownTime;
+
+	vec3_t      touchLast[2];       // hands touching doors and buttons (G_VR_PushDoors)
+	int         touching[2], touchNextUse[2];
+	qboolean    touchValid;
 
 	qboolean    knifeValid;         // knife tip on the previous usercmd
 	vec3_t      knifeTip;
@@ -118,6 +125,10 @@ static qboolean G_VR_IsPlayer( gentity_t *ent ) {
 		   ( ent->client->pers.cmd.vrFlags & VRF_ACTIVE );
 }
 
+qboolean G_VR_Player( gentity_t *ent ) {
+	return ent && G_VR_IsPlayer( ent );
+}
+
 static vrPlayer_t *G_VR_Init( gentity_t *ent ) {
 	vrPlayer_t *vrp = &vrPlayers[ent->s.number];
 	int i;
@@ -132,6 +143,7 @@ static vrPlayer_t *G_VR_Init( gentity_t *ent ) {
 	vrp->weapon = -1;
 	vrp->grabbed = vrp->thrown = -1;
 	vrp->lastEject = ent->client->pers.cmd.vrEject;
+	vrp->lastEjectOff = ent->client->pers.cmd.vrEjectOff;
 	vrp->initialised = qtrue;
 	return vrp;
 }
@@ -161,11 +173,12 @@ static void G_VR_Eye( gentity_t *ent, vec3_t eye ) {
 
 	VectorCopy( ent->r.currentOrigin, eye );
 	eye[2] += eh > 0 ? eh - 64 : ent->client->ps.viewheight;
+	eye[0] += ent->client->pers.cmd.vrLean[0] * 0.125f;     // the head leaning out over the body (cg_view.c)
+	eye[1] += ent->client->pers.cmd.vrLean[1] * 0.125f;
 }
 
-// a tracked hand in the world (not clipped against walls, for interactions)
-static void G_VR_HandWorld( gentity_t *ent, int hand, vec3_t out ) {
-	const short *h = ent->client->pers.cmd.vrHand[hand];
+// a point relative to the head (play space, 1/8 units, like vrHand) in the world
+static void G_VR_PlayWorld( gentity_t *ent, const short *h, vec3_t out ) {
 	vec3_t offset, eye;
 	float yaw = DEG2RAD( SHORT2ANGLE( ent->client->ps.delta_angles[YAW] ) );
 	float s = sin( yaw ), c = cos( yaw );
@@ -175,6 +188,27 @@ static void G_VR_HandWorld( gentity_t *ent, int hand, vec3_t out ) {
 	out[0] = eye[0] + offset[0] * c - offset[1] * s;
 	out[1] = eye[1] + offset[0] * s + offset[1] * c;
 	out[2] = eye[2] + offset[2];
+}
+
+// the off hand holds the gun alone (a grip tap on a two handed gun, cl_vr.c)
+static qboolean G_VR_GunInOff( gentity_t *ent ) {
+	return ( ent->client->pers.cmd.vrFlags2 & VRF2_GUN_IN_OFF ) && !BG_DualActive( &ent->client->ps );
+}
+
+// the guns and hands drawn this size
+static float G_VR_GunScale( gentity_t *ent ) {
+	int sc = ent->client->pers.cmd.vrScale;
+	return sc > 0 ? sc / 64.0f : 1.0f;
+}
+
+// a tracked hand in the world (not clipped against walls, for interactions)
+static void G_VR_HandWorld( gentity_t *ent, int hand, vec3_t out ) {
+	G_VR_PlayWorld( ent, ent->client->pers.cmd.vrHand[hand], out );
+}
+
+// where the gun is held in the world: the gun hand, or the off hand carrying it
+static void G_VR_GunWorld( gentity_t *ent, int dom, vec3_t out ) {
+	G_VR_PlayWorld( ent, G_VR_GunInOff( ent ) ? ent->client->pers.cmd.vrGun : ent->client->pers.cmd.vrHand[dom], out );
 }
 
 // the gun's aim in the world: pitch and yaw from the usercmd angles, roll from the hand
@@ -218,30 +252,87 @@ static qboolean G_VR_Manual( gentity_t *ent, int weapon ) {
 
 /*
 =================
-G_VR_HandAtWeaponHip
+G_VR_DualGuns
 
-The off hand across at the weapon hand's hip (where a second gun is drawn from): 45..95cm
-under the eyes, at least 10cm over to the weapon hand's side, beside the body. From this
-player's usercmd: hands relative to the head and the head's yaw, both in play space.
+Dual wielding: the off hand's gun has its own magazine (BG_DUAL_LEFT_CLIP, which pmove fires
+the off hand's shots from). Each hand's magazine button drops its gun's magazine, and a hand
+held down at its hip reloads that gun.
 =================
 */
-static qboolean G_VR_HandAtWeaponHip( gentity_t *ent, int hand ) {
-	const usercmd_t *cmd = &ent->client->pers.cmd;
-	const float ws = 39.37f;    // game units per metre (vr_worldScale's default)
-	float yaw = DEG2RAD( SHORT2ANGLE( cmd->vrHead[1] ) );
-	vec3_t rel;
-	float ahead, left;
+#define VR_HIP_RELOAD_MS    450
 
-	if ( !G_VR_HandValid( ent, hand ) ) {
-		return qfalse;
+void G_DualPutAway( playerState_t *ps ) {
+	int w = ps->ammoclip[BG_DUAL_LEFT_WEAPON];
+
+	if ( w > WP_NONE && w < WP_NUM_WEAPONS ) {
+		ps->ammo[BG_FindAmmoForWeapon( w )] += ps->ammoclip[BG_DUAL_LEFT_CLIP];
 	}
-	VectorSet( rel, cmd->vrHand[hand][0] * 0.125f, cmd->vrHand[hand][1] * 0.125f, cmd->vrHand[hand][2] * 0.125f );
-	ahead = rel[0] * cos( yaw ) + rel[1] * sin( yaw );
-	left = -rel[0] * sin( yaw ) + rel[1] * cos( yaw );
-	if ( cmd->vrFlags & VRF_RIGHTHANDED ) {
-		left = -left;   // over to the right
+	ps->ammoclip[BG_DUAL_LEFT_CLIP] = 0;
+	ps->ammoclip[BG_DUAL_LEFT_WEAPON] = 0;
+}
+
+static void G_VR_DualGuns( gentity_t *ent, vrPlayer_t *vrp, int dom ) {
+	playerState_t *ps = &ent->client->ps;
+	const usercmd_t *cmd = &ent->client->pers.cmd;
+	int weapon = ps->weapon, h, *clip, *reserve, max, n;
+	const float drop = 0.45f * 39.37f;     // 45cm under the eyes
+	qboolean dual = BG_DualActive( ps );
+
+	// the off hand's magazine belongs to the gun in that hand
+	if ( !dual || ps->ammoclip[BG_DUAL_LEFT_WEAPON] != weapon ) {
+		G_DualPutAway( ps );
+		if ( dual ) {
+			// a fresh gun comes up loaded
+			ps->ammoclip[BG_DUAL_LEFT_WEAPON] = weapon;
+			reserve = &ps->ammo[BG_FindAmmoForWeapon( weapon )];
+			n = MIN( BG_MaxClip( ps, weapon ), *reserve );
+			ps->ammoclip[BG_DUAL_LEFT_CLIP] = n;
+			*reserve -= n;
+		}
 	}
-	return rel[2] < -0.45f * ws && rel[2] > -0.95f * ws && left > 0.10f * ws && ahead < 0.15f * ws && ahead > -0.25f * ws;
+	if ( !dual || ps->stats[STAT_HEALTH] <= 0 ) {
+		if ( dual ) {
+			vrp->lastEject = cmd->vrEject;      // (one gun: G_VR_Reload takes it)
+		}
+		vrp->lastEjectOff = cmd->vrEjectOff;
+		vrp->hipSince[0] = vrp->hipSince[1] = 0;
+		return;
+	}
+
+	reserve = &ps->ammo[BG_FindAmmoForWeapon( weapon )];
+	max = BG_MaxClip( ps, weapon );
+
+	for ( h = 0; h < 2; h++ ) {
+		clip = h == dom ? &ps->ammoclip[BG_FindClipForWeapon( weapon )] : &ps->ammoclip[BG_DUAL_LEFT_CLIP];
+
+		// magazine release
+		if ( h == dom ? cmd->vrEject != vrp->lastEject : cmd->vrEjectOff != vrp->lastEjectOff ) {
+			if ( *clip > 0 ) {
+				*reserve += *clip;      // forgiving: the rounds aren't lost
+				*clip = 0;
+				G_VR_Haptic( ent, h, 0.5f, 40 );
+			}
+		}
+
+		// down at the hip: a new magazine (hands are relative to the head)
+		if ( !G_VR_HandValid( ent, h ) || cmd->vrHand[h][2] * 0.125f > -drop ) {
+			vrp->hipSince[h] = 0;
+			continue;
+		}
+		if ( !vrp->hipSince[h] ) {
+			vrp->hipSince[h] = level.time;
+		}
+		if ( level.time - vrp->hipSince[h] >= VR_HIP_RELOAD_MS && *clip < max && *reserve > 0 ) {
+			n = MIN( max - *clip, *reserve );
+			*clip += n;
+			*reserve -= n;
+			G_AddEvent( ent, EV_FILL_CLIP, 0 );
+			G_VR_Haptic( ent, h, 0.8f, 60 );
+			vrp->hipSince[h] = level.time + 100000;     // once per visit to the hip
+		}
+	}
+	vrp->lastEject = cmd->vrEject;
+	vrp->lastEjectOff = cmd->vrEjectOff;
 }
 
 /*
@@ -341,8 +432,18 @@ static qboolean G_VR_Reload( gentity_t *ent, vrPlayer_t *vrp, const vec3_t offHa
 	int *clip, *reserve;
 	vrWeaponGeom_t geom;
 	vec3_t hand, aim, origin, axis[3], magPoint, chargePoint, chargeDir, eye, chest, d;
-	qboolean used = qfalse, wantsAmmo;
+	vec3_t workHand;
+	qboolean used = qfalse, wantsAmmo, trigPressed, trigReleased, trigDown;
 	int off = !dom, n;
+	// the free hand's trigger works the action: the off hand's, or the gun hand's while the
+	// off hand holds the gun alone (a grip tap, cl_vr.c)
+	int work = G_VR_GunInOff( ent ) ? dom : off;
+
+	trigDown = ( ent->client->pers.cmd.vrFlags2 & ( work == VR_HAND_LEFT ? VRF2_TRIG_LEFT : VRF2_TRIG_RIGHT ) ) &&
+			   G_VR_HandValid( ent, work );
+	trigPressed = trigDown && !vrp->triggerWas;
+	trigReleased = !trigDown && vrp->triggerWas;
+	vrp->triggerWas = trigDown;
 
 	if ( weapon <= WP_NONE || weapon >= WP_NUM_WEAPONS || !G_VR_Manual( ent, weapon ) ) {
 		vrp->heldItem = 0;
@@ -362,9 +463,10 @@ static qboolean G_VR_Reload( gentity_t *ent, vrPlayer_t *vrp, const vec3_t offHa
 
 	// where the gun and its parts are, exactly as cgame draws them
 	BG_VR_WeaponGeom( weapon, qfalse, &geom );
-	geom.scale = BG_VR_WeaponScale( ( ent->client->pers.cmd.vrFlags & VRF_SCALE_MASK ) >> VRF_SCALE_SHIFT );
+	geom.scale = G_VR_GunScale( ent );
 	geom.travel *= geom.scale;      // a smaller bolt moves less
-	G_VR_HandWorld( ent, dom, hand );
+	G_VR_GunWorld( ent, dom, hand );
+	G_VR_HandWorld( ent, work, workHand );
 	G_VR_AimAngles( ent, aim );
 	BG_VR_WeaponFrame( &geom, hand, aim, NULL, origin, axis );
 	BG_VR_ModelPoint( origin, axis, geom.mag, magPoint );
@@ -405,12 +507,8 @@ static qboolean G_VR_Reload( gentity_t *ent, vrPlayer_t *vrp, const vec3_t offHa
 	} else {
 		wantsAmmo = *clip < maxclip;
 	}
-	// (a hand on the gun's action works the action: a shouldered rifle's bolt is close to the
-	// pouch, and after a shot the rifle both wants ammo and needs its bolt worked)
-	if ( pressed && !vrp->heldItem && wantsAmmo && *reserve > 0 && Distance( offHand, chest ) < VR_CHEST_RADIUS &&
-		 !( ( cls == VRR_MAG || cls == VRR_BOLT || cls == VRR_PUMP || cls == VRR_SHELLS ) &&
-			( Distance( offHand, chargePoint ) < VR_CHARGE_RADIUS || ( cls != VRR_PUMP && Distance( offHand, hand ) < VR_ACTION_RADIUS ) ) &&
-			( !vrp->chambered[weapon] || Distance( offHand, chargePoint ) < Distance( offHand, chest ) ) ) ) {
+	// (the grip takes it; the action is worked with the trigger, so the two don't compete)
+	if ( pressed && !vrp->heldItem && wantsAmmo && *reserve > 0 && Distance( offHand, chest ) < VR_CHEST_RADIUS ) {
 		vrp->heldItem = ( cls == VRR_PUMP || cls == VRR_SHELLS ) ? 2 : 1;
 		G_VR_Haptic( ent, off, 0.4f, 30 );
 		used = qtrue;
@@ -449,22 +547,22 @@ static qboolean G_VR_Reload( gentity_t *ent, vrPlayer_t *vrp, const vec3_t offHa
 
 	// rack the slide / work the bolt / pump
 	if ( cls == VRR_MAG || cls == VRR_BOLT || cls == VRR_PUMP || cls == VRR_SHELLS ) {
-		// the measured handle, or (except for a pump's forestock) anywhere close to the gun
-		// hand, where slides and bolts are
-		qboolean nearAction = Distance( offHand, chargePoint ) < VR_CHARGE_RADIUS ||
-							  ( cls != VRR_PUMP && Distance( offHand, hand ) < VR_ACTION_RADIUS );
+		// the measured handle (the free hand's trigger takes it); unmeasured, anywhere close to
+		// the gun hand, where slides and bolts are
+		qboolean nearAction = geom.chargePart >= 0 ? Distance( workHand, chargePoint ) < VR_CHARGE_RADIUS :
+							  ( cls != VRR_PUMP && Distance( workHand, hand ) < VR_ACTION_RADIUS );
 
-		if ( pressed && !used && !vrp->heldItem && !vrp->chargeHeld && nearAction ) {
+		if ( trigPressed && !vrp->heldItem && !vrp->chargeHeld && nearAction ) {
 			vrp->chargeHeld = qtrue;
 			vrp->chargeDone = qfalse;
-			VectorCopy( offHand, vrp->chargeStart );
-			G_VR_Haptic( ent, off, 0.3f, 20 );
+			VectorCopy( workHand, vrp->chargeStart );
+			G_VR_Haptic( ent, work, 0.3f, 20 );
 			used = qtrue;
 		}
 		if ( vrp->chargeHeld ) {
 			float pull;
 
-			VectorSubtract( offHand, vrp->chargeStart, d );
+			VectorSubtract( workHand, vrp->chargeStart, d );
 			pull = DotProduct( d, chargeDir ) / geom.travel;
 			vrp->chargePull = pull < 0 ? 0 : ( pull > 1 ? 1 : pull );
 			if ( pull >= VR_CHARGE_PULL && !vrp->chargeDone ) {
@@ -472,10 +570,10 @@ static qboolean G_VR_Reload( gentity_t *ent, vrPlayer_t *vrp, const vec3_t offHa
 				if ( *clip > 0 ) {
 					vrp->chambered[weapon] = qtrue;
 				}
-				G_VR_Haptic( ent, off, 0.9f, 50 );
-				G_VR_Haptic( ent, dom, 0.5f, 50 );
+				G_VR_Haptic( ent, 0, 0.7f, 50 );
+				G_VR_Haptic( ent, 1, 0.7f, 50 );
 			}
-			if ( released ) {
+			if ( trigReleased ) {
 				vrp->chargeHeld = qfalse;
 				vrp->chargePull = 0;
 			}
@@ -780,6 +878,89 @@ static void G_VR_HandUse( gentity_t *ent, const vec3_t hand ) {
 	g_vrHandUse = qtrue;
 	Cmd_Activate_f( ent );
 	g_vrHandUse = qfalse;
+}
+
+// the use button in VR: from the eyes along the head's look (false without a headset)
+qboolean G_VR_LookRay( gentity_t *ent, float dist, vec3_t from, vec3_t to ) {
+	vec3_t angles, fwd;
+
+	if ( !G_VR_IsPlayer( ent ) ) {
+		return qfalse;
+	}
+	G_VR_Eye( ent, from );
+	angles[PITCH] = SHORT2ANGLE( ent->client->pers.cmd.vrHead[0] );
+	angles[YAW] = SHORT2ANGLE( ent->client->pers.cmd.vrHead[1] ) + SHORT2ANGLE( ent->client->ps.delta_angles[YAW] );
+	angles[ROLL] = 0;
+	AngleVectors( angles, fwd, NULL, NULL );
+	VectorMA( from, dist, fwd, to );
+	return qtrue;
+}
+
+/*
+=================
+G_VR_PushDoors
+
+Either hand touching something the use button works on (doors, buttons, levers and the
+game's other usable spots: func_invisible_user, footlockers, scripted movers) uses it,
+like RTCWQuest: a small box around the hand is swept from where it was to where it is,
+and whatever it newly comes into is used once. A door only opens from shut.
+=================
+*/
+#define VR_TOUCH_REACH  3.0f        // half size of the hand's touch box, game units
+
+static qboolean G_VR_Touchable( gentity_t *e ) {
+	if ( !e->classname ) {
+		return qfalse;
+	}
+	if ( !Q_stricmp( e->classname, "func_door" ) || !Q_stricmp( e->classname, "func_door_rotating" ) ) {
+		return e->moverState == MOVER_POS1 || e->moverState == MOVER_POS1ROTATE;
+	}
+	if ( !Q_stricmp( e->classname, "func_button" ) ) {
+		return e->s.apos.trType == TR_STATIONARY && e->s.pos.trType == TR_STATIONARY && !e->active;
+	}
+	return !Q_stricmp( e->classname, "func_invisible_user" ) || !Q_stricmp( e->classname, "props_footlocker" ) ||
+		   !Q_stricmp( e->classname, "script_mover" );
+}
+
+static void G_VR_PushDoors( gentity_t *ent, vrPlayer_t *vrp ) {
+	vec3_t *last = vrp->touchLast;
+	int *touching = vrp->touching, *nextUse = vrp->touchNextUse;
+	vec3_t hand, mins, maxs, dir;
+	trace_t tr;
+	gentity_t *e;
+	int h, now = ent->client->ps.commandTime;
+
+	VectorSet( mins, -VR_TOUCH_REACH, -VR_TOUCH_REACH, -VR_TOUCH_REACH );
+	VectorSet( maxs, VR_TOUCH_REACH, VR_TOUCH_REACH, VR_TOUCH_REACH );
+	for ( h = 0; h < 2; h++ ) {
+		G_VR_HandWorld( ent, h, hand );
+		e = NULL;
+		if ( vrp->touchValid && G_VR_HandValid( ent, h ) && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
+			trap_Trace( &tr, last[h], mins, maxs, hand, ent->s.number,
+						CONTENTS_SOLID | CONTENTS_TRIGGER | CONTENTS_PLAYERCLIP );
+			if ( ( tr.fraction < 1.0f || tr.startsolid ) && tr.entityNum < ENTITYNUM_WORLD ) {
+				e = &g_entities[tr.entityNum];
+			}
+		}
+		if ( e && tr.entityNum != touching[h] && now >= nextUse[h] && G_VR_Touchable( e ) ) {
+			// what the use button would do on it, from this hand
+			VectorSubtract( hand, last[h], dir );
+			if ( VectorNormalize( dir ) < 0.01f ) {
+				VectorSubtract( tr.endpos, hand, dir );
+				VectorNormalize( dir );
+			}
+			VectorMA( tr.endpos, -4.0f, dir, g_vrHandFrom );
+			VectorMA( tr.endpos, 8.0f, dir, g_vrHandTo );
+			g_vrHandUse = qtrue;
+			Cmd_Activate_f( ent );
+			g_vrHandUse = qfalse;
+			G_VR_Haptic( ent, h, 0.5f, 40 );
+			nextUse[h] = now + 600;
+		}
+		touching[h] = e ? tr.entityNum : -1;
+		VectorCopy( hand, last[h] );
+	}
+	vrp->touchValid = qtrue;
 }
 
 /*
@@ -1111,15 +1292,11 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 	released = !down && vrp->gripWas;
 	vrp->gripWas = down;
 
+	G_VR_PushDoors( ent, vrp );
+	G_VR_DualGuns( ent, vrp, dom );
 	used = ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_Reload( ent, vrp, offHand, pressed, released, dom );
 
-	// the off hand drawing a second pistol / SMG from the weapon hand's hip, or putting it back
-	if ( pressed && !used && ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_HandAtWeaponHip( ent, off ) &&
-		 ( ent->client->ps.persistant[PERS_DUAL] || BG_DualCapable( ent->client->ps.weapon ) ) ) {
-		G_DualToggle( ent );
-		G_VR_Haptic( ent, off, 0.6f, 50 );
-		used = qtrue;
-	}
+	// (a second pistol / SMG: a double press of the off hand grip, cl_vr.c)
 
 	// a prop in the hand (GORE & EXTRAS): carried, then dropped or thrown
 	if ( G_VRX_PropHeld( ent ) >= 0 ) {
@@ -1254,7 +1431,11 @@ qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out ) {
 	}
 
 	G_VR_Eye( ent, eye );
-	G_VR_HandWorld( ent, dom, end );
+	if ( dom == G_VR_DomHand( ent ) ) {
+		G_VR_GunWorld( ent, dom, end );
+	} else {
+		G_VR_HandWorld( ent, dom, end );
+	}
 	trap_Trace( &tr, eye, NULL, NULL, end, ent->s.number, MASK_SHOT );
 	VectorCopy( tr.endpos, out );
 
@@ -1401,6 +1582,42 @@ qboolean G_VR_Aiming( gentity_t *ent ) {
 
 /*
 =================
+G_VR_LobAt
+
+The velocity, at this speed, that carries a throw from start onto the reticle (where the
+aim points: a straight trace along the player's aim) on the low arc; out of reach, the
+longest throw that way. qfalse if not a VR player or vr_throwAim is off.
+=================
+*/
+qboolean G_VR_LobAt( gentity_t *ent, const vec3_t start, float speed, float gravity, vec3_t vel ) {
+	vec3_t fwd, end, flat;
+	trace_t tr;
+	float x, y, v2, disc, th;
+
+	if ( !ent || !ent->client || !G_VR_IsPlayer( ent ) || !( ent->client->pers.cmd.vrFlags2 & VRF2_THROWAIM ) ) {
+		return qfalse;
+	}
+	AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
+	VectorMA( start, 8192, fwd, end );
+	trap_Trace( &tr, start, NULL, NULL, end, ent->s.number, MASK_SHOT );
+	VectorSubtract( tr.endpos, start, flat );
+	y = flat[2];
+	flat[2] = 0;
+	x = VectorNormalize( flat );
+	if ( x < 8.0f ) {
+		VectorScale( fwd, speed, vel );     // straight down (or up)
+		return qtrue;
+	}
+	v2 = speed * speed;
+	disc = v2 * v2 - gravity * ( gravity * x * x + 2.0f * y * v2 );
+	th = disc < 0 ? M_PI * 0.25f : atan2( v2 - sqrt( disc ), gravity * x );
+	VectorScale( flat, speed * cos( th ), vel );
+	vel[2] = speed * sin( th );
+	return qtrue;
+}
+
+/*
+=================
 G_VR_GrenadeThrow
 
 Grenades, dynamite and the rest leave the hand that threw them, as fast as it was moving
@@ -1428,6 +1645,11 @@ void G_VR_GrenadeThrow( gentity_t *ent, int weapon, vec3_t start, vec3_t dir ) {
 	// from the eye, so a hand through a wall can't throw on the far side
 	trap_Trace( &tr, eye, tv( -4, -4, -4 ), tv( 4, 4, 4 ), hand, ent->s.number, MASK_MISSILESHOT );
 	VectorCopy( tr.endpos, start );
+
+	// onto the reticle (vr_throwAim), a little slower for dynamite
+	if ( G_VR_LobAt( ent, start, weapon == WP_DYNAMITE ? 700.0f : 900.0f, DEFAULT_GRAVITY, dir ) ) {
+		return;
+	}
 
 	VectorCopy( vrPlayers[ent - g_entities].throwVel, vel );
 	speed = VectorLength( vel );
@@ -1507,8 +1729,8 @@ void G_VR_CheckCompletion( void ) {
 =================
 G_DualToggle
 
-A second pistol / SMG in the other hand, or back to one ("dualwield", or in VR the off
-hand's grip at the weapon hand's hip: a cross draw). Putting the second gun away puts the
+A second pistol / SMG in the other hand, or back to one ("dualwield", which VR sends for a
+double press of the off hand grip). Putting the second gun away puts the
 rounds its magazine held back with the rest. Per player: PERS_DUAL in their playerState.
 =================
 */
@@ -1526,6 +1748,7 @@ void G_DualToggle( gentity_t *ent ) {
 	}
 	ps->persistant[PERS_DUAL] = !ps->persistant[PERS_DUAL];
 	if ( !ps->persistant[PERS_DUAL] ) {
+		G_DualPutAway( ps );
 		for ( w = WP_NONE + 1; w < WP_NUM_WEAPONS; w++ ) {
 			if ( !BG_DualCapable( w ) ) {
 				continue;

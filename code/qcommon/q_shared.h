@@ -1627,6 +1627,11 @@ typedef struct usercmd_s {
 	short vrHand[2][3];         // hands relative to the head, play space (Quake axes)
 	short vrMuzzle[3];          // gun muzzle relative to the gun hand, in the aim frame
 	short vrHead[2];            // head pitch, yaw (ANGLE2SHORT, play space like the angles)
+	byte vrFlags2;              // VRF2_*
+	byte vrEjectOff;            // dual wielding: bumped by the off hand gun's magazine release
+	byte vrScale;               // guns and hands drawn this size, 1/64 (0: 1)
+	short vrLean[2];            // the head out over the body, as the view used it (world x, y)
+	short vrGun[3];             // VRF2_GUN_IN_OFF: the gun's grip relative to the head, play space
 } usercmd_t;
 
 //===================================================================

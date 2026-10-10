@@ -294,6 +294,9 @@ typedef enum {
 	CG_SET_VR_SHARED,
 // RealRTCW-VR: void ( vrShared_t *vr );
 
+	CG_JOYSTICK_EVENT,
+// RealRTCW-VR: void ( int axis, int value ): where the hand points on the weapon wheel
+
 	MAX_CGAME_EXPORT
 
 } cgameExport_t;

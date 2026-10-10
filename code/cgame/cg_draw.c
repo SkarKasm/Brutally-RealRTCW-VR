@@ -2350,6 +2350,18 @@ static void CG_DrawCrosshair( void ) {
 	int weapnum;                // DHM - Nerve
 	vec4_t hcolor = {1, 1, 1, 1};
 
+	// RealRTCW-VR: aiming down the sights, the gun's own sights are the crosshair
+	if ( CG_AdsFraction() > 0.5f ) {
+		if ( CG_AdsDebug() ) {     // a dot on the true centre, to line the sights up
+			vec4_t red = { 1, 0, 0, 1 };
+			CG_FillRect( 300, 239.5f, 16, 1, red );        // ticks pointing at the centre, clear of the sights
+			CG_FillRect( 324, 239.5f, 16, 1, red );
+			CG_FillRect( 319.5f, 220, 1, 16, red );
+			CG_FillRect( 319.5f, 244, 1, 16, red );
+		}
+		return;
+	}
+
 	// RealRTCW-VR: a screen crosshair means nothing with a hand held gun, the reticle is
 	// drawn in the world where the gun points (CG_VR_AddReticle)
 	if ( cgvr.active ) {
@@ -3923,6 +3935,7 @@ static void CG_Draw2D(stereoFrame_t stereoFrame) {
 	}
 
 	if ( cg_draw2D.integer == 0 ) {
+		CG_DrawWeaponWheel();   // RealRTCW-VR: the wheel still shows with the HUD hidden
 		return;
 	}
 
@@ -4179,8 +4192,9 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 	// clear around the rendered view if sized down
 	//CG_TileClear();	// (SA) moved down
 
-	// RealRTCW-VR: the 2D layer only gets the HUD, the eyes only the world
-	if ( CG_VR_2DPass() ) {
+	// RealRTCW-VR: the 2D layer only gets the HUD, the eyes only the world (a flat cutscene
+	// is drawn whole on the 2D layer, like on a monitor)
+	if ( CG_VR_2DPass() && !CG_VR_FlatCutscene() ) {
 		CG_Draw2D( stereoView );
 		return;
 	}

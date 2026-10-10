@@ -58,6 +58,12 @@ the Free Software Foundation, either version 3 of the License, or
 #define VRF_SPREAD_SHIFT 9      // 2 bits: aim spread setting, see BG_VR_SpreadScale
 #define VRF_SPREAD_MASK ( 3 << VRF_SPREAD_SHIFT )
 #define VRF_SIGHTS      2048    // aiming down the sights: steadier
+// usercmd_t vrFlags2
+#define VRF2_AKIMBO_BOTH 1      // dual wielding, both triggers held: the guns take turns
+#define VRF2_GUN_IN_OFF  2      // the off hand holds the gun alone (vrGun is where)
+#define VRF2_TRIG_LEFT   4      // triggers held, by VR_HAND_* (the free hand's works the action)
+#define VRF2_TRIG_RIGHT  8
+#define VRF2_THROWAIM    16     // grenades and knives land on the reticle (vr_throwAim)
 
 // playerState_t.vrState
 #define VRS_MANUAL      0x0001  // current weapon is reloaded by hand
@@ -82,6 +88,15 @@ the Free Software Foundation, either version 3 of the License, or
 #define RF_VR_NOHANDS   ( 1 << 12 )
 // refEntity renderfx: don't draw arm / sleeve surfaces, keep the hand (VR hands on a full body)
 #define RF_VR_NOSLEEVES ( 1 << 13 )
+// refEntity renderfx: draw only the hand / arm surfaces (a mirrored copy of a gun's hand)
+#define RF_VR_ONLYHANDS ( 1 << 14 )
+// refEntity renderfx: the axes are mirrored (one negated), cull the other faces
+#define RF_VR_MIRRORED  ( 1 << 15 )
+// refEntity renderfx: don't draw the hand itself (palm, fingers), keep the sleeve
+#define RF_VR_NOPALMS   ( 1 << 16 )
+
+// refEntity_t.vrBendMagic: vrBend holds an elbow bend for the arm surfaces
+#define VR_BEND_MAGIC   0x56524231
 
 typedef struct vrShared_s {
 	//
@@ -105,6 +120,8 @@ typedef struct vrShared_s {
 
 	vec3_t  weaponAngles;       // aim sent as the usercmd angles (play space)
 	int     twoHanded;          // off hand is steadying the weapon
+	int     gunInOffHand;       // the gun hand let go (grip tap): the off hand holds the gun alone
+	vec3_t  gunOrigin;          // play space, where the gun is held (the gun hand, or carried by the off hand)
 
 	int     menuPointer;        // a menu is up: hide the gun, show the laser pointer
 	int     pointerVisible;     // pointerStart/End are valid
@@ -115,7 +132,10 @@ typedef struct vrShared_s {
 	// written by cgame every frame
 	//
 	int     cutscene;           // scripted camera active, head look is free
+	int     flatCutscene;       // ...and shown on a flat screen in front of the player (cl_vr.c)
 	float   eyeHeight;          // eye height above ps->origin used for the view (game units)
+	float   lean[2];            // world: how far the head is out over the body (client: wanted, cl_vr.c)
+	float   leanUsed[2];        // world: that, stopped at walls, as the view used it (cgame)
 	int     zoomed;             // scope / binocular view active
 	int     twoHandAllowed;     // current weapon can be steadied with the off hand (not pistols)
 	int     muzzleValid;        // muzzleOffset is set
@@ -138,8 +158,10 @@ typedef struct vrShared_s {
 	//
 	// controller buttons, written by the engine
 	//
-	int     ejectCount;         // bumped by the "drop magazine" gesture
+	int     ejectCount;         // bumped by the "drop magazine" gesture (the weapon hand's gun)
+	int     ejectOffCount;      // dual wielding: the off hand's gun drops its magazine
 	int     gripDown[2];        // grip buttons held, indexed by VR_HAND_*
+	int     triggerDown[2];     // triggers held (the off hand's grabs the bolt / slide)
 
 	//
 	// haptics: cgame/game request a pulse, the engine plays and clears it
@@ -159,12 +181,16 @@ typedef struct vrShared_s {
 	float   recoilPitch;        // the gun's kick, added to the aim (degrees, negative is up)
 	float   recoilBack;         // and how far it jolts back in the hand (game units)
 	int     dualWield;          // a pistol in each hand: the off hand's trigger fires its own
+	int     binocsOut;          // binoculars picked from the weapon wheel: in the gun hand, the gun put away (cgame sets it)
 	float   weaponScale;        // guns and hands drawn this size (1 = the flat game's models)
+	int     supportValid;       // the held gun has a support hand: the off hand takes hold there
+	float   supportRel[3];      // where, from the gun hand: forward, left, up along the gun (game units)
 
 	//
 	// written by the engine
 	//
 	int     akimboLeft;         // with dualWield: this shot is the off hand's gun
+	int     akimboBoth;         // with dualWield: both triggers held, the guns take turns
 	int     teleportAiming;     // the teleport stick is held: cgame shows the arc
 	int     pingCount;          // bumped by the ping button: cgame marks where the gun points
 

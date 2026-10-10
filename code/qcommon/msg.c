@@ -638,7 +638,9 @@ static qboolean MSG_VRCmdChanged( const usercmd_t *a, const usercmd_t *b ) {
 	return memcmp( a->vrMove, b->vrMove, sizeof( a->vrMove ) ) || a->vrFlags != b->vrFlags ||
 		   a->vrEject != b->vrEject || a->vrEyeHeight != b->vrEyeHeight || a->vrRoll != b->vrRoll ||
 		   memcmp( a->vrHand, b->vrHand, sizeof( a->vrHand ) ) || memcmp( a->vrMuzzle, b->vrMuzzle, sizeof( a->vrMuzzle ) ) ||
-		   memcmp( a->vrHead, b->vrHead, sizeof( a->vrHead ) );
+		   memcmp( a->vrHead, b->vrHead, sizeof( a->vrHead ) ) || a->vrFlags2 != b->vrFlags2 ||
+		   a->vrEjectOff != b->vrEjectOff || a->vrScale != b->vrScale ||
+		   memcmp( a->vrLean, b->vrLean, sizeof( a->vrLean ) ) || memcmp( a->vrGun, b->vrGun, sizeof( a->vrGun ) );
 }
 
 static void MSG_VRCmdCopy( const usercmd_t *from, usercmd_t *to ) {
@@ -650,6 +652,11 @@ static void MSG_VRCmdCopy( const usercmd_t *from, usercmd_t *to ) {
 	memcpy( to->vrHand, from->vrHand, sizeof( to->vrHand ) );
 	memcpy( to->vrMuzzle, from->vrMuzzle, sizeof( to->vrMuzzle ) );
 	memcpy( to->vrHead, from->vrHead, sizeof( to->vrHead ) );
+	to->vrFlags2 = from->vrFlags2;
+	to->vrEjectOff = from->vrEjectOff;
+	to->vrScale = from->vrScale;
+	memcpy( to->vrLean, from->vrLean, sizeof( to->vrLean ) );
+	memcpy( to->vrGun, from->vrGun, sizeof( to->vrGun ) );
 }
 
 /*
@@ -719,6 +726,15 @@ void MSG_WriteDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *
 		for ( j = 0; j < 2; j++ ) {
 			MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrHead[j], (unsigned short)to->vrHead[j], 16 );
 		}
+		MSG_WriteDeltaKey( msg, key, from->vrFlags2, to->vrFlags2, 8 );
+		MSG_WriteDeltaKey( msg, key, from->vrEjectOff, to->vrEjectOff, 8 );
+		MSG_WriteDeltaKey( msg, key, from->vrScale, to->vrScale, 8 );
+		for ( j = 0; j < 2; j++ ) {
+			MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrLean[j], (unsigned short)to->vrLean[j], 16 );
+		}
+		for ( j = 0; j < 3; j++ ) {
+			MSG_WriteDeltaKey( msg, key, (unsigned short)from->vrGun[j], (unsigned short)to->vrGun[j], 16 );
+		}
 	} else {
 		MSG_WriteBits( msg, 0, 1 );
 	}
@@ -777,6 +793,15 @@ void MSG_ReadDeltaUsercmdKey( msg_t *msg, int key, usercmd_t *from, usercmd_t *t
 			}
 			for ( j = 0; j < 2; j++ ) {
 				to->vrHead[j] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrHead[j], 16 );
+			}
+			to->vrFlags2 = MSG_ReadDeltaKey( msg, key, from->vrFlags2, 8 );
+			to->vrEjectOff = MSG_ReadDeltaKey( msg, key, from->vrEjectOff, 8 );
+			to->vrScale = MSG_ReadDeltaKey( msg, key, from->vrScale, 8 );
+			for ( j = 0; j < 2; j++ ) {
+				to->vrLean[j] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrLean[j], 16 );
+			}
+			for ( j = 0; j < 3; j++ ) {
+				to->vrGun[j] = (short)MSG_ReadDeltaKey( msg, key, (unsigned short)from->vrGun[j], 16 );
 			}
 		} else {
 			MSG_VRCmdCopy( from, to );

@@ -319,25 +319,33 @@ static struct {
 	qboolean        yTalking;           // the ping button held: push to talk (vr_voice 1)
 	int             pingDownTime;       // when the ping button went down
 	float           headHeight;         // metres above the floor (physical crouch)
+	float           lean[2];            // world units: head out over the body (room scale)
 	qboolean        teleportPending;    // a teleport goes in the next usercmd
 	short           teleportMove[2];
 	qboolean        akimboLastLeft;     // which of the two was pulled last
 	qboolean        steadyLatched;      // off hand grip closed in front of the gun: two handed aim
+	qboolean        gunToOff;           // grip tap: hand the gun to the off hand this frame
+	qboolean        gunInOff;           // the off hand holds the gun alone (to work the bolt)
+	qboolean        gunHandAway;        // ... and the gun hand has moved off its grip since
+	vec3_t          gunInOffPos;        // the gun's grip in the off hand's frame
+	vec3_t          gunInOffAxis[3];    // and its axes
 } xr;
 
 static cvar_t *vr_enable;
 static cvar_t *vr_resolutionScale;
 static cvar_t *vr_worldScale;
 static cvar_t *vr_rightHanded;
-static cvar_t *vr_binoculars;       // off hand to the eyes: binoculars
 static cvar_t *vr_hipNotebook;      // off hand grip at the hip: the notebook
+static cvar_t *vr_flatCutscenes;    // cutscenes on a screen in front of the player
 static cvar_t *vr_teleport;         // move by pointing the off hand stick and letting go
 static cvar_t *vr_voice;            // co-op voice: 0 off, 1 push to talk (hold Y), 2 open mic; heard nearby
 static void VR_VoiceSettings( void );
 static void VR_InitBindings( void );
 static cvar_t *vr_seated;           // playing seated: stand the view up, no physical crouch
 static cvar_t *vr_seatedHeight;     // metres added to the head when seated
+static cvar_t *vr_heightOffset;     // metres added to (or taken off) the player's height
 static cvar_t *vr_crouchHeight;     // head below this (metres) crouches, 0 off
+static cvar_t *vr_lean;             // metres the head can lean out over the body before it follows
 static cvar_t *vr_snapTurn;
 static cvar_t *vr_turnSpeed;
 static cvar_t *vr_walkDirection;
@@ -1421,19 +1429,22 @@ void CL_VR_Init( void ) {
 	Cvar_Get( "vr_fullBody", "1", CVAR_ARCHIVE );       // cg_vrbody.c
 	Cvar_Get( "vr_scopes", "1", CVAR_ARCHIVE );         // cg_vrscope.c
 	Cvar_Get( "vr_recoil", "1", CVAR_ARCHIVE );         // cg_vrrecoil.c
-	vr_binoculars = Cvar_Get( "vr_binoculars", "1", CVAR_ARCHIVE );
-	vr_hipNotebook = Cvar_Get( "vr_hipNotebook", "1", CVAR_ARCHIVE );
+	vr_hipNotebook = Cvar_Get( "vr_notebookAtHip", "0", CVAR_ARCHIVE );   // off by default (Y opens it)
+	vr_flatCutscenes = Cvar_Get( "vr_flatCutscenes", "1", CVAR_ARCHIVE );
 	vr_teleport = Cvar_Get( "vr_teleport", "0", CVAR_ARCHIVE );
 	vr_voice = Cvar_Get( "vr_voice", "1", CVAR_ARCHIVE );
 	VR_VoiceSettings();
 	vr_seated = Cvar_Get( "vr_seated", "0", CVAR_ARCHIVE );
 	vr_seatedHeight = Cvar_Get( "vr_seatedHeight", "0.5", CVAR_ARCHIVE );
+	vr_heightOffset = Cvar_Get( "vr_heightOffset", "0", CVAR_ARCHIVE );
 	vr_crouchHeight = Cvar_Get( "vr_crouchHeight", "1.1", CVAR_ARCHIVE );
+	vr_lean = Cvar_Get( "vr_lean", "0.4", CVAR_ARCHIVE );
+	Cvar_Get( "vr_throwAim", "1", CVAR_ARCHIVE );      // grenades and knives land on the reticle (g_vr.c)
 	Cvar_Get( "vr_vignette", "0", CVAR_ARCHIVE );            // cg_vrcomfort.c
 	Cvar_Get( "vr_wristHud", "1", CVAR_ARCHIVE );           // cg_vrwrist.c
 	Cvar_Get( "vr_pouchMags", "1", CVAR_ARCHIVE );          // spare magazines shown in the pouch
-	Cvar_Get( "vr_weaponScale", "1", CVAR_ARCHIVE );        // guns and hands: 1, 0.7 or 0.42 (life size)
 	Cvar_Get( "vr_hdWeapons", "1", CVAR_ARCHIVE | CVAR_LATCH ); // RealRTCW's remastered first person guns
+	Cvar_Get( "vr_gunSize", "1", CVAR_ARCHIVE );       // guns and hands: 1 life size, 1.15 larger, 0.87 smaller
 	VR_InitBindings();
 	Cbuf_AddText( "exec vr_controls.cfg\n" );              // the player's button layout
 
@@ -1563,12 +1574,55 @@ static void VR_UpdateTracking( void ) {
 
 	// physical crouch: the head's real height, before seated play stands it up
 	xr.headHeight = com_vr.hmdOrigin[2] / vr_worldScale->value;
-	if ( vr_seated->integer ) {
-		float up = vr_seatedHeight->value * vr_worldScale->value;
+	{
+		// seated: the head raised to a standing height; and the height offset (VR OPTIONS)
+		float up = vr_heightOffset->value;
+		if ( vr_seated->integer ) {
+			up += vr_seatedHeight->value;
+		}
+		up *= vr_worldScale->value;
 		com_vr.hmdOrigin[2] += up;
 		com_vr.handOrigin[0][2] += up;
 		com_vr.handOrigin[1][2] += up;
 	}
+
+	// the off hand holding the gun alone: until it lets go, or the gun hand takes the grip back
+	// (a grip press there, or just coming back to it)
+	if ( xr.gunInOff ) {
+		vec3_t offAxis[3], gunAxis[3];
+		float away;
+		int i;
+
+		AnglesToAxis( com_vr.handAngles[!dom], offAxis );
+		VectorCopy( com_vr.handOrigin[!dom], com_vr.gunOrigin );
+		for ( i = 0; i < 3; i++ ) {
+			VectorMA( com_vr.gunOrigin, xr.gunInOffPos[i], offAxis[i], com_vr.gunOrigin );
+			VectorScale( offAxis[0], xr.gunInOffAxis[i][0], gunAxis[i] );
+			VectorMA( gunAxis[i], xr.gunInOffAxis[i][1], offAxis[1], gunAxis[i] );
+			VectorMA( gunAxis[i], xr.gunInOffAxis[i][2], offAxis[2], gunAxis[i] );
+		}
+		away = Distance( com_vr.handOrigin[dom], com_vr.gunOrigin );
+		if ( away > 0.15f * vr_worldScale->value ) {
+			xr.gunHandAway = qtrue;
+		}
+		if ( !xr.hands[!dom].down[VRB_SQUEEZE] || !com_vr.handValid[!dom] || !com_vr.handValid[dom] ) {
+			xr.gunInOff = qfalse;       // dropped: back in the gun hand
+		} else if ( away < 0.15f * vr_worldScale->value &&
+					( ( xr.hands[dom].down[VRB_SQUEEZE] && !xr.hands[dom].wasDown[VRB_SQUEEZE] ) ||
+					  ( xr.gunHandAway && away < 0.07f * vr_worldScale->value ) ) ) {
+			xr.gunInOff = qfalse;       // taken back, still held two handed
+			xr.steadyLatched = qtrue;
+			xr.rightGripCombo = qtrue;  // (that grip press doesn't open the weapon wheel)
+		} else {
+			AxisToAngles( gunAxis, com_vr.weaponAngles );
+			com_vr.weaponAngles[PITCH] += com_vr.recoilPitch;
+			com_vr.twoHanded = qfalse;
+			com_vr.gunInOffHand = qtrue;
+			return;
+		}
+	}
+	com_vr.gunInOffHand = qfalse;
+	VectorCopy( com_vr.handOrigin[dom], com_vr.gunOrigin );
 
 	// weapon aim: the dominant grip pose, optionally steadied by the off hand
 	if ( com_vr.handValid[dom] ) {
@@ -1581,20 +1635,29 @@ static void VR_UpdateTracking( void ) {
 		if ( !xr.hands[!dom].down[VRB_SQUEEZE] || !com_vr.handValid[!dom] ) {
 			xr.steadyLatched = qfalse;
 		} else if ( !xr.hands[!dom].wasDown[VRB_SQUEEZE] ) {
-			vec3_t rel, fwd, lateral;
+			vec3_t rel, fwd, right, up, lateral, spot;
 			float along;
 
 			VectorSubtract( com_vr.handOrigin[!dom], com_vr.handOrigin[dom], rel );
-			AngleVectors( com_vr.weaponAngles, fwd, NULL, NULL );
-			along = DotProduct( rel, fwd );
-			VectorMA( rel, -along, fwd, lateral );
-			xr.steadyLatched = along > 0.25f * vr_worldScale->value &&
-							   VectorLength( lateral ) < 0.15f * vr_worldScale->value;
+			AngleVectors( com_vr.weaponAngles, fwd, right, up );
+			if ( com_vr.supportValid ) {
+				// where the flat game's support hand holds this gun (cgame measures it), with
+				// room around it
+				VectorScale( fwd, com_vr.supportRel[0], spot );
+				VectorMA( spot, -com_vr.supportRel[1], right, spot );
+				VectorMA( spot, com_vr.supportRel[2], up, spot );
+				xr.steadyLatched = Distance( rel, spot ) < 0.14f * vr_worldScale->value;
+			} else {
+				along = DotProduct( rel, fwd );
+				VectorMA( rel, -along, fwd, lateral );
+				xr.steadyLatched = along > 0.25f * vr_worldScale->value &&
+								   VectorLength( lateral ) < 0.15f * vr_worldScale->value;
+			}
 		}
 
 		com_vr.twoHanded = qfalse;
 		// (not while the off hand is busy reloading or carrying a body)
-		if ( xr.steadyLatched && com_vr.twoHandAllowed &&
+		if ( xr.steadyLatched && com_vr.twoHandAllowed && !com_vr.binocsOut &&
 			 !com_vr.heldItem && !com_vr.chargeHeld && com_vr.grabbedEntity < 0 ) {
 			vec3_t dir, ang;
 			VectorSubtract( com_vr.handOrigin[!dom], com_vr.handOrigin[dom], dir );
@@ -1605,6 +1668,24 @@ static void VR_UpdateTracking( void ) {
 				com_vr.twoHanded = qtrue;
 			}
 		}
+		// grip tap while held two handed: the off hand takes the gun as it is now
+		if ( xr.gunToOff && com_vr.twoHanded ) {
+			vec3_t offAxis[3], gunAxis[3], d;
+			int i, j;
+
+			AnglesToAxis( com_vr.handAngles[!dom], offAxis );
+			AnglesToAxis( com_vr.weaponAngles, gunAxis );
+			VectorSubtract( com_vr.handOrigin[dom], com_vr.handOrigin[!dom], d );
+			for ( i = 0; i < 3; i++ ) {
+				xr.gunInOffPos[i] = DotProduct( d, offAxis[i] );
+				for ( j = 0; j < 3; j++ ) {
+					xr.gunInOffAxis[i][j] = DotProduct( gunAxis[i], offAxis[j] );
+				}
+			}
+			xr.gunInOff = qtrue;
+			xr.gunHandAway = qfalse;
+		}
+		xr.gunToOff = qfalse;
 		// recoil, from cgame (cg_vrrecoil.c): the shots go where the kicked gun points
 		com_vr.weaponAngles[PITCH] += com_vr.recoilPitch;
 	} else {
@@ -1819,6 +1900,8 @@ typedef enum {
 	VRA_ITEMNEXT,
 	VRA_ALTFIRE,
 	VRA_PING,           // co-op
+	VRA_MAGDOM,
+	VRA_MAGOFF,
 	VRA_COUNT
 } vrAction_t;
 
@@ -1826,20 +1909,23 @@ static const struct {
 	const char *cvar;
 	const char *def;
 } vrActions[VRA_COUNT] = {
-	{ "vr_bind_jump",     "A" },
+	// the RTCWQuest layout
+	{ "vr_bind_jump",     "RUP" },
 	{ "vr_bind_crouch",   "RDOWN" },
-	{ "vr_bind_stand",    "RUP" },
-	{ "vr_bind_use",      "X" },
-	{ "vr_bind_reload",   "B" },        // SP has "B Y": Y pings in co-op
-	{ "vr_bind_weapnext", "RCLICK" },
-	{ "vr_bind_weapprev", "G+RCLICK" },
+	{ "vr_bind_stand",    "none" },
+	{ "vr_bind_use",      "RCLICK" },
+	{ "vr_bind_reload",   "none" },
+	{ "vr_bind_weapnext", "none" },
+	{ "vr_bind_weapprev", "none" },
 	{ "vr_bind_kick",     "LCLICK" },
-	{ "vr_bind_notebook", "G+Y" },
+	{ "vr_bind_notebook", "G+Y" },      // SP has "Y": Y pings in co-op
 	{ "vr_bind_hud",      "G+A" },
 	{ "vr_bind_useitem",  "G+X" },
 	{ "vr_bind_itemnext", "G+B" },
-	{ "vr_bind_altfire",  "G+RTRIG" },
+	{ "vr_bind_altfire",  "none" },
 	{ "vr_bind_ping",     "Y" },
+	{ "vr_bind_magdom",   "A" },      // the weapon hand's gun drops its magazine
+	{ "vr_bind_magoff",   "X" },      // the off hand's gun (dual wielding), or the one gun
 };
 
 static const struct {
@@ -2005,6 +2091,141 @@ static qboolean VR_CommandHeld( const char *cmd ) {
 	return qfalse;
 }
 
+/*
+=================
+VR weapon wheel
+
+Holding the gun hand grip opens the game's own weapon wheel on the HUD (a tap still
+reloads), as in RTCWQuest. Move the hand towards a weapon and
+let go of the grip, or pull the trigger, to switch to it. The stick doesn't turn while the
+wheel is open, or until it's back in the middle afterwards; left / right on it turns the pages). Any other button (A / B / X / Y, a stick click) closes it without switching,
+and still does its own job, so the grip combos work as before.
+=================
+*/
+#define VR_WHEEL_HOLD_MS    300
+#define VR_DOUBLE_PRESS_MS  350
+#define VR_WHEEL_REACH      0.10f       // metres of hand travel for a full pick
+
+static struct {
+	qboolean    open;
+	qboolean    quiet;      // closed, the stick still has to come back to the middle
+	float       start[2];   // the hand in head space (x right, y up) when it opened
+	float       point[2];   // where it points on the wheel, smoothed
+	qboolean    paged;      // the stick turned a page, it has to come back first
+} vrWheel;
+
+static qboolean VR_WheelHand( int dom, float out[2] ) {
+	XrQuaternionf inv;
+	float rel[3], local[3];
+
+	if ( !xr.hands[dom].gripValid || !xr.headValid ) {
+		return qfalse;
+	}
+	rel[0] = xr.hands[dom].grip.position.x - xr.head.position.x;
+	rel[1] = xr.hands[dom].grip.position.y - xr.head.position.y;
+	rel[2] = xr.hands[dom].grip.position.z - xr.head.position.z;
+	inv = xr.head.orientation;
+	inv.x = -inv.x;
+	inv.y = -inv.y;
+	inv.z = -inv.z;
+	VR_QuatRotate( &inv, rel, local );      // head space: x right, y up, -z forward
+	out[0] = local[0];
+	out[1] = local[1];
+	return qtrue;
+}
+
+static void VR_WheelClose( qboolean pick ) {
+	if ( vrWheel.open ) {
+		Cbuf_AddText( pick ? "-weaponwheel\n" : "vrweaponwheelcancel\n" );
+	}
+	vrWheel.open = qfalse;
+	vrWheel.quiet = qtrue;
+}
+
+// the stick belongs to the wheel while it's open: no turning or stick buttons
+static void VR_WheelQuietStick( vrHand_t *d ) {
+	int b;
+
+	if ( !vrWheel.open && vrWheel.quiet &&
+		 sqrt( d->stick[0] * d->stick[0] + d->stick[1] * d->stick[1] ) < 0.3f ) {
+		vrWheel.quiet = qfalse;
+	}
+	if ( vrWheel.open || vrWheel.quiet ) {
+		d->stick[0] = d->stick[1] = 0.0f;
+		for ( b = VRB_STICK_UP; b <= VRB_STICK_RIGHT; b++ ) {
+			d->down[b] = d->wasDown[b] = qfalse;
+		}
+	}
+}
+
+// qtrue when the wheel took this frame's trigger
+static qboolean VR_Wheel( int dom ) {
+	static const vrButton_t cancel[] = { VRB_LOWER, VRB_UPPER, VRB_STICK, VRB_MENU };
+	vrHand_t *d = &xr.hands[dom];
+	float pos[2], x, y, len;
+	int h, i;
+
+	if ( !vrWheel.open ) {
+		// (rightGripCombo: a combo or the wheel already used this hold, see VR_GameControls)
+		if ( d->down[VRB_SQUEEZE] && !xr.rightGripCombo &&
+			 cls.realtime - d->downTime[VRB_SQUEEZE] >= VR_WHEEL_HOLD_MS && VR_WheelHand( dom, vrWheel.start ) ) {
+			Cbuf_AddText( "+weaponwheel\n" );
+			vrWheel.open = qtrue;
+			vrWheel.point[0] = vrWheel.point[1] = 0.0f;
+			vrWheel.paged = qfalse;
+			xr.rightGripCombo = qtrue;      // not a grip tap reload
+			VR_Haptic( dom, 0.3f, 30 );
+		}
+		return qfalse;
+	}
+
+	if ( !d->down[VRB_SQUEEZE] ) {
+		VR_WheelClose( qtrue );
+		return qfalse;
+	}
+	if ( VR_Pressed( dom, VRB_TRIGGER ) ) {
+		VR_WheelClose( qtrue );
+		return qtrue;
+	}
+	for ( h = 0; h < 2; h++ ) {
+		for ( i = 0; i < ARRAY_LEN( cancel ); i++ ) {
+			if ( VR_Pressed( h, cancel[i] ) ) {
+				VR_WheelClose( qfalse );
+				return qfalse;
+			}
+		}
+	}
+
+	// the stick turns the wheel's pages (cgame vrwheelpage), the hand picks on the page
+	if ( !vrWheel.paged && fabs( d->stick[0] ) > 0.7f ) {
+		Cbuf_AddText( d->stick[0] > 0 ? "vrwheelpage 1\n" : "vrwheelpage -1\n" );
+		vrWheel.paged = qtrue;
+	} else if ( fabs( d->stick[0] ) < 0.3f ) {
+		vrWheel.paged = qfalse;
+	}
+	if ( VR_WheelHand( dom, pos ) ) {
+		// smoothed: the hand's small shakes don't jitter the pick
+		vrWheel.point[0] += ( ( pos[0] - vrWheel.start[0] ) / VR_WHEEL_REACH - vrWheel.point[0] ) * 0.35f;
+		vrWheel.point[1] += ( ( pos[1] - vrWheel.start[1] ) / VR_WHEEL_REACH - vrWheel.point[1] ) * 0.35f;
+		x = vrWheel.point[0];
+		y = vrWheel.point[1];
+	} else {
+		x = y = 0.0f;
+	}
+	{
+		len = sqrt( x * x + y * y );
+		if ( len > 1.0f ) {
+			x /= len;
+			y /= len;
+		}
+		if ( cgvm ) {
+			VM_Call( cgvm, CG_JOYSTICK_EVENT, 2, (int)( x * 32767.0f ) );
+			VM_Call( cgvm, CG_JOYSTICK_EVENT, 3, (int)( -y * 32767.0f ) );     // screen y is down
+		}
+	}
+	return qfalse;
+}
+
 // in-game controls (see vr_controls.cfg for the layout)
 static void VR_GameControls( void ) {
 	int dom = vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT;
@@ -2013,6 +2234,27 @@ static void VR_GameControls( void ) {
 	qboolean modifier = d->down[VRB_SQUEEZE];
 
 	VR_UpdateBindings();
+
+	if ( VR_Pressed( dom, VRB_SQUEEZE ) ) {
+		xr.rightGripCombo = qfalse;
+	}
+
+	// the weapon wheel: hold the grip, move the hand, let go (or pull the trigger)
+	if ( VR_Wheel( dom ) ) {
+		xr.attackHeld = qfalse;
+		VR_WheelQuietStick( d );
+		return;
+	}
+	VR_WheelQuietStick( d );
+
+	// a tap of the gun hand grip with the gun held two handed: the gun hand lets go and the
+	// off hand holds it alone, so the gun hand can work the bolt with its trigger, like a real
+	// rifle. A grip press back on the grip (or just coming back to it) takes it again.
+	if ( VR_Released( dom, VRB_SQUEEZE ) && !xr.rightGripCombo && !xr.gunInOff &&
+		 cls.realtime - d->downTime[VRB_SQUEEZE] < VR_WHEEL_HOLD_MS && com_vr.twoHanded ) {
+		xr.gunToOff = qtrue;
+		VR_Haptic( dom, 0.3f, 25 );
+	}
 
 	// weapon hand
 	// firing doesn't go through the command buffer (+attack would only reach the usercmd
@@ -2023,7 +2265,7 @@ static void VR_GameControls( void ) {
 				Cbuf_AddText( "weapalt\n" );        // grip + trigger: alternate fire mode
 			}
 			xr.rightGripCombo = qtrue;
-		} else {
+		} else if ( !xr.gunInOff ) {      // (the gun hand's trigger works the bolt then)
 			xr.attackHeld = qtrue;
 			xr.akimboLastLeft = qfalse;
 			if ( vr_debug->integer == 2 ) {
@@ -2037,15 +2279,17 @@ static void VR_GameControls( void ) {
 		Cbuf_AddText( "weapalt\n" );                // altfire moved off the trigger
 	}
 
-	if ( VR_Pressed( dom, VRB_SQUEEZE ) ) {
-		xr.rightGripCombo = qfalse;
-	}
-	if ( VR_Released( dom, VRB_SQUEEZE ) && !xr.rightGripCombo &&
-		 cls.realtime - d->downTime[VRB_SQUEEZE] < 400 ) {
-		// tap grip: drop the magazine for weapons reloaded by hand (the game decides),
-		// a normal reload for the rest
+	// magazine release: drops the magazine of a gun reloaded by hand (the game decides),
+	// a normal reload for the rest. Dual wielding, each hand's button is its own gun's and
+	// the guns are reloaded at the hips (g_vr.c)
+	if ( VR_ActionPressed( VRA_MAGDOM ) || ( VR_ActionPressed( VRA_MAGOFF ) && !com_vr.dualWield ) ) {
 		com_vr.ejectCount++;
-		Cbuf_AddText( "+reload\nwait\n-reload\n" );
+		if ( !com_vr.dualWield ) {
+			Cbuf_AddText( "+reload\nwait\n-reload\n" );
+		}
+	}
+	if ( VR_ActionPressed( VRA_MAGOFF ) && com_vr.dualWield ) {
+		com_vr.ejectOffCount++;
 	}
 
 	// slide release: reload (two guns reload only with both hands down at the waist;
@@ -2057,11 +2301,10 @@ static void VR_GameControls( void ) {
 		Cbuf_AddText( "+reload\nwait\n-reload\n" );
 	}
 
-	// crouch stays on until stand (or a jump)
-	if ( VR_ActionPressed( VRA_CROUCH ) ) {
-		VR_ButtonCommand( "movedown", qtrue );
-	}
+	// crouch while held (stand, when bound, also lets go of it)
+	VR_ActionHold( VRA_CROUCH, "movedown" );
 	if ( VR_ActionPressed( VRA_STAND ) && VR_CommandHeld( "movedown" ) ) {
+		vrActionHeld[VRA_CROUCH] = qfalse;
 		VR_ButtonCommand( "movedown", qfalse );
 	}
 	if ( VR_ActionPressed( VRA_JUMP ) ) {
@@ -2101,6 +2344,18 @@ static void VR_GameControls( void ) {
 		Cbuf_AddText( "notebook\n" );
 	}
 
+	// a double press of the off hand grip: a second pistol / SMG, or back to one
+	if ( VR_Pressed( off, VRB_SQUEEZE ) ) {
+		static int lastPress;
+		if ( lastPress && cls.realtime - lastPress < VR_DOUBLE_PRESS_MS ) {
+			Cbuf_AddText( "dualwield\n" );
+			VR_Haptic( off, 0.6f, 50 );
+			lastPress = 0;
+		} else {
+			lastPress = cls.realtime;
+		}
+	}
+
 	if ( com_vr.dualWield ) {
 		// a gun in this hand too: its trigger fires it
 		if ( VR_Pressed( off, VRB_TRIGGER ) ) {
@@ -2112,9 +2367,13 @@ static void VR_GameControls( void ) {
 		if ( VR_Released( off, VRB_TRIGGER ) ) {
 			VR_ButtonCommand( "sprint", qfalse );   // in case it was sprinting before the switch
 		}
+		VR_Hold( "sprint", off, VRB_SQUEEZE );      // the grip sprints instead, as in RTCWQuest
 	} else {
 		xr.attackOffHeld = qfalse;
 		VR_Hold( "sprint", off, VRB_TRIGGER );      // trigger: sprint
+		if ( VR_Released( off, VRB_SQUEEZE ) && !xr.hands[off].down[VRB_TRIGGER] ) {
+			VR_ButtonCommand( "sprint", qfalse );   // in case it was sprinting with two guns
+		}
 	}
 
 	// ping (co-op): tap to mark a spot for the others, hold to talk (vr_voice 1)
@@ -2218,35 +2477,62 @@ static void VR_WriteCmdTracking( usercmd_t *cmd ) {
 	if ( com_vr.akimboLeft ) {
 		flags |= VRF_AKIMBO_LEFT;
 	}
-	// which weapon size (the presets of BG_VR_WeaponScale: 1, 0.7, 0.42)
-	if ( com_vr.weaponScale > 0 && com_vr.weaponScale < 0.56f ) {
-		flags |= 2 << VRF_SCALE_SHIFT;
-	} else if ( com_vr.weaponScale > 0 && com_vr.weaponScale < 0.85f ) {
-		flags |= 1 << VRF_SCALE_SHIFT;
-	}
 	cmd->vrFlags = flags;
+
+	// the rest: the actual weapon size, dual wielding, the triggers, the gun held by the off
+	// hand, the head leaning out
+	{
+		float sc = com_vr.weaponScale > 0 ? com_vr.weaponScale * 64.0f : 64.0f;
+		int f2 = 0;
+
+		cmd->vrScale = (byte)( sc > 255.0f ? 255 : ( sc < 1.0f ? 1 : sc + 0.5f ) );
+		if ( com_vr.akimboBoth ) {
+			f2 |= VRF2_AKIMBO_BOTH;
+		}
+		if ( com_vr.triggerDown[VR_HAND_LEFT] ) {
+			f2 |= VRF2_TRIG_LEFT;
+		}
+		if ( com_vr.triggerDown[VR_HAND_RIGHT] ) {
+			f2 |= VRF2_TRIG_RIGHT;
+		}
+		if ( Cvar_VariableIntegerValue( "vr_throwAim" ) ) {
+			f2 |= VRF2_THROWAIM;
+		}
+		if ( com_vr.gunInOffHand ) {
+			f2 |= VRF2_GUN_IN_OFF;
+			for ( j = 0; j < 3; j++ ) {
+				cmd->vrGun[j] = VR_PackUnits( com_vr.gunOrigin[j] - com_vr.hmdOrigin[j] );
+			}
+		} else {
+			VectorClear( cmd->vrGun );
+		}
+		cmd->vrFlags2 = f2;
+		cmd->vrEjectOff = (byte)com_vr.ejectOffCount;
+		cmd->vrLean[0] = VR_PackUnits( com_vr.leanUsed[0] );
+		cmd->vrLean[1] = VR_PackUnits( com_vr.leanUsed[1] );
+	}
 }
 
 /*
 =================
 VR_BinocularGesture
 
-The off hand held up in front of the eyes: look through the binoculars (the game ignores
-it without them). A little wider to leave than to enter, so it doesn't flicker.
+The binocular hand held up in front of the eyes: look through the binoculars taken from
+the weapon wheel. A little wider to leave than to enter, so it doesn't flicker.
 =================
 */
-static qboolean VR_BinocularGesture( int off ) {
+static qboolean VR_BinocularGesture( int h ) {
 	static qboolean held;
 	XrQuaternionf inv;
 	float rel[3], local[3], slack;
 
-	if ( !vr_binoculars->integer || !xr.hands[off].gripValid ) {
+	if ( !com_vr.binocsOut || !xr.hands[h].gripValid ) {
 		held = qfalse;
 		return qfalse;
 	}
-	rel[0] = xr.hands[off].grip.position.x - xr.head.position.x;
-	rel[1] = xr.hands[off].grip.position.y - xr.head.position.y;
-	rel[2] = xr.hands[off].grip.position.z - xr.head.position.z;
+	rel[0] = xr.hands[h].grip.position.x - xr.head.position.x;
+	rel[1] = xr.hands[h].grip.position.y - xr.head.position.y;
+	rel[2] = xr.hands[h].grip.position.z - xr.head.position.z;
 	inv = xr.head.orientation;
 	inv.x = -inv.x;
 	inv.y = -inv.y;
@@ -2283,17 +2569,28 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 	cl.viewangles[YAW] = com_vr.weaponAngles[YAW];
 	cl.viewangles[ROLL] = 0;
 
-	// the trigger, sampled this frame
-	if ( xr.attackHeld && !Key_GetCatcher() ) {
-		cmd->buttons |= BUTTON_ATTACK;
+	// the trigger, sampled this frame. The knife slashes by swinging it, so its trigger
+	// throws one instead (the flat game's alt fire: hold, let go to throw)
+	if ( xr.attackHeld && !Key_GetCatcher() && !com_vr.binocsOut ) {
+		if ( cl.snap.ps.weapon == WP_KNIFE ) {
+			cmd->wbuttons |= WBUTTON_ATTACK2;
+		} else {
+			cmd->buttons |= BUTTON_ATTACK;
+		}
 	}
-	if ( !Key_GetCatcher() && VR_BinocularGesture( off ) ) {
+	// binoculars from the weapon wheel are in the gun hand: that one goes up to the eyes (an
+	// empty off hand at the eyes does nothing)
+	if ( !Key_GetCatcher() && VR_BinocularGesture( dom ) ) {
 		cmd->wbuttons |= WBUTTON_ZOOM;
 	}
 
 	// dual pistols: the off hand's trigger fires the off hand's gun, aimed where it points
 	com_vr.akimboLeft = 0;
-	if ( com_vr.dualWield && xr.attackOffHeld && ( !xr.attackHeld || xr.akimboLastLeft ) &&
+	com_vr.akimboBoth = com_vr.dualWield && !com_vr.binocsOut && xr.attackOffHeld && xr.attackHeld && !Key_GetCatcher();
+	if ( com_vr.akimboBoth ) {
+		xr.akimboLastLeft = !xr.akimboLastLeft;     // both triggers: the guns take turns
+	}
+	if ( com_vr.dualWield && !com_vr.binocsOut && xr.attackOffHeld && ( !xr.attackHeld || xr.akimboLastLeft ) &&
 		 com_vr.handValid[off] && !Key_GetCatcher() ) {
 		cmd->buttons |= BUTTON_ATTACK;
 		com_vr.akimboLeft = 1;
@@ -2314,31 +2611,6 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 	if ( !vr_seated->integer && vr_crouchHeight->value > 0 && xr.headHeight > 0.2f &&
 		 xr.headHeight < vr_crouchHeight->value && cmd->upmove <= 0 ) {
 		cmd->upmove = -127;
-	}
-
-	// ladders: a hand gripping pulls the body up (or lets it down) as far as it moves
-	{
-		static float lastZ[2];
-		static qboolean had[2];
-		float climb = 0, best = 0;
-		int h;
-
-		for ( h = 0; h < 2; h++ ) {
-			qboolean grip = com_vr.onLadder && com_vr.handValid[h] && xr.hands[h].down[VRB_SQUEEZE];
-			if ( grip && had[h] && frameSeconds > 0 ) {
-				float v = -( com_vr.handOrigin[h][2] - lastZ[h] ) / frameSeconds;    // units/s, up
-				if ( fabs( v ) > fabs( best ) ) {
-					best = v;
-				}
-			}
-			had[h] = grip;
-			lastZ[h] = com_vr.handOrigin[h][2];
-		}
-		if ( best != 0 ) {
-			climb = best / 3.0f;
-			cmd->upmove = ClampChar( (int)climb );
-			cmd->forwardmove = 0;
-		}
 	}
 
 	// teleport: push the off stick forward to aim (cgame draws the arc), let go to go there
@@ -2388,7 +2660,29 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 		cmd->rightmove = ClampChar( cmd->rightmove + (int)( 127.0f * ( side * c - fwd * s ) ) );
 	}
 
-	// room-scale: carry the body along with the head, in the usercmd yaw frame
+	// room-scale: the head leans out over the body up to vr_lean (crouching low, going
+	// prone, reaching over a ledge: no shoving the body into what's in front and the view
+	// pushed back with it, cgame stops the view at walls), then the body follows it, in
+	// the usercmd yaw frame
+	if ( vr_roomScale->integer ) {
+		float reach = vr_lean->value * vr_worldScale->value, len;
+
+		xr.lean[0] += xr.pendingMove[0];
+		xr.lean[1] += xr.pendingMove[1];
+		xr.pendingMove[0] = xr.pendingMove[1] = 0;
+		len = sqrt( xr.lean[0] * xr.lean[0] + xr.lean[1] * xr.lean[1] );
+		if ( len > reach && len > 0 ) {
+			float k = ( len - reach ) / len;
+			xr.pendingMove[0] = xr.lean[0] * k;
+			xr.pendingMove[1] = xr.lean[1] * k;
+			xr.lean[0] -= xr.pendingMove[0];
+			xr.lean[1] -= xr.pendingMove[1];
+		}
+	} else {
+		xr.lean[0] = xr.lean[1] = 0;
+	}
+	com_vr.lean[0] = xr.lean[0];
+	com_vr.lean[1] = xr.lean[1];
 	if ( vr_roomScale->integer && ( xr.pendingMove[0] || xr.pendingMove[1] ) ) {
 		float limit = 16.0f;        // per command, anything bigger is a tracking glitch
 		float mx, my;
@@ -2621,6 +2915,8 @@ void CL_VR_ProcessInput( void ) {
 	// grip buttons for the game's hand interactions (reloading, grabbing)
 	com_vr.gripDown[VR_HAND_LEFT] = !menu && xr.hands[VR_HAND_LEFT].down[VRB_SQUEEZE];
 	com_vr.gripDown[VR_HAND_RIGHT] = !menu && xr.hands[VR_HAND_RIGHT].down[VRB_SQUEEZE];
+	com_vr.triggerDown[VR_HAND_LEFT] = !menu && xr.hands[VR_HAND_LEFT].down[VRB_TRIGGER];
+	com_vr.triggerDown[VR_HAND_RIGHT] = !menu && xr.hands[VR_HAND_RIGHT].down[VRB_TRIGGER];
 	if ( menu != xr.menuMode ) {
 		xr.menuMode = menu;
 		VR_ReleaseAllCommands();
@@ -2831,6 +3127,20 @@ qboolean CL_VR_RenderFrame( void ) {
 
 	uiFullscreen = uivm && VM_Call( uivm, UI_IS_FULLSCREEN );
 	worldVisible = clc.state == CA_ACTIVE && cls.cgameStarted && !uiFullscreen;
+
+	// cutscenes play flat on the 2D layer, a screen hanging in front of the player, so the
+	// scripted camera doesn't swing the world around the head
+	{
+		static qboolean wasFlat;
+		com_vr.flatCutscene = worldVisible && cl.cameraMode && vr_flatCutscenes->integer;
+		if ( com_vr.flatCutscene && !wasFlat ) {
+			xr.menuPlaced = qfalse;
+		}
+		wasFlat = com_vr.flatCutscene;
+		if ( com_vr.flatCutscene ) {
+			worldVisible = qfalse;
+		}
+	}
 	uiInWorld = xr.menuMode || !worldVisible;
 	if ( uiInWorld && !xr.menuPlaced ) {
 		VR_PlaceMenu();
@@ -2884,6 +3194,9 @@ qboolean CL_VR_RenderFrame( void ) {
 	com_vr.pass = VR_PASS_FLAT;
 
 	VR_SubmitFrame( qtrue, fbo != 0, uiInWorld );
+	if ( mirror ) {
+		re.VR_PresentMirror( 0, 0, 0 );     // the window, once the headset has its frame
+	}
 	return qtrue;
 }
 

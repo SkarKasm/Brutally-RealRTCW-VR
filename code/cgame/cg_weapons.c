@@ -2451,6 +2451,9 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	VectorCopy( parent->lightingOrigin, gun.lightingOrigin );
 	gun.shadowPlane = parent->shadowPlane;
 	gun.renderfx = parent->renderfx;
+	if ( ps && cgvr.active ) {    // RealRTCW-VR: which of the flat game's hands this piece shows
+		gun.renderfx = ( gun.renderfx & ~( RF_VR_NOHANDS | RF_VR_NOSLEEVES ) ) | CG_VR_PieceHandFx( weaponNum, -1 );
+	}
 
 	// set custom shading for railgun refire rate
 	if ( ps ) {
@@ -2533,6 +2536,11 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	}
 
 	if ( drawpart && drawrealweap ) {
+		if ( ps && cgvr.active ) {
+			CG_VR_PieceArmBend( weaponNum, -1, &gun );
+			CG_VR_StretchHand( weaponNum, -1, &gun );
+			CG_VR_AddRifleHand( weaponNum, &gun, parent );
+		}
 		CG_AddWeaponWithPowerups( &gun, cent->currentState.powerups, ps, cent );
 		if ( ps && cgvr.active ) {
 			CG_VR_ScopePiece( weaponNum, 0, &gun );
@@ -2570,6 +2578,9 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 			spunpart = qfalse;
 			barrel.hModel = weapon->wpPartModels[W_FP_MODEL][i];
+			if ( cgvr.active ) {     // RealRTCW-VR: which of the flat game's hands this part shows
+				barrel.renderfx = ( parent->renderfx & ~( RF_VR_NOHANDS | RF_VR_NOSLEEVES ) ) | CG_VR_PieceHandFx( weaponNum, i );
+			}
 
 			// check for spinning
 			if ( weaponNum == WP_VENOM ) {
@@ -2629,6 +2640,11 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 				}
 
 				if ( drawpart && drawrealweap ) {
+					barrel.vrBendMagic = 0;
+					if ( isPlayer && cgvr.active ) {
+						CG_VR_PieceArmBend( weaponNum, i, &barrel );
+						CG_VR_StretchHand( weaponNum, i, &barrel );
+					}
 					CG_AddWeaponWithPowerups( &barrel, cent->currentState.powerups, ps, cent );
 				}
 			}
@@ -2728,6 +2744,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	// RealRTCW-VR: shots leave the barrel of the gun in the player's hand
 	if ( ps && cgvr.active ) {
+		CG_VR_MuzzleFallback( weaponNum, parent, &flash );
 		CG_VR_SetMuzzle( flash.origin );
 	}
 
@@ -2899,6 +2916,171 @@ void CG_AddPlayerFoot( refEntity_t *parent, playerState_t *ps, centity_t *cent )
 
 /*
 ==============
+CG_AdsFraction / CG_AdsAdjust
+
+RealRTCW-VR: aiming down the sights without a headset. While the zoom (alt fire) is on, the
+gun slides to the middle of the view with its sights on the crosshair. Each gun's sight line
+was measured from its first person model (front sight on the view axis, the gun turned so the
+rear and front sights line up), for RealRTCW's own guns. cg_adsX/Y/Z and cg_adsPitch/Yaw/Roll
+nudge it, and cg_adsDebug 1 marks the true centre.
+==============
+*/
+typedef struct {
+	const char *weap;
+	float pitch;        // degrees: the gun model's own slope, taken out so the sights line up
+	float yaw;          // degrees: its own sideways angle
+	float roll;         // degrees: its own tilt
+	float dist;         // how far in front of the eye the front sight sits
+	vec3_t front;       // the front sight's tip in the gun model's space
+} adsSight_t;
+
+static const adsSight_t adsSights[] = {
+	{ "luger.weap", 0.94f, 0.0f, 9.0f, 42.4f, { 37.98f, -2.58f, -3.11f } },
+	{ "luger_silenced.weap", 0.94f, 0.0f, 9.0f, 42.4f, { 37.98f, -2.58f, -3.11f } },
+	{ "colt.weap", 0.89f, -1.2f, 0.0f, 42.2f, { 38.56f, -3.98f, -3.06f } },
+	{ "mp40.weap", -2.66f, 0.0f, 0.0f, 42.7f, { 38.86f, -3.00f, 1.34f } },
+	{ "thompson.weap", -3.54f, 1.6f, 0.0f, 35.1f, { 33.28f, -2.77f, -0.19f } },
+	{ "sten.weap", -2.04f, -1.4f, 0.0f, 76.9f, { 64.97f, 0.64f, 5.03f } },
+	{ "ppsh.weap", 0.26f, 0.5f, 0.0f, 35.9f, { 48.38f, -0.33f, 5.68f } },
+	{ "mp34.weap", -5.14f, 0.9f, 0.0f, 73.0f, { 44.16f, -1.31f, 5.64f } },
+};
+
+static vmCvar_t cg_ads, cg_adsX, cg_adsY, cg_adsZ, cg_adsPitch, cg_adsRoll, cg_adsYaw, cg_adsDebug;
+
+qboolean CG_AdsDebug( void ) {
+	return cg_adsDebug.integer ? qtrue : qfalse;
+}
+
+static const adsSight_t *CG_AdsSight( int weapon ) {
+	const char *file;
+	int i;
+
+	if ( CG_VR_VanillaGuns() ) {
+		return NULL;
+	}
+	file = BG_GetWeaponFilename( weapon );
+	if ( !file || !*file ) {
+		return NULL;
+	}
+	for ( i = 0; i < ARRAY_LEN( adsSights ); i++ ) {
+		if ( !Q_stricmp( adsSights[i].weap, file ) ) {
+			return &adsSights[i];
+		}
+	}
+	return NULL;
+}
+
+float CG_AdsFraction( void ) {
+	static qboolean registered;
+	const playerState_t *ps = &cg.predictedPlayerState;
+	float f;
+	int t;
+
+	if ( !registered ) {
+		trap_Cvar_Register( &cg_ads, "cg_flatADS", "0", CVAR_ARCHIVE );	// off by default, only some guns are lined up
+		trap_Cvar_Register( &cg_adsX, "cg_adsX", "0", 0 );
+		trap_Cvar_Register( &cg_adsY, "cg_adsY", "0", 0 );
+		trap_Cvar_Register( &cg_adsZ, "cg_adsZ", "0", 0 );
+		trap_Cvar_Register( &cg_adsPitch, "cg_adsPitch", "0", 0 );
+		trap_Cvar_Register( &cg_adsRoll, "cg_adsRoll", "0", 0 );
+		trap_Cvar_Register( &cg_adsYaw, "cg_adsYaw", "0", 0 );
+		trap_Cvar_Register( &cg_adsDebug, "cg_adsDebug", "0", 0 );
+		registered = qtrue;
+	}
+	trap_Cvar_Update( &cg_ads );
+	trap_Cvar_Update( &cg_adsX );
+	trap_Cvar_Update( &cg_adsY );
+	trap_Cvar_Update( &cg_adsZ );
+	trap_Cvar_Update( &cg_adsPitch );
+	trap_Cvar_Update( &cg_adsRoll );
+	trap_Cvar_Update( &cg_adsYaw );
+	trap_Cvar_Update( &cg_adsDebug );
+
+	if ( !cg_ads.integer || cg.zoomval || cg.zoomedBinoc || ( ps->eFlags & ( EF_ZOOMING | EF_DEAD | EF_MG42_ACTIVE ) ) ||
+		 ps->persistant[PERS_HWEAPON_USE] || BG_DualActive( ps ) || !CG_AdsSight( ps->weapon ) ) {
+		return 0;
+	}
+
+	t = cg_simpleZoomTimeMs.integer;
+	f = t > 0 ? (float)( cg.time - cg.simpleZoomTime ) / t : 1;
+	f = f < 0 ? 0 : f > 1 ? 1 : f;
+	return cg.simpleZoomed ? f : 1 - f;
+}
+
+// no bob or sway while aiming
+static void CG_AdsSteady( vec3_t origin, vec3_t angles, float frac ) {
+	int i;
+
+	for ( i = 0; i < 3; i++ ) {
+		origin[i] += ( cg.refdef.vieworg[i] - origin[i] ) * frac;
+		angles[i] = LerpAngle( angles[i], cg.refdefViewAngles[i], frac );
+	}
+}
+
+/*
+The hands model carries the gun on tag_weapon, at an angle that differs per gun (the slight
+tilts). Aiming, the hands are placed so that the gun model itself is level with the view, its
+sight line on the view axis and the front sight 'dist' ahead of the eye.
+*/
+static void CG_AdsPose( const playerState_t *ps, const weaponInfo_t *weapon, refEntity_t *hand, float frac ) {
+	const adsSight_t *ads = CG_AdsSight( ps->weapon );
+	refEntity_t idle;
+	orientation_t tag;
+	vec3_t ang, gun[3], h[3], org, p;
+	float a[3][3];
+	int i, k;
+
+	if ( !ads || frac <= 0 ) {
+		return;
+	}
+
+	// where the hands hold the gun this frame: held steady on the sights while ready or
+	// firing, the idle pose otherwise so reloads and switches still move the gun
+	memset( &idle, 0, sizeof( idle ) );
+	idle.hModel = weapon->handsModel;
+	if ( ps->weaponstate == WEAPON_READY || ps->weaponstate == WEAPON_FIRING ) {
+		idle.frame = hand->frame;
+		idle.oldframe = hand->oldframe;
+		idle.backlerp = hand->backlerp;
+	} else {
+		idle.frame = idle.oldframe = weapon->weapAnimations[WEAP_IDLE1].firstFrame;
+	}
+	AxisClear( idle.axis );
+	if ( trap_R_LerpTag( &tag, &idle, "tag_weapon", 0 ) < 0 ) {
+		return;
+	}
+
+	// the gun's axes in the world: the view's, turned by the model's own slope and tilt
+	VectorSet( ang, ads->pitch + cg_adsPitch.value, ads->yaw + cg_adsYaw.value, ads->roll + cg_adsRoll.value );
+	AnglesToAxis( ang, a );
+	MatrixMultiply( a, cg.refdef.viewaxis, gun );
+
+	// gun axis = tag axis * hand axis, so hand axis = tag axis transposed * gun axis
+	for ( i = 0; i < 3; i++ ) {
+		for ( k = 0; k < 3; k++ ) {
+			h[i][k] = tag.axis[0][i] * gun[0][k] + tag.axis[1][i] * gun[1][k] + tag.axis[2][i] * gun[2][k];
+		}
+	}
+
+	// the front sight onto the view axis
+	VectorMA( cg.refdef.vieworg, ads->dist + cg_adsX.value, cg.refdef.viewaxis[0], org );
+	VectorMA( org, cg_adsY.value, cg.refdef.viewaxis[1], org );
+	VectorMA( org, cg_adsZ.value, cg.refdef.viewaxis[2], org );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( org, -ads->front[i], gun[i], org );
+		VectorMA( org, -tag.origin[i], h[i], org );
+	}
+
+	for ( i = 0; i < 3; i++ ) {
+		hand->origin[i] += ( org[i] - hand->origin[i] ) * frac;
+		VectorSubtract( h[i], hand->axis[i], p );
+		VectorMA( hand->axis[i], frac, p, hand->axis[i] );
+		VectorNormalize( hand->axis[i] );
+	}
+}
+
+/*
+==============
 CG_AddViewWeapon
 
 Add the weapon, and flash for the player's view
@@ -3061,6 +3243,7 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 	vec3_t base;
 	vec3_t angles;
 	vec3_t gunoff;
+	float adsFrac = 0;
 	weaponInfo_t    *weapon;
 
 	if ( ps->persistant[PERS_TEAM] == TEAM_SPECTATOR ) {
@@ -3129,7 +3312,9 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 						   ps->ammoclip[ps->weapon], ps->ammo[BG_FindAmmoForWeapon( ps->weapon )] );
 			}
 		}
-		if ( ps->weapon <= WP_NONE ) {
+		if ( CG_VR_Binocs( ps ) ) {
+			cgVR->dualWield = 0;    // the guns are put away
+		} else if ( ps->weapon <= WP_NONE ) {
 			cgVR->muzzleValid = qfalse;
 		} else if ( cgVR->dualWield ) {
 			CG_VR_AddDualGuns( ps, CG_VR_DualSingle( ps ) );     // a gun in each hand
@@ -3139,15 +3324,11 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 			weapon = &cg_weapons[ ps->weapon ];
 			CG_VR_WeaponPose( ps->weapon, hand.origin, hand.axis );
 			CG_WeaponAnimation( ps, weapon, &hand.oldframe, &hand.frame, &hand.backlerp );
-			// the flat game's firing animations throw the gun around the hand: hold it
-			// still, the recoil is real now (cg_vrrecoil.c)
-			{
-				int anim = ps->weapAnim & ~ANIM_TOGGLEBIT;
-				if ( anim == WEAP_ATTACK1 || anim == WEAP_ATTACK2 || anim == WEAP_ATTACK_LASTSHOT ) {
-					hand.oldframe = hand.frame = weapon->weapAnimations[WEAP_IDLE1].firstFrame;
-					hand.backlerp = 0;
-				}
-			}
+			// the flat game's animations (firing, idle sway, reloads, raising) move the gun
+			// around the hand: hold it still at the idle pose the grip was measured in. The
+			// recoil and reloading are done by hand now (cg_vrrecoil.c, CG_VR_WeaponPart).
+			hand.oldframe = hand.frame = weapon->weapAnimations[WEAP_IDLE1].firstFrame;
+			hand.backlerp = 0;
 			VectorCopy( hand.origin, hand.lightingOrigin );
 			hand.hModel = weapon->handsModel;
 			hand.renderfx = RF_FIRST_PERSON | RF_MINLIGHT;
@@ -3157,9 +3338,13 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 			}
 			CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity );
 		}
-		CG_VR_IronSights();
+		if ( !cgVR->binocsOut ) {
+			CG_VR_IronSights();
+		}
 		CG_VR_AddHands();
-		CG_VR_AddReticle();
+		if ( !cgVR->binocsOut ) {
+			CG_VR_AddReticle();
+		}
 		CG_VR_AddReloadItems();
 		CG_VR_WristHUD();
 		cg.predictedPlayerEntity.lastWeaponClientFrame = cg.clientFrame;
@@ -3274,6 +3459,11 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 
 //----(SA)	removed
 
+		adsFrac = CG_AdsFraction();     // RealRTCW-VR: aiming down the sights
+		if ( adsFrac > 0 ) {
+			CG_AdsSteady( hand.origin, angles, adsFrac );
+		}
+
 		VectorMA( hand.origin, ( gunoff[0] + fovOffset[0] ), cg.refdef.viewaxis[0], hand.origin );
 		VectorMA( hand.origin, ( gunoff[1] + fovOffset[1] ), cg.refdef.viewaxis[1], hand.origin );
 		VectorMA( hand.origin, ( gunoff[2] + fovOffset[2] ), cg.refdef.viewaxis[2], hand.origin );
@@ -3286,6 +3476,8 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		} else {  // get the animation state
 			CG_WeaponAnimation( ps, weapon, &hand.oldframe, &hand.frame, &hand.backlerp );   //----(SA)	changed
 		}
+
+		CG_AdsPose( ps, weapon, &hand, adsFrac );
 
 		VectorCopy( hand.origin, hand.lightingOrigin );
 
@@ -4901,6 +5093,7 @@ void CG_FireWeapon( centity_t *cent ) {
 	// impact shows straight away
 	if ( cg.snap && ent->number == cg.snap->ps.clientNum && ent->weapon != WP_KNIFE ) {
 		cgvr.lastShotLeft = cgVR && cgVR->dualWield && cgVR->akimboLeft;
+		cgvr.shotTime[cgvr.lastShotLeft ? 1 : 0] = cg.time;
 		CG_VR_Haptic( cgvr.lastShotLeft ? !CG_VR_DominantHand() : CG_VR_DominantHand(), 0.8f, 60 );
 		if ( !cgvr.lastShotLeft ) {
 			CG_VR_RecoilKick( ent->weapon );
@@ -5029,6 +5222,14 @@ void CG_FireWeapon( centity_t *cent ) {
 				}
 			}
 		}
+	}
+
+	// RealRTCW-VR: a bolt action's or pump gun's case stays in the chamber until the bolt
+	// or pump is worked by hand (CG_VR_ReloadSounds)
+	if ( cgvr.active && cgVR && cgVR->manualReload && cg.snap && cent->currentState.number == cg.snap->ps.clientNum &&
+		 ( BG_VR_ReloadClass( cent->currentState.weapon ) == VRR_BOLT || BG_VR_ReloadClass( cent->currentState.weapon ) == VRR_PUMP ) ) {
+		cgvr.brassPending = cent->currentState.weapon;
+		return;
 	}
 
 	// do brass ejection

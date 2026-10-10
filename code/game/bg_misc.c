@@ -3680,7 +3680,7 @@ qboolean BG_AkimboFireSequence( int weapon, int akimboClip, int coltClip ) {
 BG_DualCapable / BG_DualActive / BG_DualLeftFires / BG_MaxClip
 
 RealRTCW-VR: dual wielding. With PERS_DUAL set, a pistol or SMG is carried in each hand:
-twice the clip (one magazine per gun, BG_MaxClip), the two fire in turn without a headset
+one magazine per gun (the off hand's in BG_DUAL_LEFT_CLIP, g_vr.c), the two fire in turn without a headset
 and each on its own trigger in VR (bg_vrAkimbo), and the off hand's shots are EV_FIRE_WEAPONB
 like the akimbo Colts'. PERS_DUAL is per player (persistant[], kept over respawns).
 ==============
@@ -3713,13 +3713,11 @@ qboolean BG_DualLeftFires( const playerState_t *ps ) {
 	return ps->ammoclip[BG_FindClipForWeapon( ps->weapon )] & 1;
 }
 
-// a weapon's full clip for this player: two guns, two magazines
+// a weapon's full clip for this player (two guns, two magazines: the off hand's is its own,
+// BG_DUAL_LEFT_CLIP)
 int BG_MaxClip( const playerState_t *ps, int weapon ) {
 	if ( weapon <= WP_NONE || weapon >= WP_NUM_WEAPONS ) {
 		return 0;
-	}
-	if ( ps && !ps->aiChar && ps->persistant[PERS_DUAL] && BG_DualCapable( weapon ) ) {
-		return ammoTable[weapon].maxclip * 2;
 	}
 	return ammoTable[weapon].maxclip;
 }

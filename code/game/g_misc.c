@@ -1861,7 +1861,12 @@ void clamp_hweapontofirearc( gentity_t *self, gentity_t *other, vec3_t dang ) {
 	if ( other && clamped ) {
 		// we only do this to keep the input angles close to the weapon, this doesn't actually
 		// effect the view
-		SetClientViewAngle( other, dang );
+		// RealRTCW-VR: but in the headset it does: delta_angles is the turn of the whole room
+		// (snap turns), so resetting it spun the world round whenever the gun hit its arc or
+		// turn speed. The gun just stops at its limits and follows the hand again inside them.
+		if ( !G_VR_Player( other ) ) {
+			SetClientViewAngle( other, dang );
+		}
 
 		//if they are an AI, they should dismount now
 		if ( other->r.svFlags & SVF_CASTAI ) {
