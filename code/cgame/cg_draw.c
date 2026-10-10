@@ -4491,7 +4491,7 @@ static qboolean isClipOnly( int weap ) {
 	return qfalse;
 }
 
-int CG_CollectWeaponWheelWeapons( int *visibleWeapons, int maxWeapons ) {
+static int CG_CollectAllWheelWeapons( int *visibleWeapons, int maxWeapons ) {
 	int numVisible = 0;
 
 	for ( int w = 1; w < MAX_WEAPONS; w++ ) {
@@ -4576,12 +4576,60 @@ int CG_CollectWeaponWheelWeapons( int *visibleWeapons, int maxWeapons ) {
 		visibleWeapons[numVisible++] = w;
 	}
 
-	// RealRTCW-VR: the binoculars, once found, to hold in the gun hand
-	if ( CG_VR_Active() && ( cg.snap->ps.stats[STAT_KEYS] & ( 1 << INV_BINOCS ) ) && numVisible < maxWeapons ) {
-		visibleWeapons[numVisible++] = VR_WHEEL_BINOCS;
-	}
-
 	return numVisible;
+}
+
+/*
+=================
+CG_CollectWeaponWheelWeapons
+
+RealRTCW-VR: in the headset the wheel is pages of VR_WHEEL_PAGE weapons, turned with the gun
+hand's stick (vrwheelpage), and a last page with the binoculars (once found), quick save and
+quick load. What's on the page showing, or every weapon on the flat screen.
+=================
+*/
+static int CG_WheelItems( int *items ) {
+	int n = 0;
+
+	if ( cg.snap->ps.stats[STAT_KEYS] & ( 1 << INV_BINOCS ) ) {
+		items[n++] = VR_WHEEL_BINOCS;
+	}
+	items[n++] = VR_WHEEL_QSAVE;
+	items[n++] = VR_WHEEL_QLOAD;
+	return n;
+}
+
+int CG_WeaponWheelPages( void ) {
+	int all[MAX_WEAPONS];
+	int n = CG_CollectAllWheelWeapons( all, MAX_WEAPONS );
+
+	return ( n + VR_WHEEL_PAGE - 1 ) / VR_WHEEL_PAGE + 1;
+}
+
+int CG_CollectWeaponWheelWeapons( int *visibleWeapons, int maxWeapons ) {
+	int all[MAX_WEAPONS], items[4];
+	int n, pages, first, i, count = 0;
+
+	if ( !CG_VR_Active() ) {
+		return CG_CollectAllWheelWeapons( visibleWeapons, maxWeapons );
+	}
+	n = CG_CollectAllWheelWeapons( all, MAX_WEAPONS );
+	pages = ( n + VR_WHEEL_PAGE - 1 ) / VR_WHEEL_PAGE + 1;
+	if ( cg.weaponWheel.vrPage < 0 || cg.weaponWheel.vrPage >= pages ) {
+		cg.weaponWheel.vrPage = 0;
+	}
+	if ( cg.weaponWheel.vrPage == pages - 1 ) {
+		n = CG_WheelItems( items );
+		for ( i = 0; i < n && count < maxWeapons; i++ ) {
+			visibleWeapons[count++] = items[i];
+		}
+		return count;
+	}
+	first = cg.weaponWheel.vrPage * VR_WHEEL_PAGE;
+	for ( i = first; i < n && i < first + VR_WHEEL_PAGE && count < maxWeapons; i++ ) {
+		visibleWeapons[count++] = all[i];
+	}
+	return count;
 }
 
 static void CG_WeaponWheelAmmoText( int weap, char *buffer, int bufferSize ) {
@@ -4590,7 +4638,7 @@ static void CG_WeaponWheelAmmoText( int weap, char *buffer, int bufferSize ) {
 
 	buffer[0] = '\0';
 
-	if ( weap == VR_WHEEL_BINOCS || isChargeBased( weap ) ) {
+	if ( VR_WHEEL_ITEM( weap ) || isChargeBased( weap ) ) {
 		return;
 	}
 
@@ -4625,6 +4673,16 @@ static const char *CG_WeaponWheelName( int weap ) {
 
 	if ( weap == VR_WHEEL_BINOCS ) {
 		return "Binoculars";
+	}
+	if ( weap == VR_WHEEL_QSAVE ) {
+		return "Quick Save";
+	}
+	if ( weap == VR_WHEEL_QLOAD ) {
+		return "Quick Load";
+	}
+	// RealRTCW-VR: the night vision rifle's pickup name is the Garand's
+	if ( weap == WP_GARAND && CG_VR_Active() ) {
+		return "Snooper Rifle";
 	}
 	item = BG_FindItemForWeapon( weap );
 	if ( !item ) {
@@ -4717,11 +4775,18 @@ void CG_DrawWeaponWheel( void ) {
 		scale = 0.65f;
 	}
 
+	// RealRTCW-VR: a page of a few, smaller and spread round a smaller ring (it filled the
+	// view in the headset, icons touching)
+	if ( vr ) {
+		radius = 78.0f * t;
+		scale = 0.65f;
+	}
+
 	for ( int idx = 0; idx < numVisible; idx++ ) {
 
 		int weap = visibleWeapons[idx];
 
-		if ( weap != VR_WHEEL_BINOCS ) {
+		if ( !VR_WHEEL_ITEM( weap ) ) {
 			CG_RegisterWeapon( weap, qfalse );
 		}
 
@@ -4753,6 +4818,7 @@ void CG_DrawWeaponWheel( void ) {
 		case WP_FG42:
 		case WP_FG42SCOPE:
 		case WP_M1941:
+		case VR_WHEEL_BINOCS:
 			wideweap = qtrue;
 			break;
 		default:
@@ -4784,12 +4850,15 @@ void CG_DrawWeaponWheel( void ) {
 
 		qhandle_t icon;
 
-		if ( weap == VR_WHEEL_BINOCS ) {
-			static qhandle_t binocsIcon;
-			if ( !binocsIcon ) {
-				binocsIcon = trap_R_RegisterShaderNoMip( "icons/binocs" );
+		if ( VR_WHEEL_ITEM( weap ) ) {
+			// (gfx/vr/wheel_*.tga, misc/vr/make_wheel_icons.py)
+			static qhandle_t itemIcons[3][2];
+			static const char *names[3] = { "binocs", "qsave", "qload" };
+			int k = weap - VR_WHEEL_BINOCS, sel = weap == cg.weaponWheel.hoveredWeapon;
+			if ( !itemIcons[k][sel] ) {
+				itemIcons[k][sel] = trap_R_RegisterShaderNoMip( va( "gfx/vr/wheel_%s%s", names[k], sel ? "_select" : "" ) );
 			}
-			icon = binocsIcon;
+			icon = itemIcons[k][sel];
 		} else if ( weap == cg.weaponWheel.hoveredWeapon ) {
 			icon = cg_weapons[weap].weaponIcon[1];
 		} else {
@@ -4857,6 +4926,14 @@ void CG_DrawWeaponWheel( void ) {
 				0
 			);
 		}
+	}
+
+	// RealRTCW-VR: which page, under the wheel
+	if ( vr ) {
+		static const float pageCol[4] = { 1.0f, 1.0f, 1.0f, 0.8f };
+		const char *s = va( "< %i / %i >", cg.weaponWheel.vrPage + 1, CG_WeaponWheelPages() );
+		int pw = CG_DrawStrlen( s ) * 8;
+		CG_DrawStringExt2( cx - pw * 0.5f, cy + radius + 28.0f, s, pageCol, qfalse, qtrue, 8, 8, 0 );
 	}
 
 	// --- cursor ---

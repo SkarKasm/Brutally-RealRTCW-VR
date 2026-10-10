@@ -64,6 +64,24 @@ RIFLE_PALMS = {
     "sten": (12.0, -12.5),
     "mp34": (10.0, -16.0),
     "ithaca": (7.5, -10.5),
+    # only the left (support) hand is on these in the flat game, so VR drew that one on the
+    # right controller: (x, y, z), on the pistol grip / back of the receiver, y on the gun
+    "venom": (4.0, -8.5, -14.5),
+    "flamethrower": (-3.0, -9.5, -12.5),
+    "tesla": (-1.0, -8.0, -10.5),
+    "browning": (5.0, -6.5, -13.0),
+    # drawn bigger than their own hands make them (cg_vr.c vrGunSizes): the stock's wrist
+    "ppsh": (0.0, -9.0),
+    "garand": (2.0, -7.0),
+    "snooper": (2.0, -7.0),
+}
+
+# cg_vr.c vrGunSizes: these guns are drawn this much bigger, so their trigger hand is made
+# this much smaller here to come out life size
+RIFLE_SHRINK = {
+    "ppsh": 1.33,
+    "garand": 1.3,
+    "snooper": 1.3,
 }
 
 def posed(name):
@@ -85,13 +103,13 @@ for l in open(sys.argv[3]):
         cfg[f[0]] = f
 
 os.makedirs(os.path.join(outdir, "models/vr"), exist_ok=True)
-for name, (px, pz) in sorted(RIFLE_PALMS.items()):
+for name, pt in sorted(RIFLE_PALMS.items()):
     pieces = posed(name)
     sup = [s for o, s in pieces if "hand" in s.name.lower() and s.verts and 0 < M.centroid(s)[0] < 50 and M.centroid(s)[2] > -25]
     sup.sort(key=lambda s: -M.centroid(s)[0])
-    k = hand_size(sup[0]) / bsize
+    k = hand_size(sup[0]) / bsize / RIFLE_SHRINK.get(name, 1.0)
     line = cfg["weapons/%s.weap" % name]
-    palm = [px, float(line[2]), pz]
+    palm = [pt[0], float(line[2]), pt[1]] if len(pt) == 2 else list(pt)
     xf = lambda p: [palm[i] + k * (p[i] - bpalm[i]) for i in range(3)]
     surfs = []
     for s in (bhand, barm):
@@ -102,4 +120,5 @@ for name, (px, pz) in sorted(RIFLE_PALMS.items()):
     print("CFG", "  ".join([line[0], " ".join(line[1:4]), " ".join(line[4:6])]) + "  " + " ".join(line[6:]))
     w, e = xf(bwrist), xf(bend)
     print('POSE\t{ "%s.weap", -3, { %.1ff, %.1ff, %.1ff } },' % (name, *w))
+    print('SUP\t{ "%s.weap", %.1ff, { %.1ff, %.1ff, %.1ff } },' % (name, hand_size(sup[0]), *M.centroid(sup[0])))
     print('END\t{ "%s.weap", { %.1ff, %.1ff, %.1ff } },' % (name, *e))

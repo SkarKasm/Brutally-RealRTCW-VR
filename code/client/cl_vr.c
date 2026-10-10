@@ -1822,9 +1822,9 @@ static qboolean VR_CommandHeld( const char *cmd ) {
 VR weapon wheel
 
 Holding the gun hand grip opens the game's own weapon wheel on the HUD (a tap still
-reloads), as in RTCWQuest. Move the hand towards a weapon (or tilt the gun hand stick) and
+reloads), as in RTCWQuest. Move the hand towards a weapon and
 let go of the grip, or pull the trigger, to switch to it. The stick doesn't turn while the
-wheel is open, or until it's back in the middle afterwards. Any other button (A / B / X / Y, a stick click) closes it without switching,
+wheel is open, or until it's back in the middle afterwards; left / right on it turns the pages). Any other button (A / B / X / Y, a stick click) closes it without switching,
 and still does its own job, so the grip combos work as before.
 =================
 */
@@ -1837,6 +1837,7 @@ static struct {
 	qboolean    quiet;      // closed, the stick still has to come back to the middle
 	float       start[2];   // the hand in head space (x right, y up) when it opened
 	float       point[2];   // where it points on the wheel, smoothed
+	qboolean    paged;      // the stick turned a page, it has to come back first
 } vrWheel;
 
 static qboolean VR_WheelHand( int dom, float out[2] ) {
@@ -1897,6 +1898,7 @@ static qboolean VR_Wheel( int dom ) {
 			Cbuf_AddText( "+weaponwheel\n" );
 			vrWheel.open = qtrue;
 			vrWheel.point[0] = vrWheel.point[1] = 0.0f;
+			vrWheel.paged = qfalse;
 			xr.rightGripCombo = qtrue;      // not a grip tap reload
 			VR_Haptic( dom, 0.3f, 30 );
 		}
@@ -1920,10 +1922,14 @@ static qboolean VR_Wheel( int dom ) {
 		}
 	}
 
-	if ( sqrt( d->stick[0] * d->stick[0] + d->stick[1] * d->stick[1] ) > 0.5f ) {
-		x = d->stick[0];
-		y = d->stick[1];
-	} else if ( VR_WheelHand( dom, pos ) ) {
+	// the stick turns the wheel's pages (cgame vrwheelpage), the hand picks on the page
+	if ( !vrWheel.paged && fabs( d->stick[0] ) > 0.7f ) {
+		Cbuf_AddText( d->stick[0] > 0 ? "vrwheelpage 1\n" : "vrwheelpage -1\n" );
+		vrWheel.paged = qtrue;
+	} else if ( fabs( d->stick[0] ) < 0.3f ) {
+		vrWheel.paged = qfalse;
+	}
+	if ( VR_WheelHand( dom, pos ) ) {
 		// smoothed: the hand's small shakes don't jitter the pick
 		vrWheel.point[0] += ( ( pos[0] - vrWheel.start[0] ) / VR_WHEEL_REACH - vrWheel.point[0] ) * 0.35f;
 		vrWheel.point[1] += ( ( pos[1] - vrWheel.start[1] ) / VR_WHEEL_REACH - vrWheel.point[1] ) * 0.35f;

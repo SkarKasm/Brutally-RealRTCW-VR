@@ -146,7 +146,7 @@ static const vrHandSpan_t vrHandSpans[] = {
 	{ "dynamite_eng.weap", 18.1f, 0.0f, { 0.0f, 0.0f, 0.0f } },
 	{ "fg42.weap", 13.2f, 15.1f, { 33.1f, -5.9f, -8.7f } },
 	{ "fg42scope.weap", 13.2f, 0.0f, { 0.0f, 0.0f, 0.0f } },
-	{ "flamethrower.weap", 14.6f, 0.0f, { 0.0f, 0.0f, 0.0f } },
+	{ "flamethrower.weap", 0.0f, 14.6f, { 7.4f, -8.5f, -11.1f } },
 	{ "g43.weap", 0.0f, 10.3f, { 20.8f, -3.1f, -5.9f } },
 	{ "garand.weap", 0.0f, 10.2f, { 19.2f, -2.9f, -7.3f } },
 	{ "grenade.weap", 14.8f, 0.0f, { 0.0f, 0.0f, 0.0f } },
@@ -166,17 +166,42 @@ static const vrHandSpan_t vrHandSpans[] = {
 	{ "panzerfaust.weap", 9.6f, 0.0f, { 0.0f, 0.0f, 0.0f } },
 	{ "pineapple.weap", 14.8f, 0.0f, { 0.0f, 0.0f, 0.0f } },
 	{ "poisongas.weap", 15.2f, 0.0f, { 0.0f, 0.0f, 0.0f } },
-	{ "ppsh.weap", 14.8f, 14.0f, { 17.8f, -1.4f, -11.5f } },
+	{ "ppsh.weap", 0.0f, 14.0f, { 17.8f, -1.4f, -11.5f } },
 	{ "revolver.weap", 16.8f, 0.0f, { 0.0f, 0.0f, 0.0f } },
 	{ "smokebomb.weap", 15.2f, 0.0f, { 0.0f, 0.0f, 0.0f } },
 	{ "sniperrifle.weap", 0.0f, 21.2f, { 44.2f, -6.8f, -11.9f } },
 	{ "snooper.weap", 0.0f, 10.2f, { 19.2f, -2.9f, -7.3f } },
 	{ "sten.weap", 0.0f, 18.2f, { 44.8f, -5.9f, -10.9f } },
-	{ "tesla.weap", 13.4f, 0.0f, { 0.0f, 0.0f, 0.0f } },
+	{ "tesla.weap", 0.0f, 13.4f, { 10.0f, -7.5f, -11.0f } },
 	{ "thompson.weap", 11.6f, 11.0f, { 23.9f, -2.9f, -5.4f } },
 	{ "tt33.weap", 15.0f, 0.0f, { 0.0f, 0.0f, 0.0f } },
-	{ "venom.weap", 13.7f, 0.0f, { 0.0f, 0.0f, 0.0f } },
+	{ "venom.weap", 0.0f, 13.7f, { 20.9f, -9.9f, -16.7f } },
 };
+
+// guns whose own hands are modelled too big for the gun (the gun came out a toy next to the
+// MP34 or the M1 Garand): drawn this much bigger, their hands shrunk back to life size (the
+// trigger hand by vr_rifle_hands.py RIFLE_SHRINK, the support hand by CG_VR_StretchHand)
+typedef struct {
+	const char  *weap;
+	float       size;
+} vrGunSize_t;
+
+static const vrGunSize_t vrGunSizes[] = {
+	{ "ppsh.weap", 1.33f },
+	{ "garand.weap", 1.3f },
+	{ "snooper.weap", 1.3f },
+};
+
+static float CG_VR_GunSizeFix( const char *file ) {
+	int i;
+
+	for ( i = 0; i < (int)ARRAY_LEN( vrGunSizes ); i++ ) {
+		if ( !Q_stricmp( vrGunSizes[i].weap, file ) ) {
+			return vrGunSizes[i].size;
+		}
+	}
+	return 1.0f;
+}
 
 static float CG_VR_GunSize( void ) {
 	char buf[16];
@@ -204,12 +229,13 @@ float CG_VR_ScaleFor( int weapon ) {
 				// (both: the bigger one, the smaller one's palm and fingers are stretched to
 				// match, CG_VR_StretchHand)
 				s = VR_HAND_SPAN / ( vrHandSpans[i].trig > vrHandSpans[i].sup ? vrHandSpans[i].trig : vrHandSpans[i].sup );
+				s *= CG_VR_GunSizeFix( file );
 				break;
 			}
 		}
 	}
 	s *= CG_VR_GunSize();
-	return s < 0.3f ? 0.3f : ( s > 1.0f ? 1.0f : s );
+	return s < 0.3f ? 0.3f : ( s > 1.5f ? 1.5f : s );
 }
 
 // the held gun's size, also for the game's reloading (g_vr.c)
@@ -251,16 +277,16 @@ static const vrHandPose_t vrHandPoses[] = {
 	{ "airstrike.weap", -1, { 9.2f, -15.4f, -15.6f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "akimbo.weap", -1, { 14.8f, -14.9f, -14.2f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "bar.weap", -1, { 2.9f, -10.3f, -7.4f }, 2, { 33.7f, -2.2f, -15.8f } },
-	{ "browning.weap", -2, { 0.0f, 0.0f, 0.0f }, 1, { 39.2f, 5.5f, -14.8f } },
+	{ "browning.weap", -3, { -1.2f, -11.3f, -8.8f }, 1, { 39.2f, 5.5f, -14.8f } },
 	{ "colt.weap", -1, { 13.4f, -10.4f, -12.4f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "dualtt33.weap", -1, { 16.1f, -13.8f, -13.7f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "dynamite.weap", -1, { 13.2f, -15.8f, -20.2f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "dynamite_eng.weap", -1, { 13.2f, -15.8f, -20.2f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "fg42.weap", -1, { 10.0f, -10.5f, -9.8f }, 2, { 29.0f, -1.9f, -12.8f } },
 	{ "fg42scope.weap", -1, { 10.0f, -10.5f, -9.8f }, -2, { 0.0f, 0.0f, 0.0f } },
-	{ "flamethrower.weap", -1, { 4.0f, -3.9f, -11.9f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "flamethrower.weap", -3, { -7.1f, -12.7f, -9.7f }, -1, { 4.0f, -3.9f, -11.9f } },
 	{ "g43.weap", -3, { 0.1f, -5.3f, -3.5f }, 0, { 17.4f, -0.6f, -8.2f } },
-	{ "garand.weap", -2, { 0.0f, 0.0f, 0.0f }, 0, { 15.2f, -0.4f, -7.1f } },
+	{ "garand.weap", -3, { -0.2f, -4.6f, -5.5f }, 0, { 15.2f, -0.4f, -7.1f } },
 	{ "grenade.weap", -1, { 14.4f, -14.5f, -17.4f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "hdm.weap", -1, { 12.0f, -12.2f, -13.3f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "ithaca.weap", -3, { 2.0f, -10.7f, -6.7f }, 4, { 34.3f, -0.9f, -14.9f } },
@@ -278,16 +304,16 @@ static const vrHandPose_t vrHandPoses[] = {
 	{ "panzerfaust.weap", 4, { 1.2f, -9.0f, -9.1f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "pineapple.weap", -1, { 15.4f, -14.7f, -17.1f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "poisongas.weap", -1, { 9.2f, -15.4f, -15.6f }, -2, { 0.0f, 0.0f, 0.0f } },
-	{ "ppsh.weap", -1, { -3.3f, -8.8f, -7.3f }, 2, { 14.7f, 3.4f, -13.9f } },
+	{ "ppsh.weap", -3, { -3.0f, -8.2f, -7.0f }, 2, { 14.7f, 3.4f, -13.9f } },
 	{ "revolver.weap", -1, { 8.5f, -12.3f, -12.0f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "smokebomb.weap", -1, { 9.2f, -15.4f, -15.6f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "sniperrifle.weap", -3, { 0.0f, -12.4f, -8.4f }, -1, { 36.9f, -3.3f, -17.3f } },
-	{ "snooper.weap", -2, { 0.0f, 0.0f, 0.0f }, 0, { 15.2f, -0.4f, -7.1f } },
+	{ "snooper.weap", -3, { -0.2f, -4.6f, -5.5f }, 0, { 15.2f, -0.4f, -7.1f } },
 	{ "sten.weap", -3, { 6.9f, -10.9f, -9.0f }, 2, { 39.2f, -2.4f, -15.7f } },
-	{ "tesla.weap", -1, { 6.5f, -2.7f, -10.1f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "tesla.weap", -3, { -4.8f, -10.9f, -7.9f }, -1, { 6.5f, -2.7f, -10.1f } },
 	{ "thompson.weap", -1, { 5.7f, -6.1f, -7.4f }, 2, { 19.6f, -0.3f, -7.5f } },
 	{ "tt33.weap", -1, { 15.9f, -9.6f, -11.8f }, -2, { 0.0f, 0.0f, 0.0f } },
-	{ "venom.weap", 4, { 16.4f, -5.8f, -17.5f }, -2, { 0.0f, 0.0f, 0.0f } },
+	{ "venom.weap", -3, { 0.2f, -11.5f, -11.9f }, 4, { 16.4f, -5.8f, -17.5f } },
 };
 
 static const vrHandPose_t *CG_VR_HandPose( int weapon ) {
@@ -385,16 +411,16 @@ static const vrArmEnd_t vrArmEnds[] = {
 	{ "airstrike.weap", 1, { -21.5f, -17.9f, -23.8f }, 0, { 0, 0, 0 } },
 	{ "akimbo.weap", 1, { -14.9f, -35.6f, -16.7f }, 0, { 0, 0, 0 } },
 	{ "bar.weap", 1, { -28.3f, -18.1f, 7.2f }, 1, { 25.5f, 2.9f, -16.5f } },
-	{ "browning.weap", 0, { 0, 0, 0 }, 1, { -6.2f, 14.1f, -21.4f } },
+	{ "browning.weap", 1, { -42.1f, -21.6f, 10.4f }, 1, { -6.2f, 14.1f, -21.4f } },
 	{ "colt.weap", 1, { -18.7f, -32.4f, -15.7f }, 0, { 0, 0, 0 } },
 	{ "dualtt33.weap", 1, { -9.4f, -31.8f, -15.8f }, 0, { 0, 0, 0 } },
 	{ "dynamite.weap", 1, { -21.8f, -22.4f, -34.7f }, 0, { 0, 0, 0 } },
 	{ "dynamite_eng.weap", 1, { -21.8f, -22.4f, -34.7f }, 0, { 0, 0, 0 } },
 	{ "fg42.weap", 1, { -16.3f, -17.8f, -3.5f }, 1, { 24.2f, 6.4f, -14.5f } },
 	{ "fg42scope.weap", 1, { -16.3f, -17.8f, -3.5f }, 0, { 0, 0, 0 } },
-	{ "flamethrower.weap", 1, { -18.7f, 16.0f, -10.9f }, 0, { 0, 0, 0 } },
+	{ "flamethrower.weap", 1, { -34.4f, -19.6f, 3.1f }, 1, { -18.7f, 16.0f, -10.9f } },
 	{ "g43.weap", 1, { -19.1f, -10.2f, 5.5f }, 1, { 0.3f, 10.4f, -15.5f } },
-	{ "garand.weap", 0, { 0, 0, 0 }, 1, { -5.0f, 6.8f, -8.6f } },
+	{ "garand.weap", 1, { -14.8f, -8.3f, 1.4f }, 1, { -5.0f, 6.8f, -8.6f } },
 	{ "grenade.weap", 1, { -12.1f, -30.5f, -21.5f }, 0, { 0, 0, 0 } },
 	{ "hdm.weap", 1, { -19.1f, -36.5f, -14.6f }, 0, { 0, 0, 0 } },
 	{ "ithaca.weap", 1, { -35.0f, -20.0f, 10.6f }, 1, { -0.4f, 23.4f, -13.5f } },
@@ -412,16 +438,16 @@ static const vrArmEnd_t vrArmEnds[] = {
 	{ "panzerfaust.weap", 1, { -15.7f, -13.2f, -19.3f }, 0, { 0, 0, 0 } },
 	{ "pineapple.weap", 1, { -10.8f, -30.4f, -21.9f }, 0, { 0, 0, 0 } },
 	{ "poisongas.weap", 1, { -21.5f, -17.8f, -23.8f }, 0, { 0, 0, 0 } },
-	{ "ppsh.weap", 1, { -34.0f, -13.5f, -1.8f }, 1, { 0.8f, 17.9f, -29.9f } },
+	{ "ppsh.weap", 1, { -22.7f, -13.1f, 2.2f }, 1, { 0.8f, 17.9f, -29.9f } },
 	{ "revolver.weap", 1, { -25.7f, -23.7f, -12.9f }, 0, { 0, 0, 0 } },
 	{ "smokebomb.weap", 1, { -21.5f, -17.8f, -23.8f }, 0, { 0, 0, 0 } },
 	{ "sniperrifle.weap", 1, { -39.7f, -22.4f, 10.1f }, 1, { -2.3f, 16.8f, -28.2f } },
-	{ "snooper.weap", 0, { 0, 0, 0 }, 1, { -5.0f, 6.8f, -8.6f } },
+	{ "snooper.weap", 1, { -14.8f, -8.3f, 1.4f }, 1, { -5.0f, 6.8f, -8.6f } },
 	{ "sten.weap", 1, { -27.3f, -19.5f, 7.0f }, 1, { 6.6f, 19.0f, -21.1f } },
-	{ "tesla.weap", 1, { -12.7f, 17.2f, -9.8f }, 0, { 0, 0, 0 } },
+	{ "tesla.weap", 1, { -30.0f, -17.3f, 3.9f }, 1, { -12.7f, 17.2f, -9.8f } },
 	{ "thompson.weap", 1, { -18.0f, -12.8f, -7.0f }, 1, { 17.8f, 2.9f, -8.0f } },
 	{ "tt33.weap", 1, { -9.6f, -27.6f, -14.3f }, 0, { 0, 0, 0 } },
-	{ "venom.weap", 1, { -10.0f, 5.2f, -21.7f }, 0, { 0, 0, 0 } },
+	{ "venom.weap", 1, { -25.5f, -18.0f, 0.1f }, 1, { -10.0f, 5.2f, -21.7f } },
 };
 
 #define VR_FOREARM  10.5f       // wrist to elbow, game units (about 27cm)
@@ -692,11 +718,13 @@ float CG_VR_HandStretch( int weapon, qboolean trig ) {
 	file = COM_SkipPath( (char *)file );
 	for ( i = 0; i < ARRAY_LEN( vrHandSpans ); i++ ) {
 		if ( !Q_stricmp( vrHandSpans[i].weap, file ) ) {
+			float f = 1.0f;
 			if ( vrHandSpans[i].trig > 0 && vrHandSpans[i].sup > 0 ) {
-				float f = trig ? vrHandSpans[i].sup / vrHandSpans[i].trig : vrHandSpans[i].trig / vrHandSpans[i].sup;
-				return f > 1.0f ? f : 1.0f;
+				f = trig ? vrHandSpans[i].sup / vrHandSpans[i].trig : vrHandSpans[i].trig / vrHandSpans[i].sup;
+				f = f > 1.0f ? f : 1.0f;
 			}
-			break;
+			// a gun drawn bigger than its hands make it: its hands shrunk back
+			return f / CG_VR_GunSizeFix( file );
 		}
 	}
 	return 1.0f;
@@ -719,7 +747,7 @@ void CG_VR_StretchHand( int weapon, int piece, refEntity_t *ent ) {
 	} else if ( piece == hp->supPiece ) {
 		f = CG_VR_HandStretch( weapon, qfalse );
 	}
-	if ( f < 1.02f ) {
+	if ( f <= 0 || ( f > 0.98f && f < 1.02f ) ) {
 		return;     // the bigger hand (or the same): as modelled
 	}
 	h = piece == hp->trigPiece ? dom : !dom;
@@ -1148,6 +1176,83 @@ it's out of the gun, the slide / bolt / pump slides back while pulled or locked 
 Returns qfalse if the part shouldn't be drawn.
 =================
 */
+// the slide (bolt) stays back once the magazine (clip) is empty
+static qboolean CG_VR_SlideLocks( int weapon ) {
+	switch ( weapon ) {
+	case WP_LUGER:
+	case WP_SILENCER:
+	case WP_COLT:
+	case WP_TT33:
+	case WP_HDM:
+	case WP_M1GARAND:
+	case WP_G43:
+	case WP_M1941:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
+// tag b expressed in tag a's space (both on the same model and frame)
+static void CG_VR_TagRelative( const orientation_t *a, const orientation_t *b, orientation_t *out ) {
+	vec3_t d;
+	int i;
+
+	VectorSubtract( b->origin, a->origin, d );
+	for ( i = 0; i < 3; i++ ) {
+		out->origin[i] = DotProduct( d, a->axis[i] );
+		out->axis[i][0] = DotProduct( b->axis[i], a->axis[0] );
+		out->axis[i][1] = DotProduct( b->axis[i], a->axis[1] );
+		out->axis[i][2] = DotProduct( b->axis[i], a->axis[2] );
+	}
+}
+
+/*
+=================
+CG_VR_RevolverOpen
+
+The revolver's cylinder swung out once it's empty, as its reload animation has it (frame
+VR_REVOLVER_OPEN, misc/vr: measured from the hands model's tags): the crane and cylinder
+(parts 0 and 5) placed as at that frame, relative to the gun, which stays where it is. The
+spent cases (parts 2-4) are left out.
+=================
+*/
+#define VR_REVOLVER_OPEN    122
+
+static qboolean CG_VR_RevolverOpen( int part, refEntity_t *parent, refEntity_t *ent ) {
+	orientation_t gunIdle, gunOpen, partOpen, rel, final;
+	refEntity_t open;
+	const char *tag = part == 0 ? "tag_barrel" : va( "tag_barrel%d", part + 1 );
+	int i;
+
+	if ( part >= 2 && part <= 4 ) {
+		return qfalse;
+	}
+	if ( part != 0 && part != 5 ) {
+		return qtrue;
+	}
+	open = *parent;
+	open.frame = open.oldframe = VR_REVOLVER_OPEN;
+	open.backlerp = 0;
+	trap_R_LerpTag( &gunIdle, parent, "tag_weapon", 0 );
+	trap_R_LerpTag( &gunOpen, &open, "tag_weapon", 0 );
+	trap_R_LerpTag( &partOpen, &open, tag, 0 );
+	CG_VR_TagRelative( &gunOpen, &partOpen, &rel );
+	// back into the hands model's space on the gun as it is now
+	VectorCopy( gunIdle.origin, final.origin );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( final.origin, rel.origin[i], gunIdle.axis[i], final.origin );
+	}
+	MatrixMultiply( rel.axis, gunIdle.axis, final.axis );
+	VectorCopy( parent->origin, ent->origin );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( ent->origin, final.origin[i], parent->axis[i], ent->origin );
+	}
+	MatrixMultiply( final.axis, ( (refEntity_t *)parent )->axis, ent->axis );
+	VectorCopy( ent->origin, ent->oldorigin );
+	return qtrue;
+}
+
 qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_t *ent ) {
 	vrWeaponGeom_t geom;
 	vec3_t dir;
@@ -1157,14 +1262,23 @@ qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_
 	qboolean magOut, chargeHeld, chambered;
 	float pull;
 
+	if ( !cgvr.active && !cgvr.inspect ) {
+		return qtrue;
+	}
 	if ( cgvr.inspect ) {
 		// vr_inspect: cycle the action and the magazine so they can be checked
 		pull = 0.5f + 0.5f * sin( cg.time * 0.003f );
 		chargeHeld = qtrue;
 		magOut = ( cg.time / 1500 ) & 1;
 		chambered = qtrue;
-	} else if ( !cgvr.active || !cgVR->manualReload ) {
-		return qtrue;
+	} else if ( weapon == WP_REVOLVER && !cgVR->dualWield &&
+				cg.predictedPlayerState.ammoclip[BG_FindClipForWeapon( WP_REVOLVER )] <= 0 &&
+				cg.predictedPlayerState.weaponstate != WEAPON_RELOADING ) {
+		return CG_VR_RevolverOpen( part, parent, ent );
+	} else if ( !cgVR->manualReload ) {
+		pull = 0;
+		chargeHeld = magOut = qfalse;
+		chambered = qtrue;
 	} else {
 		pull = cgVR->chargePull;
 		chargeHeld = cgVR->chargeHeld;
@@ -1196,6 +1310,19 @@ qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_
 		} else if ( !chambered && cls == VRR_MAG ) {
 			amount = 1.0f;      // slide locked back on an empty magazine (a bolt action's bolt
 								// stays shut after a shot until it's worked)
+		}
+		if ( !cgvr.inspect && ( cls == VRR_MAG || cls == VRR_ENBLOC ) ) {
+			// the slide / bolt cycles with each shot, and a pistol's slide (the Garand's bolt)
+			// locks back on the last round, manual reloading or not
+			int dt = cg.time - cgvr.shotTime[cgvr.dualDraw == 2 ? 1 : 0];
+			int clip = BG_FindClipForWeapon( cg.predictedPlayerState.weapon );
+			if ( dt >= 0 && dt < 90 && cgvr.shotTime[cgvr.dualDraw == 2 ? 1 : 0] ) {
+				amount = MAX( amount, 1.0f - dt / 90.0f );
+			}
+			if ( !cgVR->dualWield && clip >= 0 && cg.predictedPlayerState.ammoclip[clip] <= 0 &&
+				 cg.predictedPlayerState.weaponstate != WEAPON_RELOADING && CG_VR_SlideLocks( weapon ) ) {
+				amount = 1.0f;
+			}
 		}
 		if ( amount > 0 ) {
 			BG_VR_ModelDir( parent->axis, geom.chargeDir, dir );

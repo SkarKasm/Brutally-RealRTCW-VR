@@ -6157,6 +6157,7 @@ void CG_FireWeapon( centity_t *cent, int event ) {
 	// impact shows straight away
 	if ( cg.snap && ent->number == cg.snap->ps.clientNum && ent->weapon != WP_KNIFE ) {
 		cgvr.lastShotLeft = cgVR && cgVR->dualWield && cgVR->akimboLeft;
+		cgvr.shotTime[cgvr.lastShotLeft ? 1 : 0] = cg.time;
 		CG_VR_Haptic( cgvr.lastShotLeft ? !CG_VR_DominantHand() : CG_VR_DominantHand(), 0.8f, 60 );
 		if ( !cgvr.lastShotLeft ) {
 			CG_VR_RecoilKick( ent->weapon );

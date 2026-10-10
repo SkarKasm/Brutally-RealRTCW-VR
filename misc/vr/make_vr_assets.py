@@ -516,6 +516,13 @@ GRIP_POINT = {
     "weapons/sten.weap": (12.0, -12.5),
     "weapons/mp34.weap": (10.0, -16.0),
     "weapons/ithaca.weap": (7.5, -10.5),
+    "weapons/venom.weap": (4.0, -8.5, -14.5),
+    "weapons/flamethrower.weap": (-3.0, -9.5, -12.5),
+    "weapons/tesla.weap": (-1.0, -8.0, -10.5),
+    "weapons/browning.weap": (5.0, -6.5, -13.0),
+    "weapons/ppsh.weap": (0.0, -9.0),
+    "weapons/garand.weap": (2.0, -7.0),
+    "weapons/snooper.weap": (2.0, -7.0),
 }
 
 # on guns where both hands are on screen (MP40, Thompson) the trigger hand sits about this
@@ -987,7 +994,8 @@ def main():
             continue
         palm = [palm[0] + GRIP_SHIFT.get(name, 0.0), palm[1], palm[2]]
         if name in GRIP_POINT:
-            palm = [GRIP_POINT[name][0], palm[1], GRIP_POINT[name][1]]
+            gp = GRIP_POINT[name]
+            palm = [gp[0], palm[1], gp[1]] if len(gp) == 2 else list(gp)
         if os.path.basename(name) in MELEE:
             pitch, yaw = blade_correction(pieces, palm)
         else:

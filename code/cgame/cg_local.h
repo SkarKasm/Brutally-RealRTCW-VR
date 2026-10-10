@@ -798,6 +798,7 @@ typedef struct {
 	float stickX;
 	float stickY;
 	int latchedWeapon;
+	int vrPage;         // RealRTCW-VR: the wheel's page, turned with the stick
 	int lastWeapon;
     int openTime;
 } weaponWheel_t;
@@ -1838,6 +1839,7 @@ typedef struct {
 
 	int         gunWeapon;          // first person gun drawn this frame, and its pose
 	qboolean    lastShotLeft;       // dual pistols: the off hand's gun fired last
+	int         shotTime[2];        // when the gun hand's (0) / off hand's (1) gun last fired
 	vec3_t      gunOrigin;
 	vec3_t      gunAxis[3];
 	int         lastMagDrop;        // cgVR->magDropCount already handled
@@ -1870,6 +1872,12 @@ void CG_VR_AddHands( void );
 qboolean CG_VR_Binocs( playerState_t *ps );
 // the weapon wheel's binoculars (VR): not a weapon, they go in the gun hand
 #define VR_WHEEL_BINOCS     ( MAX_WEAPONS + 1 )
+// and its quick save / quick load buttons (on the last page, with the binoculars)
+#define VR_WHEEL_QSAVE      ( MAX_WEAPONS + 2 )
+#define VR_WHEEL_QLOAD      ( MAX_WEAPONS + 3 )
+#define VR_WHEEL_ITEM( w )  ( ( w ) >= VR_WHEEL_BINOCS && ( w ) <= VR_WHEEL_QLOAD )
+#define VR_WHEEL_PAGE       6   // weapons on one page of the VR wheel
+int CG_WeaponWheelPages( void );
 qboolean CG_VR_WeaponPart( int weapon, int part, refEntity_t *parent, refEntity_t *ent );
 void CG_VR_AddReloadItems( void );
 qboolean CG_VR_Inspect( playerState_t *ps );

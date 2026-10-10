@@ -252,6 +252,15 @@ static void CG_WeaponWheelUp_f( void ) {
 					 ? cg.weaponWheel.latchedWeapon
 					 : cg.weaponWheel.hoveredWeapon;
 
+	// RealRTCW-VR: quick save / quick load from the wheel
+	if ( weapon == VR_WHEEL_QSAVE ) {
+		trap_SendConsoleCommand( "savegame quicksave\n" );
+		return;
+	}
+	if ( weapon == VR_WHEEL_QLOAD ) {
+		trap_SendConsoleCommand( "loadgame quicksave\n" );
+		return;
+	}
 	// RealRTCW-VR: the binoculars go in the gun hand, a weapon puts them away
 	if ( weapon == VR_WHEEL_BINOCS ) {
 		if ( cgVR ) {
@@ -268,6 +277,20 @@ static void CG_WeaponWheelUp_f( void ) {
 	{
 		CG_FinishWeaponChange(cg.weaponSelect, weapon);
 	}
+}
+
+// RealRTCW-VR: the gun hand's stick turns the wheel's pages (vrwheelpage 1 / -1)
+static void CG_WeaponWheelPage_f( void ) {
+	char buf[16];
+	int pages = CG_WeaponWheelPages();
+
+	if ( !cg.weaponWheel.active || pages < 2 ) {
+		return;
+	}
+	trap_Argv( 1, buf, sizeof( buf ) );
+	cg.weaponWheel.vrPage = ( cg.weaponWheel.vrPage + ( atoi( buf ) < 0 ? -1 : 1 ) + pages ) % pages;
+	cg.weaponWheel.hoveredWeapon = cg.weaponWheel.latchedWeapon = cg.weaponWheel.lastWeapon = 0;
+	CG_VR_Haptic( CG_VR_DominantHand(), 0.4f, 25 );
 }
 
 // RealRTCW-VR: the wheel closed by another button: nothing picked
@@ -841,7 +864,8 @@ static consoleCommand_t commands[] = {
 	{"deletesound", CG_DeleteSound_f},
 	{"+weaponwheel", CG_WeaponWheelDown_f},
 	{"-weaponwheel", CG_WeaponWheelUp_f},
-	{"vrweaponwheelcancel", CG_WeaponWheelCancel_f}
+	{"vrweaponwheelcancel", CG_WeaponWheelCancel_f},
+	{"vrwheelpage", CG_WeaponWheelPage_f}
 };
 
 /*
