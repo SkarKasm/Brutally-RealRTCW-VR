@@ -54,8 +54,8 @@ outdir = sys.argv[2]
 # the palm on each gun's wrist (first person model space, x forward, z up); y stays the
 # measured grip's
 RIFLE_PALMS = {
-    "mauser": (9.0, -11.5),
-    "sniperrifle": (9.0, -11.5),
+    "mauser": (6.0, -12.5),
+    "sniperrifle": (6.0, -12.5),
     "mosin": (4.5, -7.5),
     "g43": (3.0, -5.5),
     "m1garand": (5.0, -10.5),

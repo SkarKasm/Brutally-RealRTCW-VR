@@ -503,8 +503,8 @@ GRIP_SHIFT = {
 # renders (just behind the trigger guard); vr_rifle_hands.py puts the BAR's trigger hand there.
 # (x, z), y stays the measured one. Overrides GRIP_SHIFT.
 GRIP_POINT = {
-    "weapons/mauser.weap": (9.0, -11.5),
-    "weapons/sniperrifle.weap": (9.0, -11.5),
+    "weapons/mauser.weap": (6.0, -12.5),
+    "weapons/sniperrifle.weap": (6.0, -12.5),
     "weapons/mosin.weap": (4.5, -7.5),
     "weapons/g43.weap": (3.0, -5.5),
     "weapons/m1garand.weap": (5.0, -10.5),
