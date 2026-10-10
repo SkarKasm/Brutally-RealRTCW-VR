@@ -1351,15 +1351,24 @@ static void VR_UpdateTracking( void ) {
 		if ( !xr.hands[!dom].down[VRB_SQUEEZE] || !com_vr.handValid[!dom] ) {
 			xr.steadyLatched = qfalse;
 		} else if ( !xr.hands[!dom].wasDown[VRB_SQUEEZE] ) {
-			vec3_t rel, fwd, lateral;
+			vec3_t rel, fwd, right, up, lateral, spot;
 			float along;
 
 			VectorSubtract( com_vr.handOrigin[!dom], com_vr.handOrigin[dom], rel );
-			AngleVectors( com_vr.weaponAngles, fwd, NULL, NULL );
-			along = DotProduct( rel, fwd );
-			VectorMA( rel, -along, fwd, lateral );
-			xr.steadyLatched = along > 0.25f * vr_worldScale->value &&
-							   VectorLength( lateral ) < 0.15f * vr_worldScale->value;
+			AngleVectors( com_vr.weaponAngles, fwd, right, up );
+			if ( com_vr.supportValid ) {
+				// where the flat game's support hand holds this gun (cgame measures it), with
+				// room around it
+				VectorScale( fwd, com_vr.supportRel[0], spot );
+				VectorMA( spot, -com_vr.supportRel[1], right, spot );
+				VectorMA( spot, com_vr.supportRel[2], up, spot );
+				xr.steadyLatched = Distance( rel, spot ) < 0.14f * vr_worldScale->value;
+			} else {
+				along = DotProduct( rel, fwd );
+				VectorMA( rel, -along, fwd, lateral );
+				xr.steadyLatched = along > 0.25f * vr_worldScale->value &&
+								   VectorLength( lateral ) < 0.15f * vr_worldScale->value;
+			}
 		}
 
 		com_vr.twoHanded = qfalse;
@@ -1886,6 +1895,14 @@ static void VR_GameControls( void ) {
 	}
 	VR_WheelQuietStick( d );
 
+	// a tap of the gun hand grip: the off hand lets go of a gun held two handed (it keeps its
+	// grip closed; close it again to take hold), free to work the bolt with its trigger
+	if ( VR_Released( dom, VRB_SQUEEZE ) && !xr.rightGripCombo &&
+		 cls.realtime - d->downTime[VRB_SQUEEZE] < VR_WHEEL_HOLD_MS && xr.steadyLatched ) {
+		xr.steadyLatched = qfalse;
+		VR_Haptic( off, 0.3f, 25 );
+	}
+
 	// weapon hand
 	// firing doesn't go through the command buffer (+attack would only reach the usercmd
 	// a frame later): CL_VR_CreateCmd sets the button directly
@@ -2392,6 +2409,8 @@ void CL_VR_ProcessInput( void ) {
 	// grip buttons for the game's hand interactions (reloading, grabbing)
 	com_vr.gripDown[VR_HAND_LEFT] = !menu && xr.hands[VR_HAND_LEFT].down[VRB_SQUEEZE];
 	com_vr.gripDown[VR_HAND_RIGHT] = !menu && xr.hands[VR_HAND_RIGHT].down[VRB_SQUEEZE];
+	com_vr.triggerDown[VR_HAND_LEFT] = !menu && xr.hands[VR_HAND_LEFT].down[VRB_TRIGGER];
+	com_vr.triggerDown[VR_HAND_RIGHT] = !menu && xr.hands[VR_HAND_RIGHT].down[VRB_TRIGGER];
 	if ( menu != xr.menuMode ) {
 		xr.menuMode = menu;
 		VR_ReleaseAllCommands();

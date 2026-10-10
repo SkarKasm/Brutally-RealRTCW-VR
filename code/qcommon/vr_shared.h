@@ -113,6 +113,7 @@ typedef struct vrShared_s {
 	int     ejectCount;         // bumped by the "drop magazine" gesture (the weapon hand's gun)
 	int     ejectOffCount;      // dual wielding: the off hand's gun drops its magazine
 	int     gripDown[2];        // grip buttons held, indexed by VR_HAND_*
+	int     triggerDown[2];     // triggers held (the off hand's grabs the bolt / slide)
 
 	//
 	// haptics: cgame/game request a pulse, the engine plays and clears it
@@ -133,6 +134,8 @@ typedef struct vrShared_s {
 	float   recoilBack;         // and how far it jolts back in the hand (game units)
 	int     dualWield;          // a pistol in each hand: the off hand's trigger fires its own
 	float   weaponScale;        // guns and hands drawn this size (1 = the flat game's models)
+	int     supportValid;       // the held gun has a support hand: the off hand takes hold there
+	float   supportRel[3];      // where, from the gun hand: forward, left, up along the gun (game units)
 
 	//
 	// written by the engine

@@ -452,6 +452,22 @@ GRIP_SHIFT = {
     "weapons/snooper.weap": -12.0,
 }
 
+# long guns with no trigger hand on screen: the palm on the wrist, measured by eye from side
+# renders (just behind the trigger guard); vr_rifle_hands.py puts the BAR's trigger hand there.
+# (x, z), y stays the measured one. Overrides GRIP_SHIFT.
+GRIP_POINT = {
+    "weapons/mauser.weap": (9.0, -11.5),
+    "weapons/sniperrifle.weap": (9.0, -11.5),
+    "weapons/mosin.weap": (4.5, -7.5),
+    "weapons/g43.weap": (3.0, -5.5),
+    "weapons/m1garand.weap": (5.0, -10.5),
+    "weapons/m7.weap": (5.0, -10.5),
+    "weapons/mp44.weap": (15.0, -13.8),
+    "weapons/sten.weap": (12.0, -12.5),
+    "weapons/mp34.weap": (10.0, -16.0),
+    "weapons/ithaca.weap": (7.5, -10.5),
+}
+
 # on guns where both hands are on screen (MP40, Thompson) the trigger hand sits about this
 # far behind the support hand
 SUPPORT_TO_GRIP = (-18.0, -1.0, 0.0)
@@ -894,6 +910,8 @@ def main():
         if not palm:
             continue
         palm = [palm[0] + GRIP_SHIFT.get(name, 0.0), palm[1], palm[2]]
+        if name in GRIP_POINT:
+            palm = [GRIP_POINT[name][0], palm[1], GRIP_POINT[name][1]]
         if os.path.basename(name) in MELEE:
             pitch, yaw = blade_correction(pieces, palm)
         else:

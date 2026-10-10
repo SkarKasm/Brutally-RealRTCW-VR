@@ -36,7 +36,7 @@ the Free Software Foundation, either version 3 of the License, or
 #define VR_CHEST_DROP       22.0f   // the pouch is this far below the eyes (low on the chest,
 									// clear of a shouldered rifle's bolt; cgame draws it there)
 #define VR_INSERT_RADIUS    8.0f    // ~20cm around the magazine well / loading port
-#define VR_CHARGE_RADIUS    11.0f   // ~28cm around the slide / bolt / pump
+#define VR_CHARGE_RADIUS    5.5f    // ~14cm around the slide / bolt / pump handle (its trigger takes it)
 #define VR_ACTION_RADIUS    9.0f    // ~23cm around the gun hand also reaches the action
 #define VR_CHARGE_PULL      0.6f    // fraction of the travel that counts as racked
 #define VR_GRAB_MARGIN      18.0f   // reach around a body's box (its ragdoll lies a little off it)
@@ -53,6 +53,7 @@ typedef struct {
 	int         lastEjectOff;
 	int         hipSince[2];        // dual wielding: when each hand reached its hip, 0 not there
 	qboolean    gripWas;
+	qboolean    triggerWas;         // the off hand's trigger: it works the bolt / slide / pump
 
 	int         heldItem;
 	qboolean    chargeHeld;
@@ -344,8 +345,13 @@ static qboolean G_VR_Reload( gentity_t *ent, const vec3_t offHand, qboolean pres
 	int *reserve = &ps->ammo[ammoIndex];
 	vrWeaponGeom_t geom;
 	vec3_t hand, aim, origin, axis[3], magPoint, chargePoint, chargeDir, eye, chest, d;
-	qboolean used = qfalse, wantsAmmo;
+	qboolean used = qfalse, wantsAmmo, trigPressed, trigReleased, trigDown;
 	int off = !dom, n;
+
+	trigDown = gVR->triggerDown[off] && gVR->handValid[off];
+	trigPressed = trigDown && !vrp.triggerWas;
+	trigReleased = !trigDown && vrp.triggerWas;
+	vrp.triggerWas = trigDown;
 
 	if ( !gVR->manualReload || cls == VRR_NONE ) {
 		vrp.heldItem = 0;
@@ -397,12 +403,8 @@ static qboolean G_VR_Reload( gentity_t *ent, const vec3_t offHand, qboolean pres
 	} else {
 		wantsAmmo = *clip < maxclip;
 	}
-	// (a hand on the gun's action works the action: a shouldered rifle's bolt is close to the
-	// pouch, and after a shot the rifle both wants ammo and needs its bolt worked)
-	if ( pressed && !vrp.heldItem && wantsAmmo && *reserve > 0 && Distance( offHand, chest ) < VR_CHEST_RADIUS &&
-		 !( ( cls == VRR_MAG || cls == VRR_BOLT || cls == VRR_PUMP || cls == VRR_SHELLS ) &&
-			( Distance( offHand, chargePoint ) < VR_CHARGE_RADIUS || ( cls != VRR_PUMP && Distance( offHand, hand ) < VR_ACTION_RADIUS ) ) &&
-			( !vrp.chambered[weapon] || Distance( offHand, chargePoint ) < Distance( offHand, chest ) ) ) ) {
+	// (the grip takes it; the action is worked with the trigger, so the two don't compete)
+	if ( pressed && !vrp.heldItem && wantsAmmo && *reserve > 0 && Distance( offHand, chest ) < VR_CHEST_RADIUS ) {
 		vrp.heldItem = ( cls == VRR_PUMP || cls == VRR_SHELLS ) ? 2 : 1;
 		G_VR_Haptic( off, 0.4f, 30 );
 		used = qtrue;
@@ -441,12 +443,12 @@ static qboolean G_VR_Reload( gentity_t *ent, const vec3_t offHand, qboolean pres
 
 	// rack the slide / work the bolt / pump
 	if ( cls == VRR_MAG || cls == VRR_BOLT || cls == VRR_PUMP || cls == VRR_SHELLS ) {
-		// the measured handle, or (except for a pump's forestock) anywhere close to the gun
-		// hand, where slides and bolts are
-		qboolean nearAction = Distance( offHand, chargePoint ) < VR_CHARGE_RADIUS ||
+		// the measured handle (the off hand's trigger takes it); unmeasured, anywhere close to
+		// the gun hand, where slides and bolts are
+		qboolean nearAction = geom.chargePart >= 0 ? Distance( offHand, chargePoint ) < VR_CHARGE_RADIUS :
 							  ( cls != VRR_PUMP && Distance( offHand, hand ) < VR_ACTION_RADIUS );
 
-		if ( pressed && !used && !vrp.heldItem && !vrp.chargeHeld && nearAction ) {
+		if ( trigPressed && !vrp.heldItem && !vrp.chargeHeld && nearAction ) {
 			vrp.chargeHeld = qtrue;
 			vrp.chargeDone = qfalse;
 			VectorCopy( offHand, vrp.chargeStart );
@@ -467,7 +469,7 @@ static qboolean G_VR_Reload( gentity_t *ent, const vec3_t offHand, qboolean pres
 				G_VR_Haptic( off, 0.9f, 50 );
 				G_VR_Haptic( dom, 0.5f, 50 );
 			}
-			if ( released ) {
+			if ( trigReleased ) {
 				vrp.chargeHeld = qfalse;
 				gVR->chargePull = 0;
 			}
