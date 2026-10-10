@@ -1840,6 +1840,7 @@ typedef struct {
 	int         gunWeapon;          // first person gun drawn this frame, and its pose
 	qboolean    lastShotLeft;       // dual pistols: the off hand's gun fired last
 	int         shotTime[2];        // when the gun hand's (0) / off hand's (1) gun last fired
+	int         brassPending;       // a bolt action / pump fired: its case comes out when it's worked (weapon)
 	vec3_t      gunOrigin;
 	vec3_t      gunAxis[3];
 	int         lastMagDrop;        // cgVR->magDropCount already handled

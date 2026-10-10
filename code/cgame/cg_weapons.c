@@ -6308,6 +6308,14 @@ void CG_FireWeapon( centity_t *cent, int event ) {
 		return;
 	}
 
+	// RealRTCW-VR: a bolt action's or pump gun's case stays in the chamber until the bolt
+	// or pump is worked by hand (CG_VR_ReloadSounds)
+	if ( cgvr.active && cgVR && cgVR->manualReload && cg.snap && cent->currentState.number == cg.snap->ps.clientNum &&
+		 ( BG_VR_ReloadClass( cent->currentState.weapon ) == VRR_BOLT || BG_VR_ReloadClass( cent->currentState.weapon ) == VRR_PUMP ) ) {
+		cgvr.brassPending = cent->currentState.weapon;
+		return;
+	}
+
 	// do brass ejection with special delays for some weapons
 	if ( weap->ejectBrassFunc && cg_brassTime.integer > 0 ) {
 		   if (cg.predictedPlayerState.ammoclip[cent->currentState.weapon] == 0) {

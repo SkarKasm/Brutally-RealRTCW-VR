@@ -971,6 +971,11 @@ static void CG_VR_ReloadSounds( void ) {
 		if ( cgVR->chargeHeld && cgVR->chargePull >= 0.6f && !rackPlayed ) {
 			CG_VR_ReloadSound( weapon, VR_SND_RACK );
 			rackPlayed = qtrue;
+			// the spent case comes out now (held back when it fired)
+			if ( cgvr.brassPending == weapon && cg_weapons[weapon].ejectBrassFunc && cg_brassTime.integer > 0 ) {
+				cg_weapons[weapon].ejectBrassFunc( &cg_entities[cg.predictedPlayerState.clientNum], 0 );
+			}
+			cgvr.brassPending = 0;
 		} else if ( cgVR->chambered && !lastChambered && !rackPlayed ) {
 			CG_VR_ReloadSound( weapon, VR_SND_RACK );   // e.g. the Garand's bolt closing on a clip
 		}
