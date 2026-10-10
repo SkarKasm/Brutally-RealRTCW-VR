@@ -178,6 +178,11 @@ static float CG_VR_GunSize( void ) {
 	return BG_VR_WeaponScale( BG_VR_ScalePreset( buf[0] ? atof( buf ) : 1.0f ) );
 }
 
+// the free hand models' size (from the MP40, CG_VR_AddHands)
+static float CG_VR_FreeHandScale( int h ) {
+	return VR_HAND_SPAN * CG_VR_GunSize() / ( h == VR_HAND_LEFT ? VR_FREE_HAND_SPAN_L : VR_FREE_HAND_SPAN_R );
+}
+
 float CG_VR_ScaleFor( int weapon ) {
 	const char *file = weapon > WP_NONE ? BG_GetWeaponFilename( weapon ) : NULL;
 	float s = 0.45f;
@@ -336,6 +341,139 @@ int CG_VR_PieceHandFx( int weapon, int piece ) {
 	return RF_VR_NOHANDS;
 }
 
+/*
+=================
+CG_VR_ArmTargets
+
+Where BJ's own arm joins each HD first person arm drawn this frame: the end of its sleeve
+towards the elbow (misc/vr/vr_arm_ends.py), and the way the sleeve runs from there to the
+hand. cg_vrbody.c bends BJ's arm from the shoulder to that point, so shoulder, BJ's upper
+arm and the HD forearm and hand read as one arm.
+=================
+*/
+typedef struct {
+	const char  *weap;
+	int         hasTrig;
+	vec3_t      trig;       // the trigger hand's sleeve end
+	int         hasSup;
+	vec3_t      sup;        // the support hand's
+} vrArmEnd_t;
+
+static const vrArmEnd_t vrArmEnds[] = {
+	{ "airstrike.weap", 1, { -21.5f, -17.9f, -23.8f }, 0, { 0, 0, 0 } },
+	{ "akimbo.weap", 1, { -14.9f, -35.6f, -16.7f }, 0, { 0, 0, 0 } },
+	{ "bar.weap", 1, { -28.3f, -18.1f, 7.2f }, 1, { 25.5f, 2.9f, -16.5f } },
+	{ "browning.weap", 0, { 0, 0, 0 }, 1, { -6.2f, 14.1f, -21.4f } },
+	{ "colt.weap", 1, { -18.7f, -32.4f, -15.7f }, 0, { 0, 0, 0 } },
+	{ "dualtt33.weap", 1, { -9.4f, -31.8f, -15.8f }, 0, { 0, 0, 0 } },
+	{ "dynamite.weap", 1, { -21.8f, -22.4f, -34.7f }, 0, { 0, 0, 0 } },
+	{ "dynamite_eng.weap", 1, { -21.8f, -22.4f, -34.7f }, 0, { 0, 0, 0 } },
+	{ "fg42.weap", 1, { -16.3f, -17.8f, -3.5f }, 1, { 24.2f, 6.4f, -14.5f } },
+	{ "fg42scope.weap", 1, { -16.3f, -17.8f, -3.5f }, 0, { 0, 0, 0 } },
+	{ "flamethrower.weap", 1, { -18.7f, 16.0f, -10.9f }, 0, { 0, 0, 0 } },
+	{ "g43.weap", 0, { 0, 0, 0 }, 1, { 0.3f, 10.4f, -15.5f } },
+	{ "garand.weap", 0, { 0, 0, 0 }, 1, { -5.0f, 6.8f, -8.6f } },
+	{ "grenade.weap", 1, { -12.1f, -30.5f, -21.5f }, 0, { 0, 0, 0 } },
+	{ "hdm.weap", 1, { -19.1f, -36.5f, -14.6f }, 0, { 0, 0, 0 } },
+	{ "ithaca.weap", 0, { 0, 0, 0 }, 1, { -0.4f, 23.4f, -13.5f } },
+	{ "knife.weap", 1, { -16.3f, -26.7f, -10.8f }, 0, { 0, 0, 0 } },
+	{ "luger.weap", 1, { -15.4f, -31.2f, -11.5f }, 0, { 0, 0, 0 } },
+	{ "luger_silenced.weap", 1, { -15.0f, -31.9f, -7.6f }, 0, { 0, 0, 0 } },
+	{ "m1garand.weap", 0, { 0, 0, 0 }, 1, { 3.9f, 17.8f, -26.7f } },
+	{ "m7.weap", 0, { 0, 0, 0 }, 1, { 3.9f, 17.8f, -26.7f } },
+	{ "mauser.weap", 0, { 0, 0, 0 }, 1, { -2.3f, 16.8f, -28.2f } },
+	{ "mg42m.weap", 0, { 0, 0, 0 }, 1, { -9.0f, 31.2f, -30.5f } },
+	{ "mosin.weap", 0, { 0, 0, 0 }, 1, { 5.8f, 9.5f, -15.9f } },
+	{ "mp34.weap", 0, { 0, 0, 0 }, 1, { 7.0f, 13.6f, -41.2f } },
+	{ "mp40.weap", 1, { -21.4f, -11.6f, -6.8f }, 1, { 13.6f, 9.9f, -17.5f } },
+	{ "mp44.weap", 0, { 0, 0, 0 }, 1, { -2.2f, 17.0f, -17.2f } },
+	{ "panzerfaust.weap", 1, { -15.7f, -13.2f, -19.3f }, 0, { 0, 0, 0 } },
+	{ "pineapple.weap", 1, { -10.8f, -30.4f, -21.9f }, 0, { 0, 0, 0 } },
+	{ "poisongas.weap", 1, { -21.5f, -17.8f, -23.8f }, 0, { 0, 0, 0 } },
+	{ "ppsh.weap", 1, { -34.0f, -13.5f, -1.8f }, 1, { 0.8f, 17.9f, -29.9f } },
+	{ "revolver.weap", 1, { -25.7f, -23.7f, -12.9f }, 0, { 0, 0, 0 } },
+	{ "smokebomb.weap", 1, { -21.5f, -17.8f, -23.8f }, 0, { 0, 0, 0 } },
+	{ "sniperrifle.weap", 0, { 0, 0, 0 }, 1, { -2.3f, 16.8f, -28.2f } },
+	{ "snooper.weap", 0, { 0, 0, 0 }, 1, { -5.0f, 6.8f, -8.6f } },
+	{ "sten.weap", 0, { 0, 0, 0 }, 1, { 6.6f, 19.0f, -21.1f } },
+	{ "tesla.weap", 1, { -12.7f, 17.2f, -9.8f }, 0, { 0, 0, 0 } },
+	{ "thompson.weap", 1, { -18.0f, -12.8f, -7.0f }, 1, { 17.8f, 2.9f, -8.0f } },
+	{ "tt33.weap", 1, { -9.6f, -27.6f, -14.3f }, 0, { 0, 0, 0 } },
+	{ "venom.weap", 1, { -10.0f, 5.2f, -21.7f }, 0, { 0, 0, 0 } },
+};
+
+#define VR_FOREARM  10.5f       // wrist to elbow, game units (about 27cm)
+
+// the free hands (hand_r / hand_l), relative to their palm
+static const vec3_t vrFreeArmEnd[2] = {
+	{ -9.7f, 14.7f, -3.7f },     // VR_HAND_LEFT
+	{ -27.0f, -5.8f, 3.9f },     // VR_HAND_RIGHT
+};
+
+static const vrArmEnd_t *CG_VR_ArmEnd( int weapon ) {
+	const char *file = weapon > WP_NONE && !cg_vanilla_guns.integer ? BG_GetWeaponFilename( weapon ) : NULL;
+	int i;
+
+	for ( i = 0; file && *file && i < ARRAY_LEN( vrArmEnds ); i++ ) {
+		if ( !Q_stricmp( vrArmEnds[i].weap, file ) ) {
+			return &vrArmEnds[i];
+		}
+	}
+	return NULL;
+}
+
+void CG_VR_ArmTargets( qboolean has[2], vec3_t end[2], vec3_t dir[2] ) {
+	const vrHandPose_t *hp;
+	const vrArmEnd_t *ae;
+	vec3_t origin, axis[3], hand;
+	int weapon = cg.predictedPlayerState.weapon;
+	int dom = CG_VR_DominantHand();
+	float len;
+	int h;
+
+	has[0] = has[1] = qfalse;
+	if ( !cgvr.active || cgVR->menuPointer || cg.cameraMode || !CG_VR_DrawHands() ) {
+		return;
+	}
+	hp = CG_VR_HandPose( weapon );
+	ae = CG_VR_ArmEnd( weapon );
+	for ( h = 0; h < 2; h++ ) {
+		if ( !cgVR->handValid[h] ) {
+			continue;
+		}
+		if ( CG_VR_HandOnGun( h ) ) {
+			// on the gun: its own arm piece, posed with the gun
+			qboolean trig = h == dom;
+			if ( !hp || !ae || !( trig ? ae->hasTrig : ae->hasSup ) ) {
+				continue;
+			}
+			CG_VR_WeaponPose( weapon, origin, axis );
+			BG_VR_ModelPoint( origin, axis, trig ? ae->trig : ae->sup, end[h] );
+			BG_VR_ModelPoint( origin, axis, trig ? hp->trigWrist : hp->supWrist, hand );
+		} else {
+			// the free hand model on the controller, drawn as in CG_VR_AddHands
+			float s = CG_VR_FreeHandScale( h );
+			AnglesToAxis( cgvr.handAngles[h], axis );
+			VectorScale( axis[0], s, axis[0] );
+			VectorScale( axis[1], s, axis[1] );
+			VectorScale( axis[2], s, axis[2] );
+			BG_VR_ModelPoint( cgvr.handOrigin[h], axis, vrFreeArmEnd[h], end[h] );
+			VectorCopy( cgvr.handOrigin[h], hand );
+		}
+		VectorSubtract( hand, end[h], dir[h] );
+		len = VectorNormalize( dir[h] );
+		if ( len > 0.1f ) {
+			// the flat game's sleeves run on off the screen: join at the elbow, a forearm's
+			// length up the sleeve, and let the rest of it overlap BJ's upper arm
+			float forearm = CG_VR_HandOnGun( h ) ? VR_FOREARM : VR_FOREARM + 3.5f;   // wrist / palm
+			if ( len > forearm ) {
+				VectorMA( hand, -forearm, dir[h], end[h] );
+			}
+			has[h] = qtrue;
+		}
+	}
+}
+
 // tracked hand models are available and wanted
 qboolean CG_VR_DrawHands( void ) {
 	trap_Cvar_Update( &vr_drawHands );
@@ -370,7 +508,7 @@ void CG_VR_AddHands( void ) {
 		AnglesToAxis( cgvr.handAngles[h], ent.axis );
 		// the free hands are life size too, like the hands on the guns (CG_VR_ScaleFor)
 		{
-			float s = VR_HAND_SPAN * CG_VR_GunSize() / ( h == VR_HAND_LEFT ? VR_FREE_HAND_SPAN_L : VR_FREE_HAND_SPAN_R );
+			float s = CG_VR_FreeHandScale( h );
 			VectorScale( ent.axis[0], s, ent.axis[0] );
 			VectorScale( ent.axis[1], s, ent.axis[1] );
 			VectorScale( ent.axis[2], s, ent.axis[2] );
