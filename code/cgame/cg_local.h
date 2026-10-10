@@ -1825,6 +1825,9 @@ typedef struct {
 	qhandle_t   handModel[2];       // indexed by VR_HAND_*
 	qhandle_t   handSkin;           // the flatscreen hands' gloves and sleeves for this map
 	qhandle_t   bodySkin;           // HD player body with those sleeves (vr_fullBody)
+	vec3_t      shoulder[2];        // world, BJ's shoulders, where the HD arms run to
+	int         shoulderTime;       // cg.time they were set (the full body was drawn)
+	float       armStub[2];         // world length of each HD arm's sleeve past its elbow
 
 	int         gunWeapon;          // first person gun drawn this frame, and its pose
 	qboolean    lastShotLeft;       // dual pistols: the off hand's gun fired last
@@ -1863,6 +1866,8 @@ void CG_WeaponAnimation( playerState_t *ps, weaponInfo_t *weapon, int *weapOld, 
 qboolean CG_VR_DrawHands( void );
 int CG_VR_PieceHandFx( int weapon, int piece );
 void CG_VR_ArmTargets( qboolean has[2], vec3_t end[2], vec3_t dir[2] );
+void CG_VR_PieceArmBend( int weapon, int piece, refEntity_t *ent );
+void CG_VR_ArmBend( int h, refEntity_t *ent );
 void CG_VR_Haptic( int hand, float amplitude, int msec );
 int CG_VR_DominantHand( void );
 qboolean CG_VR_PredictsHits( int weapon );

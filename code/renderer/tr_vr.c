@@ -214,3 +214,79 @@ qboolean R_VR_IsHandSurface( const char *name ) {
 	return Q_stristr( name, "hand" ) || Q_stristr( name, "arm" ) ||
 		   Q_stristr( name, "sleeve" ) || Q_stristr( name, "glove" );
 }
+
+/*
+==============
+R_VR_BendArm
+
+A first person arm's sleeve, already in tess: everything past the elbow (bend[0..2], along
+bend[3..5]) turns to run along bend[6..8] instead, stretched by bend[9], blended over
+bend[10] either side of the elbow so the sleeve bends instead of tearing.
+==============
+*/
+void R_VR_BendArm( const float *bend, int first, int count ) {
+	vec3_t e, a, d, axis, r[3], v, w, n;
+	float s = bend[9], blend = bend[10], c, sn, t, k, x;
+	int i, j;
+
+	VectorCopy( bend + 0, e );
+	VectorCopy( bend + 3, a );
+	VectorCopy( bend + 6, d );
+	if ( VectorNormalize( a ) < 0.001f || VectorNormalize( d ) < 0.001f ) {
+		return;
+	}
+	if ( blend < 0.01f ) {
+		blend = 0.01f;
+	}
+	// the rotation taking a onto d (Rodrigues)
+	CrossProduct( a, d, axis );
+	sn = VectorNormalize( axis );
+	c = DotProduct( a, d );
+	if ( sn < 0.0001f ) {
+		if ( c > 0 ) {
+			VectorSet( axis, 0, 0, 1 );
+			sn = 0;
+		} else {
+			PerpendicularVector( axis, a );     // straight back: half a turn about anything
+			sn = 0;
+		}
+	}
+	k = 1.0f - c;
+	for ( i = 0; i < 3; i++ ) {
+		for ( j = 0; j < 3; j++ ) {
+			r[i][j] = k * axis[i] * axis[j] + ( i == j ? c : 0 );
+		}
+	}
+	r[0][1] -= sn * axis[2]; r[1][0] += sn * axis[2];
+	r[0][2] += sn * axis[1]; r[2][0] -= sn * axis[1];
+	r[1][2] -= sn * axis[0]; r[2][1] += sn * axis[0];
+
+	for ( i = first; i < first + count; i++ ) {
+		float *xyz = tess.xyz[i], *nrm = tess.normal[i];
+		VectorSubtract( xyz, e, v );
+		t = DotProduct( v, a );
+		if ( t < -blend ) {
+			continue;
+		}
+		x = ( t + blend ) / ( 2 * blend );
+		x = x > 1 ? 1 : x;
+		x = x * x * ( 3 - 2 * x );
+		if ( t > 0 ) {
+			VectorMA( v, ( s - 1 ) * t, a, v );
+		}
+		w[0] = DotProduct( r[0], v );
+		w[1] = DotProduct( r[1], v );
+		w[2] = DotProduct( r[2], v );
+		VectorAdd( w, e, w );
+		xyz[0] += ( w[0] - xyz[0] ) * x;
+		xyz[1] += ( w[1] - xyz[1] ) * x;
+		xyz[2] += ( w[2] - xyz[2] ) * x;
+		n[0] = DotProduct( r[0], nrm );
+		n[1] = DotProduct( r[1], nrm );
+		n[2] = DotProduct( r[2], nrm );
+		nrm[0] += ( n[0] - nrm[0] ) * x;
+		nrm[1] += ( n[1] - nrm[1] ) * x;
+		nrm[2] += ( n[2] - nrm[2] ) * x;
+		VectorNormalize( nrm );
+	}
+}

@@ -323,22 +323,21 @@ CG_VR_PieceHandFx
 
 Which of the held weapon's hands to draw on one of its pieces (piece -1: the gun model):
 0 draws that first person arm (hand and sleeve), RF_VR_NOHANDS hides it. With BJ's body
-drawn only the HD hand is kept: his own forearm and elbow bend up to its wrist.
+drawn the sleeve bends at the elbow up to his shoulder (CG_VR_PieceArmBend).
 =================
 */
 int CG_VR_PieceHandFx( int weapon, int piece ) {
 	const vrHandPose_t *hp;
-	int sleeves = CG_VR_BodyArms() ? RF_VR_NOSLEEVES : 0;
 
 	if ( !CG_VR_DrawHands() ) {
 		return 0;
 	}
 	hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
 	if ( hp && piece == hp->trigPiece ) {
-		return sleeves;     // the HD hand (and its sleeve without BJ's body)
+		return 0;       // the whole first person arm, hand and sleeve
 	}
 	if ( hp && piece == hp->supPiece && cgVR->twoHanded ) {
-		return sleeves;
+		return 0;
 	}
 	return RF_VR_NOHANDS;
 }
@@ -404,6 +403,8 @@ static const vrArmEnd_t vrArmEnds[] = {
 	{ "venom.weap", 1, { -10.0f, 5.2f, -21.7f }, 0, { 0, 0, 0 } },
 };
 
+#define VR_FOREARM  10.5f       // wrist to elbow, game units (about 27cm)
+
 // the free hands (hand_r / hand_l), relative to their palm
 static const vec3_t vrFreeArmEnd[2] = {
 	{ -9.7f, 14.7f, -3.7f },     // VR_HAND_LEFT
@@ -463,9 +464,81 @@ void CG_VR_ArmTargets( qboolean has[2], vec3_t end[2], vec3_t dir[2] ) {
 		VectorSubtract( hand, end[h], dir[h] );
 		len = VectorNormalize( dir[h] );
 		if ( len > 0.1f ) {
-			VectorCopy( hand, end[h] );     // BJ's forearm reaches the HD hand's wrist
+			// the HD arm's elbow: a forearm's length up the sleeve from the wrist (the
+			// free hands are measured from the palm); the rest of the sleeve is upper arm
+			float forearm = CG_VR_HandOnGun( h ) ? VR_FOREARM : VR_FOREARM + 3.5f;
+			if ( forearm > len - 1.0f ) {
+				forearm = len - 1.0f;
+			}
+			cgvr.armStub[h] = len - forearm;
+			VectorMA( hand, -forearm, dir[h], end[h] );
 			has[h] = qtrue;
 		}
+	}
+}
+
+/*
+=================
+CG_VR_ArmBend
+
+The HD arm drawn by ent (hand h) bends at its elbow: the sleeve past it turns to run up to
+BJ's shoulder, stretched to reach it, so hand, forearm, elbow and upper arm are one arm
+that follows the controller. Needs the full body drawn (it places the shoulders).
+=================
+*/
+void CG_VR_ArmBend( int h, refEntity_t *ent ) {
+	qboolean has[2];
+	vec3_t elbow[2], dir[2], up, d, p;
+	float len, s, sc;
+	int i;
+
+	ent->vrBendMagic = 0;
+	if ( !CG_VR_BodyArms() || cg.time - cgvr.shoulderTime > 200 ) {
+		return;
+	}
+	CG_VR_ArmTargets( has, elbow, dir );
+	if ( !has[h] || cgvr.armStub[h] < 0.5f ) {
+		return;
+	}
+	VectorSubtract( cgvr.shoulder[h], elbow[h], up );
+	len = VectorLength( up );
+	if ( len < 1.0f ) {
+		return;
+	}
+	s = len / cgvr.armStub[h];
+	s = s < 0.5f ? 0.5f : ( s > 3.5f ? 3.5f : s );
+	sc = VectorLength( ent->axis[0] );
+	if ( sc < 0.001f ) {
+		return;
+	}
+	// into the entity's model space (its axes may carry a uniform scale)
+	VectorSubtract( elbow[h], ent->origin, d );
+	for ( i = 0; i < 3; i++ ) {
+		p[i] = DotProduct( d, ent->axis[i] ) / ( sc * sc );
+	}
+	VectorCopy( p, ent->vrBend + 0 );
+	for ( i = 0; i < 3; i++ ) {
+		ent->vrBend[3 + i] = -DotProduct( dir[h], ent->axis[i] ) / sc;   // past the elbow
+		ent->vrBend[6 + i] = DotProduct( up, ent->axis[i] ) / ( sc * len );
+	}
+	ent->vrBend[9] = s;
+	ent->vrBend[10] = 1.5f / sc;
+	ent->vrBendMagic = VR_BEND_MAGIC;
+}
+
+// the gun's own first person arms: which hand (if any) this piece of the held weapon is
+void CG_VR_PieceArmBend( int weapon, int piece, refEntity_t *ent ) {
+	const vrHandPose_t *hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
+	int dom = CG_VR_DominantHand();
+
+	ent->vrBendMagic = 0;
+	if ( !hp || !CG_VR_DrawHands() ) {
+		return;
+	}
+	if ( piece == hp->trigPiece && CG_VR_HandOnGun( dom ) ) {
+		CG_VR_ArmBend( dom, ent );
+	} else if ( piece == hp->supPiece && cgVR->twoHanded && CG_VR_HandOnGun( !dom ) ) {
+		CG_VR_ArmBend( !dom, ent );
 	}
 }
 
@@ -510,9 +583,7 @@ void CG_VR_AddHands( void ) {
 			ent.nonNormalizedAxes = qtrue;
 		}
 		ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN;
-		if ( CG_VR_BodyArms() ) {
-			ent.renderfx |= RF_VR_NOSLEEVES;    // BJ's own forearm runs into the hand
-		}
+		CG_VR_ArmBend( h, &ent );       // its sleeve bends at the elbow up to BJ's shoulder
 		trap_R_AddRefEntityToScene( &ent );
 	}
 

@@ -534,10 +534,17 @@ void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 		}
 		side = h == VR_HAND_RIGHT ? SIDE_R : SIDE_L;
 		if ( gunHand[h] ) {
-			// the flat game's HD hand is drawn here (its sleeve hidden): BJ's own arm bends
-			// from the shoulder to its wrist, lined up with the way the HD forearm ran
-			VectorCopy( gunWrist[h], target );
-			VectorCopy( gunDir[h], handFwd );
+			// the flat game's whole HD arm is drawn here: its sleeve bends at the elbow
+			// and runs up to this shoulder (CG_VR_ArmBend), and BJ's own arm folds away
+			int ua = vb.upper[side];
+			if ( ua >= 0 ) {
+				for ( i = 0; i < 3; i++ ) {
+					cgvr.shoulder[h][i] = body->origin[i] + vb.pos[ua][0] * body->axis[0][i] +
+										  vb.pos[ua][1] * body->axis[1][i] + vb.pos[ua][2] * body->axis[2][i];
+				}
+				cgvr.shoulderTime = cg.time;
+			}
+			continue;
 		} else {
 			AngleVectors( cgvr.handAngles[h], handFwd, NULL, NULL );
 			// the grip pose is the palm; the wrist is behind it
@@ -548,10 +555,10 @@ void CG_VR_BodyApply( centity_t *cent, refEntity_t *body ) {
 		VectorNormalize( dir );
 		VB_ReachArm( side, target, dir );
 	}
-	// and BJ's own hand folds away where the HD one is drawn
+	// and BJ's own arm folds away where the HD one is drawn
 	for ( h = 0; h < 2; h++ ) {
 		if ( gunHand[h] && cgVR->handValid[h] ) {
-			VB_Collapse( vb.hand[h == VR_HAND_RIGHT ? SIDE_R : SIDE_L] );
+			VB_Collapse( vb.upper[h == VR_HAND_RIGHT ? SIDE_R : SIDE_L] );
 		}
 	}
 

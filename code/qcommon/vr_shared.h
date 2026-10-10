@@ -49,6 +49,9 @@ the Free Software Foundation, either version 3 of the License, or
 // refEntity renderfx: don't draw arm / sleeve surfaces, keep the hand (VR hands on a full body)
 #define RF_VR_NOSLEEVES ( 1 << 13 )
 
+// refEntity_t.vrBendMagic: vrBend holds an elbow bend for the arm surfaces
+#define VR_BEND_MAGIC   0x56524231
+
 typedef struct vrShared_s {
 	//
 	// written by the engine every frame
