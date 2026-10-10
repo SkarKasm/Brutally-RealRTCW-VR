@@ -4,7 +4,7 @@
 
 **Brutally RealRTCW VR** is a free mod for RealRTCW that lets you play Return to Castle Wolfenstein in PC VR through OpenXR, with extra gore, dual wielding and a pile of fixes for the flatscreen game too. You need RealRTCW on Steam.
 
-Downloads, screenshots and update notes are on ModDB. This repository holds the full source.
+Download it below or from ModDB. This repository also holds the full source.
 
 ---
 
@@ -31,10 +31,18 @@ Downloads, screenshots and update notes are on ModDB. This repository holds the 
 
 ---
 
+## Download
+
+**[Download the latest version (October 10 update)](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_SP_2026-10-10.zip)** · [What's new](download/CHANGES_2026-10-10.md)
+
+Also on ModDB.
+
+---
+
 ## Installing
 
 1. Install RealRTCW from Steam.
-2. Download the latest zip from ModDB.
+2. Download the zip above or from ModDB.
 3. Extract it into your RealRTCW folder (normally `...\steamapps\common\RealRTCW`) and overwrite when asked.
 4. Start `RealRTCW VR.bat`, or `RealRTCW (no VR).bat` for flatscreen. Cursed Sands has its own two launchers.
 
