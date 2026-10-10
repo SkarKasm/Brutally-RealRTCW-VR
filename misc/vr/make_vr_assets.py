@@ -449,6 +449,9 @@ NO_SIGHTS = ("panzer", "flamethrower", "venom", "tesla", "grenade", "pineapple",
 # wrong: these keep barrel_correction
 SIGHTS_UNSURE = {"weapons/g43.weap", "weapons/vanilla/g43.weap", "weapons/m1garand.weap", "weapons/m7.weap",
                  "weapons/mosin.weap"}
+# set by hand where the search is off: the Luger's toggle knobs pull its rear sight sideways
+# (in game the dot sat a little right of the sights with no turn, far left with the measured 4)
+SIGHTS_SET = {"weapons/luger.weap": (-0.7, -1.0), "weapons/luger_silenced.weap": (-0.7, -1.0)}
 # a silencer hides the front sight: the plain gun's sights
 SIGHTS_FROM = {"weapons/luger_silenced.weap": "weapons/luger.weap"}
 
@@ -991,7 +994,7 @@ def main():
             sights = pieces
             if name in SIGHTS_FROM:
                 sights = pose_weapon(paks, parse_weap(paks.read(SIGHTS_FROM[name]).decode(errors="replace")))
-            pitch, yaw = sight_correction(name, sights) or barrel_correction(pieces)
+            pitch, yaw = SIGHTS_SET.get(name) or sight_correction(name, sights) or barrel_correction(pieces)
         geo = reload_geometry(paks, info) or [-1, [0, 0, 0], [0, 0, 0], [0, 0, -1], -1, [0, 0, 0], [-1, 0, 0], 0.0]
         mag, mpt, mloc, mdir, chg, cpt, cdir, travel = geo
 
