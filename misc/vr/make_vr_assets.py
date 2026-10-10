@@ -502,28 +502,28 @@ GRIP_SHIFT = {
     "weapons/snooper.weap": -12.0,
 }
 
-# long guns with no trigger hand on screen: the palm on the wrist, measured by eye from side
-# renders (just behind the trigger guard); vr_rifle_hands.py puts the BAR's trigger hand there.
-# (x, z), y stays the measured one. Overrides GRIP_SHIFT.
+# long guns with no trigger hand on screen: where vr_rifle_hands.py puts the palm of the trigger
+# hand it gives them (its finger on the trigger; the Kar98's by eye). (x, z), y stays the
+# measured one, or (x, y, z). Overrides GRIP_SHIFT.
 GRIP_POINT = {
     "weapons/mauser.weap": (6.0, -12.5),
     "weapons/sniperrifle.weap": (6.0, -12.5),
-    "weapons/mosin.weap": (4.5, -7.5),
-    "weapons/g43.weap": (3.0, -5.5),
-    "weapons/m1garand.weap": (5.0, -10.5),
-    "weapons/m7.weap": (5.0, -10.5),
-    "weapons/mp44.weap": (15.0, -13.8),
-    "weapons/sten.weap": (12.0, -12.5),
-    "weapons/mp34.weap": (10.0, -16.0),
-    "weapons/ithaca.weap": (7.5, -10.5),
-    "weapons/venom.weap": (4.0, -9.1, -15.5),
+    "weapons/mosin.weap": (2.14, -4.66, -6.82),
+    "weapons/g43.weap": (-1.62, -3.38, -5.90),
+    "weapons/m1garand.weap": (5.19, -6.09, -10.87),
+    "weapons/m7.weap": (5.19, -6.09, -10.87),
+    "weapons/mp44.weap": (12.59, -6.20, -16.40),
+    "weapons/sten.weap": (3.80, -7.16, -13.31),
+    "weapons/mp34.weap": (6.67, -7.52, -15.60),
+    "weapons/ithaca.weap": (2.91, -5.55, -8.01),
+    "weapons/venom.weap": (4.70, -9.64, -15.06),
     "weapons/flamethrower.weap": (-3.0, -9.5, -12.5),
-    "weapons/tesla.weap": (-2.6, -8.4, -11.5),
+    "weapons/tesla.weap": (-4.09, -8.76, -10.45),
     "weapons/browning.weap": (5.0, -6.5, -13.0),
-    "weapons/mg42m.weap": (-0.5, -6.0, -22.5),
-    "weapons/ppsh.weap": (0.0, -9.0),
-    "weapons/garand.weap": (2.0, -7.0),
-    "weapons/snooper.weap": (2.0, -7.0),
+    "weapons/mg42m.weap": (-1.73, -6.82, -21.27),
+    "weapons/ppsh.weap": (3.14, -5.14, -6.65),
+    "weapons/garand.weap": (4.91, -3.85, -3.62),
+    "weapons/snooper.weap": (4.91, -3.85, -3.62),
 }
 
 # on guns where both hands are on screen (MP40, Thompson) the trigger hand sits about this

@@ -83,45 +83,101 @@ RIFLE_SHRINK = {
     "ppsh": 1.33 / 1.15,
     "garand": 1.3 / 1.15,
     "snooper": 1.3 / 1.15,
-    "venom": 2.2 / 1.15,
-    "tesla": 2.2 / 1.15,
+    "venom": 1.5 / 1.15,
+    "tesla": 1.5 / 1.15,
+    "mp34": 1.0 / 1.15,
+}
+
+# where the index finger rests on each gun's trigger (x, z: the front of the trigger blade,
+# halfway down, read off close side renders). The donor hand is moved so its own finger,
+# which rests on its own gun's trigger, lands there; guns not listed keep RIFLE_PALMS
+# (the Kar98 and its sniper version as they are, the guns without a trigger)
+TRIGGERS = {
+    "mosin": (7.2, -8.5),
+    "g43": (2.6, -7.3),
+    "m1garand": (13.1, -13.5),
+    "m7": (13.1, -13.5),
+    "mp44": (19.3, -13.8),
+    "sten": (11.3, -15.8),
+    "mp34": (14.8, -18.3),
+    "ithaca": (11.0, -10.7),
+    "ppsh": (8.1, -8.3),
+    "garand": (8.6, -4.85),
+    "snooper": (8.6, -4.85),
+    "venom": (8.6, -12.7),
+    "tesla": (-0.1, -8.4),
+    "mg42m": (8.2, -18.0),
+}
+# the donor hands and their own triggers: the BAR's trigger hand holds a rifle's wrist, the
+# MP40's a pistol grip
+DONORS = {
+    "bar": (14.4, -12.9),
+    "mp40": (10.0, -8.9),
+}
+PISTOL_GRIPS = {    # gun: degrees its grip leans further back than the MP40's (turned about the trigger)
+    "mp44": 0.0,
+    "venom": 10.0,
+    "tesla": 6.0,
+    "mg42m": -3.0,
 }
 
 def posed(name):
     return M.pose_weapon(paks, M.parse_weap(paks.read("weapons/%s.weap" % name).decode(errors="replace")))
 
-bar = posed("bar")
-bhand = [s for o, s in bar if o == "gun" and "hand" in s.name.lower()][0]
-barm = [s for o, s in bar if o == "gun" and "arm" in s.name.lower()][0]
-bpalm = M.centroid(bhand)
-bsize = hand_size(bhand)
-ballhands = [(o, s) for o, s in bar if any(w in s.name.lower() for w in M.HAND_WORDS) and s.verts]
-bwrist = wrist(bar, "gun", bhand)
-bend = arm_end(bar, "gun", bhand, ballhands)
+def trigger_y(pieces, x, z):
+    """The middle of the gun across, at its trigger."""
+    ys = [p[1] for o, s in pieces if not any(w in s.name.lower() for w in M.HAND_WORDS + ("arm",))
+          for p, _ in s.verts if abs(p[0] - x) < 0.6 and abs(p[2] - z) < 0.6]
+    return sum(ys) / len(ys) if ys else None
+
+donors = {}
+for dname, (dx, dz) in DONORS.items():
+    d = posed(dname)
+    dhand = [s for o, s in d if o == "gun" and "hand" in s.name.lower()][0]
+    darm = [s for o, s in d if o == "gun" and "arm" in s.name.lower()][0]
+    dall = [(o, s) for o, s in d if any(w in s.name.lower() for w in M.HAND_WORDS) and s.verts]
+    donors[dname] = dict(hand=dhand, arm=darm, palm=M.centroid(dhand), size=hand_size(dhand),
+                         wrist=wrist(d, "gun", dhand), end=arm_end(d, "gun", dhand, dall),
+                         trig=[dx, trigger_y(d, dx, dz), dz])
 
 cfg = {}
 for l in open(sys.argv[3]):
     f = l.split()
     if f and f[0].startswith("weapons/"):
         cfg[f[0]] = f
+only = set(sys.argv[4:])
 
 os.makedirs(os.path.join(outdir, "models/vr"), exist_ok=True)
-for name, pt in sorted(RIFLE_PALMS.items()):
+for name in sorted(set(RIFLE_PALMS) | set(TRIGGERS)):
+    if only and name not in only:
+        continue
     pieces = posed(name)
     sup = [s for o, s in pieces if "hand" in s.name.lower() and s.verts and 0 < M.centroid(s)[0] < 50 and M.centroid(s)[2] > -25]
     sup.sort(key=lambda s: -M.centroid(s)[0])
-    k = hand_size(sup[0]) / bsize / RIFLE_SHRINK.get(name, 1.0)
     line = cfg["weapons/%s.weap" % name]
-    palm = [pt[0], float(line[2]), pt[1]] if len(pt) == 2 else list(pt)
-    xf = lambda p: [palm[i] + k * (p[i] - bpalm[i]) for i in range(3)]
+    if name in TRIGGERS:
+        D = donors["mp40" if name in PISTOL_GRIPS else "bar"]
+        tx, tz = TRIGGERS[name]
+        trig = [tx, trigger_y(pieces, tx, tz), tz]
+        a = math.radians(PISTOL_GRIPS.get(name, 0.0))
+        rot = lambda v: [v[0] * math.cos(a) - v[2] * math.sin(a), v[1], v[0] * math.sin(a) + v[2] * math.cos(a)]
+    else:
+        D = donors["bar"]
+        pt = RIFLE_PALMS[name]
+        trig = [pt[0], float(line[2]), pt[1]] if len(pt) == 2 else list(pt)     # (the palm, here)
+        rot = lambda v: v
+    k = hand_size(sup[0]) / D["size"] / RIFLE_SHRINK.get(name, 1.0)
+    ref = D["trig"] if name in TRIGGERS else D["palm"]
+    xf = lambda p: [trig[i] + k * rot([p[j] - ref[j] for j in range(3)])[i] for i in range(3)]
+    palm = xf(D["palm"])
     surfs = []
-    for s in (bhand, barm):
-        surfs.append(M.Surface(s.name, s.shader, s.tris, s.st, [(xf(p), n) for p, n in s.verts]))
+    for s in (D["hand"], D["arm"]):
+        surfs.append(M.Surface(s.name, s.shader, s.tris, s.st, [(xf(p), rot(n)) for p, n in s.verts]))
     path = "models/vr/rhand_%s.md3" % name
     open(os.path.join(outdir, path), "wb").write(M.write_md3(path, surfs, [0, 0, 0]))
     line[1:4] = ["%.2f" % palm[0], "%.2f" % palm[1], "%.2f" % palm[2]]
     print("CFG", "  ".join([line[0], " ".join(line[1:4]), " ".join(line[4:6])]) + "  " + " ".join(line[6:]))
-    w, e = xf(bwrist), xf(bend)
+    w, e = xf(D["wrist"]), xf(D["end"])
     print('POSE\t{ "%s.weap", -3, { %.1ff, %.1ff, %.1ff } },' % (name, *w))
     print('SUP\t{ "%s.weap", %.1ff, { %.1ff, %.1ff, %.1ff } },' % (name, hand_size(sup[0]), *M.centroid(sup[0])))
     print('END\t{ "%s.weap", { %.1ff, %.1ff, %.1ff } },' % (name, *e))
