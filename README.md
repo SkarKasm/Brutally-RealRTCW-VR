@@ -44,7 +44,7 @@ Also on ModDB.
 1. Install RealRTCW from Steam.
 2. Download the zip above or from ModDB.
 3. Extract it into your RealRTCW folder (normally `...\steamapps\common\RealRTCW`) and overwrite when asked.
-4. Start `RealRTCW VR.bat`, or `RealRTCW (no VR).bat` for flatscreen. Cursed Sands has its own two launchers.
+4. Start `RealRTCW VR.bat`, or `RealRTCW (no VR).bat` for flatscreen. Cursed Sands and Enemy Territory Single-Player each have their own two launchers.
 
 Your saves and settings are kept.
 
