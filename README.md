@@ -1,5 +1,7 @@
 # Brutally RealRTCW VR
 
+![Brutally RealRTCW VR](docs/banner.jpg)
+
 **Brutally RealRTCW VR** is a free mod for RealRTCW that lets you play Return to Castle Wolfenstein in PC VR through OpenXR, with extra gore, dual wielding and a pile of fixes for the flatscreen game too. You need RealRTCW on Steam.
 
 Downloads, screenshots and update notes are on ModDB. This repository holds the full source.
