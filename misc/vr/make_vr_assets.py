@@ -439,6 +439,53 @@ def barrel_correction(pieces):
     return -pitch, -yaw
 
 
+# no iron sights to line up (launchers, beams, throwables), or two guns in one model (each
+# is drawn as its single gun)
+NO_SIGHTS = ("panzer", "flamethrower", "venom", "tesla", "grenade", "pineapple", "dynamite", "smoke",
+             "airstrike", "poison", "knife", "throwknife", "dual", "akimbo")
+
+
+# peep sights (the top of the rear sight is well above the hole) and sights the search gets
+# wrong: these keep barrel_correction
+SIGHTS_UNSURE = {"weapons/g43.weap", "weapons/vanilla/g43.weap", "weapons/m1garand.weap", "weapons/m7.weap",
+                 "weapons/mosin.weap"}
+# a silencer hides the front sight: the plain gun's sights
+SIGHTS_FROM = {"weapons/luger_silenced.weap": "weapons/luger.weap"}
+
+
+def sight_correction(name, pieces):
+    """The (pitch, yaw) that lines the iron sights up with the aim, so the shot lands where
+    they look: the line from the top of the rear sight to the top of the front sight (the
+    highest points at the back and at the muzzle), as barrel_correction measures. The gun
+    body's long axis (barrel_correction) leans with the stock and the magazine, a few degrees
+    off what the sights see. None when there are no sights or they don't look sane."""
+    if any(w in os.path.basename(name) for w in NO_SIGHTS) or name in SIGHTS_UNSURE:
+        return None
+    pts = [p for _owner, s in pieces if not any(w in s.name.lower() for w in SKIN_WORDS) for p, _n in s.verts]
+    if len(pts) < 10:
+        return None
+    xs = [p[0] for p in pts]
+    lo, hi = min(xs), max(xs)
+    length = hi - lo
+
+    def sight(sl):
+        if not sl:
+            return None
+        top = max(p[2] for p in sl)
+        t = [p for p in sl if p[2] >= top - 0.15]
+        return [sum(p[k] for p in t) / len(t) for k in range(3)]
+    front = sight([p for p in pts if p[0] >= hi - 0.10 * length])
+    rear = sight([p for p in pts if p[0] <= hi - 0.35 * length])
+    if not front or not rear or front[0] - rear[0] < 8.0:
+        return None
+    d = [front[k] - rear[k] for k in range(3)]
+    pitch = math.degrees(math.atan2(d[2], d[0]))
+    yaw = math.degrees(math.atan2(d[1], d[0]))
+    if abs(pitch) > 4.0 or abs(yaw) > 5.0:
+        return None
+    return pitch, -yaw
+
+
 # Grips moved along the gun (game units, + forward) where the automatic estimate is off,
 # measured with the in-game inspector (vr_inspect 1, ruler ticks every 5 units).
 GRIP_SHIFT = {
@@ -941,7 +988,10 @@ def main():
         if os.path.basename(name) in MELEE:
             pitch, yaw = blade_correction(pieces, palm)
         else:
-            pitch, yaw = barrel_correction(pieces)
+            sights = pieces
+            if name in SIGHTS_FROM:
+                sights = pose_weapon(paks, parse_weap(paks.read(SIGHTS_FROM[name]).decode(errors="replace")))
+            pitch, yaw = sight_correction(name, sights) or barrel_correction(pieces)
         geo = reload_geometry(paks, info) or [-1, [0, 0, 0], [0, 0, 0], [0, 0, -1], -1, [0, 0, 0], [-1, 0, 0], 0.0]
         mag, mpt, mloc, mdir, chg, cpt, cdir, travel = geo
 
