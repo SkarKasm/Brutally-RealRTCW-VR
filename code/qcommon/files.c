@@ -3376,6 +3376,21 @@ void FS_AddGameDirectory( const char *path, const char *dir, qboolean allowUnzip
 
 	qsort( sorted, numfiles, sizeof(char *), paksort );
 
+	// RealRTCW-VR: the single player build shares this homepath (its "game" folder) and puts
+	// its own menu patch and mod paks in the mods' folders there (game\EE, game\ET); they are
+	// for its menus and weapons, so co-op leaves them out and reads its own from coop_<mod>
+	// (FS_VR_AddCoopModDirectory)
+	if ( !Q_stricmp( path, fs_homepath->string ) && Q_stricmp( dir, COOP_BASEGAME ) && Q_stricmpn( dir, "coop_", 5 ) ) {
+		int j, n = 0;
+
+		for ( j = 0; j < numfiles; j++ ) {
+			if ( Q_stricmp( sorted[j], "z_vr_ui.pk3" ) && Q_stricmp( sorted[j], "z_vr_assets.pk3" ) ) {
+				sorted[n++] = sorted[j];
+			}
+		}
+		numfiles = n;
+	}
+
 	// the order is: first others, sp_ paks, then pak0, then mp_ paks
 	// so we have to do this in reverse overhere
 
@@ -3854,6 +3869,25 @@ static void FS_AddRealRTCWAssets( void ) {
 
 /*
 ================
+FS_VR_AddCoopModDirectory
+
+RealRTCW-VR: co-op's own VR paks for a mod (its main menu's VR buttons), in the homepath's
+coop_<mod> folder, where the single player build sharing the homepath doesn't look. Read
+last so they win, while configs and saves stay in the mod's own folder.
+================
+*/
+static void FS_VR_AddCoopModDirectory( const char *mod ) {
+	char gamedir[MAX_OSPATH];
+	char dir[MAX_QPATH];
+
+	Com_sprintf( dir, sizeof( dir ), "coop_%s", mod );
+	Q_strncpyz( gamedir, fs_gamedir, sizeof( gamedir ) );
+	FS_AddGameDirectory( fs_homepath->string, dir, qfalse );
+	Q_strncpyz( fs_gamedir, gamedir, sizeof( fs_gamedir ) );
+}
+
+/*
+================
 FS_Startup
 ================
 */
@@ -3970,6 +4004,7 @@ static void FS_Startup( const char *gameName )
 		}
 		if ( fs_homepath->string[0] && Q_stricmp( fs_homepath->string,fs_basepath->string ) ) {
 			FS_AddGameDirectory( fs_homepath->string, fs_gamedirvar->string, qtrue );
+			FS_VR_AddCoopModDirectory( fs_gamedirvar->string );
 		}
 	}
 

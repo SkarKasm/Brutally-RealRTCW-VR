@@ -3,11 +3,12 @@
 # RealRTCW (with its co-op mode) and Return to Castle Wolfenstein. Run deploy.sh first.
 cd "$(dirname "$0")/../.."
 OUT=dist/RealRTCW-VR-Coop
-rm -rf $OUT dist/RealRTCW-VR-Coop.zip && mkdir -p $OUT/game/coopmain $OUT/game/EE
+rm -rf $OUT dist/RealRTCW-VR-Coop.zip && mkdir -p $OUT/game/coopmain $OUT/game/coop_EE
 cp run/RTCWCoop.x64.exe run/RTCWCoopDED.x64.exe run/renderer_coop_opengl1_x64.dll run/SDL264.dll run/OpenAL64.dll \
    run/libopenxr_loader.dll run/libgcc_s_seh-1.dll run/libwinpthread-1.dll run/libstdc++-6.dll $OUT/game/
-cp run/coopmain/*.dll run/coopmain/z_vr_assets.pk3 $OUT/game/coopmain/
-cp run/EE/z_vr_assets.pk3 $OUT/game/EE/
+cp run/coopmain/*.dll run/coopmain/z_vr_assets.pk3 run/coopmain/z_vr_gore.pk3 misc/vr/controls/vr_controls.cfg $OUT/game/coopmain/
+# co-op's Cursed Sands paks: game\EE is the single player build's (the engine skips its paks there)
+cp run/EE/z_vr_assets.pk3 $OUT/game/coop_EE/
 cp misc/package/find_coop.cmd misc/package/find_coop.ps1 $OUT/game/
 mk() {  # name title args
   sed -e "s/@NAME@/$1/" -e "s/@TITLE@/$2/" -e "s/@ARGS@/$3/" misc/package/launcher.cmd.in > "$OUT/$1"
