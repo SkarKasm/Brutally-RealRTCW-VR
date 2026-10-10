@@ -832,6 +832,12 @@ VR_MENU_BUTTON = """
 	}
 """
 
+# the pause menu's buttons, under QUIT
+VR_INGAME_BUTTON = (VR_MENU_BUTTON.replace("rect 10 375", "rect 10 408").replace("rect 10 342", "rect 10 375")
+                    .replace("group mainmenus\n\t\t", "").replace("close main; open vr_", "close ingame; open vr_")
+                    .replace("open vr_options }", "open vr_options_ingame }")
+                    .replace("open vr_extras }", "open vr_extras_ingame }"))
+
 
 def vr_menus(paks):
     """{path: bytes}: RealRTCW's main menu with a VR OPTIONS button, its menu list with the
@@ -855,7 +861,27 @@ def vr_menus(paks):
     if "vr_extras.menu" not in menus:
         menus = menus.replace('loadMenu { "ui/vr_options.menu" }',
                               'loadMenu { "ui/vr_options.menu" }\n\tloadMenu { "ui/vr_extras.menu" }', 1)
+    if "vr_options_ingame.menu" not in menus:
+        menus = menus.replace('loadMenu { "ui/vr_extras.menu" }',
+                              'loadMenu { "ui/vr_extras.menu" }\n\tloadMenu { "ui/vr_options_ingame.menu" }'
+                              '\n\tloadMenu { "ui/vr_extras_ingame.menu" }', 1)
     out["ui/menus.txt"] = menus.encode()
+
+    # the same two pages for the pause menu, going back to it instead of the main menu
+    for page in ("vr_options", "vr_extras"):
+        text = out["ui/%s.menu" % page].decode()
+        text = re.sub(r"\b(vr_options|vr_extras)\b(?!_)", r"\1_ingame", text)
+        text = text.replace("open main", "open ingame").replace('"ui/vr_options_ingame.menu"', '"ui/vr_options.menu"')
+        out["ui/%s_ingame.menu" % page] = text.encode()
+
+    ingame = paks.read("ui/ingame.menu")
+    ingame = ingame.decode(errors="replace") if ingame else ""
+    m = re.search(r'mouseExit\s*\{\s*hide\s+"realrtcw_ingame_quit"\s*\}\s*\}', ingame)
+    if m and "vroptionsmenu" not in ingame:
+        ingame = ingame[:m.end()] + VR_INGAME_BUTTON + ingame[m.end():]
+        out["ui/ingame.menu"] = ingame.encode()
+    else:
+        print("warning: couldn't place the VR OPTIONS button in ui/ingame.menu")
 
     # after the QUIT button, the last of the main menu's buttons
     main = main.decode(errors="replace")

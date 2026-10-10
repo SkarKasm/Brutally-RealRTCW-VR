@@ -117,9 +117,10 @@ The flat game's first person models aren't drawn to one scale (a pistol's hand i
 twice the size of the MP40's), so each gun is drawn at the size that makes its own hand life
 size: the hand's size (misc/vr/vr_hand_size.py, measured the same way whatever the hand's
 pose, in the MP40 right hand's span) brought to VR_HAND_SPAN. Every hand, on a gun or free,
-comes out the same size, and the guns close to their real lengths. A support hand modelled
-bigger or smaller than its trigger hand keeps its modelled size (scaled, a hand closed round
-the gun sinks into it or floats off it); its arm stretches to reach. VR OPTIONS, Weapon size, multiplies it
+comes out the same size, and the guns close to their real lengths. Where a gun's two hands
+are modelled at different sizes, the gun is sized by the bigger one and the smaller one's palm
+and fingers are stretched to match, its sleeve left as it is (CG_VR_StretchHand: shrinking a
+hand closed round the gun sinks its fingers into it). VR OPTIONS, Weapon size, multiplies it
 (vr_gunSize: one of the BG_VR_WeaponScale presets).
 =================
 */
@@ -200,7 +201,9 @@ float CG_VR_ScaleFor( int weapon ) {
 			if ( !Q_stricmp( vrHandSpans[i].weap, file ) ) {
 				// the trigger hand, or (long guns) the support hand: the trigger hand put on
 				// them (vr_rifle_hands.py) is made its size
-				s = VR_HAND_SPAN / ( vrHandSpans[i].trig > 0 ? vrHandSpans[i].trig : vrHandSpans[i].sup );
+				// (both: the bigger one, the smaller one's palm and fingers are stretched to
+				// match, CG_VR_StretchHand)
+				s = VR_HAND_SPAN / ( vrHandSpans[i].trig > vrHandSpans[i].sup ? vrHandSpans[i].trig : vrHandSpans[i].sup );
 				break;
 			}
 		}
@@ -667,6 +670,73 @@ void CG_VR_PieceArmBend( int weapon, int piece, refEntity_t *ent ) {
 	} else if ( piece == hp->supPiece && !cgVR->dualWield && CG_VR_HandOnGun( !dom ) ) {
 		CG_VR_ArmBend( !dom, ent );
 	}
+}
+
+/*
+=================
+CG_VR_StretchHand
+
+The smaller of a gun's two modelled hands: its palm and fingers are drawn again stretched
+about the wrist to the other hand's size, and left out of the piece itself (the sleeve stays
+as modelled, so the arms don't change).
+=================
+*/
+// how much the trigger (or support) hand's palm and fingers are stretched: 1 for the bigger
+float CG_VR_HandStretch( int weapon, qboolean trig ) {
+	const char *file = weapon > WP_NONE ? BG_GetWeaponFilename( weapon ) : NULL;
+	int i;
+
+	if ( !file || !*file ) {
+		return 1.0f;
+	}
+	file = COM_SkipPath( (char *)file );
+	for ( i = 0; i < ARRAY_LEN( vrHandSpans ); i++ ) {
+		if ( !Q_stricmp( vrHandSpans[i].weap, file ) ) {
+			if ( vrHandSpans[i].trig > 0 && vrHandSpans[i].sup > 0 ) {
+				float f = trig ? vrHandSpans[i].sup / vrHandSpans[i].trig : vrHandSpans[i].trig / vrHandSpans[i].sup;
+				return f > 1.0f ? f : 1.0f;
+			}
+			break;
+		}
+	}
+	return 1.0f;
+}
+
+void CG_VR_StretchHand( int weapon, int piece, refEntity_t *ent ) {
+	const vrHandPose_t *hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
+	const char *file = weapon > WP_NONE ? BG_GetWeaponFilename( weapon ) : NULL;
+	vec3_t origin, axis[3], wrist;
+	refEntity_t copy;
+	float f = 0;
+	int i, h, dom = CG_VR_DominantHand();
+
+
+	if ( !hp || !file || !*file || ( ent->renderfx & RF_VR_NOHANDS ) || piece < -1 ) {
+		return;
+	}
+	if ( piece == hp->trigPiece ) {
+		f = CG_VR_HandStretch( weapon, qtrue );
+	} else if ( piece == hp->supPiece ) {
+		f = CG_VR_HandStretch( weapon, qfalse );
+	}
+	if ( f < 1.02f ) {
+		return;     // the bigger hand (or the same): as modelled
+	}
+	h = piece == hp->trigPiece ? dom : !dom;
+	CG_VR_WeaponPose( weapon, origin, axis );
+	BG_VR_ModelPoint( origin, axis, piece == hp->trigPiece ? hp->trigWrist : hp->supWrist, wrist );
+
+	copy = *ent;
+	for ( i = 0; i < 3; i++ ) {
+		copy.origin[i] = wrist[i] + ( ent->origin[i] - wrist[i] ) * f;
+		VectorScale( ent->axis[i], f, copy.axis[i] );
+	}
+	VectorCopy( copy.origin, copy.oldorigin );
+	copy.nonNormalizedAxes = qtrue;
+	copy.renderfx |= RF_VR_ONLYHANDS | RF_VR_NOSLEEVES;
+	CG_VR_ArmBend( h, &copy );
+	trap_R_AddRefEntityToScene( &copy );
+	ent->renderfx |= RF_VR_NOPALMS;
 }
 
 /*
@@ -1706,6 +1776,7 @@ static void CG_VR_DualOffHand( int single, weaponInfo_t *weapon ) {
 	const vrHandPose_t *hp = CG_VR_HandPose( single );
 	int off = !CG_VR_DominantHand();
 	refEntity_t parent, ent;
+	float f;
 
 	if ( !CG_VR_HandOnGun( off ) || !CG_VR_DrawHands() || !hp ) {
 		return;
@@ -1734,6 +1805,25 @@ static void CG_VR_DualOffHand( int single, weaponInfo_t *weapon ) {
 	VectorCopy( parent.origin, ent.lightingOrigin );
 	ent.nonNormalizedAxes = qtrue;
 	ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN | RF_VR_ONLYHANDS | RF_VR_MIRRORED;
+	f = CG_VR_HandStretch( single, qtrue );
+	if ( f > 1.02f ) {
+		// as CG_VR_StretchHand: the palm and fingers stretched about the wrist, the sleeve not
+		refEntity_t palm = ent;
+		vec3_t origin, axis[3], wrist;
+		int i;
+
+		CG_VR_DualFrame( off, single, origin, axis );
+		BG_VR_ModelPoint( origin, axis, hp->trigWrist, wrist );
+		for ( i = 0; i < 3; i++ ) {
+			palm.origin[i] = wrist[i] + ( ent.origin[i] - wrist[i] ) * f;
+			VectorScale( ent.axis[i], f, palm.axis[i] );
+		}
+		VectorCopy( palm.origin, palm.oldorigin );
+		palm.renderfx |= RF_VR_NOSLEEVES;
+		CG_VR_ArmBend( off, &palm );
+		trap_R_AddRefEntityToScene( &palm );
+		ent.renderfx |= RF_VR_NOPALMS;
+	}
 	CG_VR_ArmBend( off, &ent );
 	trap_R_AddRefEntityToScene( &ent );
 }

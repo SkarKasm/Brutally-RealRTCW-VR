@@ -310,6 +310,7 @@ static cvar_t *vr_flatCutscenes;    // cutscenes on a screen in front of the pla
 static cvar_t *vr_teleport;         // move by pointing the off hand stick and letting go
 static cvar_t *vr_seated;           // playing seated: stand the view up, no physical crouch
 static cvar_t *vr_seatedHeight;     // metres added to the head when seated
+static cvar_t *vr_heightOffset;     // metres added to (or taken off) the player's height
 static cvar_t *vr_crouchHeight;     // head below this (metres) crouches, 0 off
 static cvar_t *vr_snapTurn;
 static cvar_t *vr_turnSpeed;
@@ -1213,6 +1214,7 @@ void CL_VR_Init( void ) {
 	vr_teleport = Cvar_Get( "vr_teleport", "0", CVAR_ARCHIVE );
 	vr_seated = Cvar_Get( "vr_seated", "0", CVAR_ARCHIVE );
 	vr_seatedHeight = Cvar_Get( "vr_seatedHeight", "0.5", CVAR_ARCHIVE );
+	vr_heightOffset = Cvar_Get( "vr_heightOffset", "0", CVAR_ARCHIVE );
 	vr_crouchHeight = Cvar_Get( "vr_crouchHeight", "1.1", CVAR_ARCHIVE );
 	Cvar_Get( "vr_vignette", "0", CVAR_ARCHIVE );            // cg_vrcomfort.c
 	Cvar_Get( "vr_wristHud", "1", CVAR_ARCHIVE );           // cg_vrwrist.c
@@ -1338,8 +1340,13 @@ static void VR_UpdateTracking( void ) {
 
 	// physical crouch: the head's real height, before seated play stands it up
 	xr.headHeight = com_vr.hmdOrigin[2] / vr_worldScale->value;
-	if ( vr_seated->integer ) {
-		float up = vr_seatedHeight->value * vr_worldScale->value;
+	{
+		// seated: the head raised to a standing height; and the height offset (VR OPTIONS)
+		float up = vr_heightOffset->value;
+		if ( vr_seated->integer ) {
+			up += vr_seatedHeight->value;
+		}
+		up *= vr_worldScale->value;
 		com_vr.hmdOrigin[2] += up;
 		com_vr.handOrigin[0][2] += up;
 		com_vr.handOrigin[1][2] += up;

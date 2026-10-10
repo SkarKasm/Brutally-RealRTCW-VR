@@ -3293,6 +3293,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 		}
 		if ( ps && cgvr.active ) {
 			CG_VR_PieceArmBend( weaponNum, -1, &gun );
+			CG_VR_StretchHand( weaponNum, -1, &gun );
 			CG_VR_AddRifleHand( weaponNum, &gun, parent );
 		}
 		CG_AddWeaponWithPowerups(&gun, cent->currentState.powerups, ps, cent);
@@ -3421,6 +3422,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 					barrel.vrBendMagic = 0;
 					if ( isPlayer && cgvr.active ) {
 						CG_VR_PieceArmBend( weaponNum, i, &barrel );
+						CG_VR_StretchHand( weaponNum, i, &barrel );
 					}
 					CG_AddWeaponWithPowerups( &barrel, cent->currentState.powerups, ps, cent );
 				}
