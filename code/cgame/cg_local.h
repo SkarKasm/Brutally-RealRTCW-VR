@@ -1875,7 +1875,6 @@ int CG_VR_PieceHandFx( int weapon, int piece );
 void CG_VR_ArmTargets( qboolean has[2], vec3_t end[2], vec3_t dir[2] );
 void CG_VR_PieceArmBend( int weapon, int piece, refEntity_t *ent );
 void CG_VR_ArmBend( int h, refEntity_t *ent );
-void CG_VR_PieceHandScale( int weapon, int piece, refEntity_t *ent );
 void CG_VR_AddRifleHand( int weapon, refEntity_t *gun, const refEntity_t *parent );
 void CG_VR_Haptic( int hand, float amplitude, int msec );
 int CG_VR_DominantHand( void );

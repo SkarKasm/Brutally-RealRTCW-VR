@@ -118,7 +118,8 @@ twice the size of the MP40's), so each gun is drawn at the size that makes its o
 size: the hand's size (misc/vr/vr_hand_size.py, measured the same way whatever the hand's
 pose, in the MP40 right hand's span) brought to VR_HAND_SPAN. Every hand, on a gun or free,
 comes out the same size, and the guns close to their real lengths. A support hand modelled
-bigger or smaller than its trigger hand is scaled to match (CG_VR_PieceHandScale). VR OPTIONS, Weapon size, multiplies it
+bigger or smaller than its trigger hand keeps its modelled size (scaled, a hand closed round
+the gun sinks into it or floats off it); its arm stretches to reach. VR OPTIONS, Weapon size, multiplies it
 (vr_gunSize: one of the BG_VR_WeaponScale presets).
 =================
 */
@@ -666,55 +667,6 @@ void CG_VR_PieceArmBend( int weapon, int piece, refEntity_t *ent ) {
 	} else if ( piece == hp->supPiece && !cgVR->dualWield && CG_VR_HandOnGun( !dom ) ) {
 		CG_VR_ArmBend( !dom, ent );
 	}
-}
-
-// the support hand's piece, scaled about its wrist to the trigger hand's size
-void CG_VR_PieceHandScale( int weapon, int piece, refEntity_t *ent ) {
-	const vrHandPose_t *hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
-	const char *file = weapon > WP_NONE ? BG_GetWeaponFilename( weapon ) : NULL;
-	const vrHandSpan_t *span = NULL;
-	vec3_t origin, axis[3], palm, fwd, d;
-	float k = 0, along;
-	int i;
-
-	if ( !hp || piece != hp->supPiece || piece < 0 || !file || !*file ) {
-		return;     // (a support hand on the gun model itself can't be scaled apart from it)
-	}
-	file = COM_SkipPath( (char *)file );
-	for ( i = 0; i < ARRAY_LEN( vrHandSpans ); i++ ) {
-		if ( !Q_stricmp( vrHandSpans[i].weap, file ) ) {
-			span = &vrHandSpans[i];
-			if ( span->trig > 0 && span->sup > 0 ) {
-				k = span->trig / span->sup;
-			}
-			break;
-		}
-	}
-	if ( !span || k <= 0 || fabs( k - 1.0f ) < 0.02f ) {
-		return;
-	}
-	// about the palm, where it holds the gun. A hand closed round the gun can't shrink
-	// all over without its fingers sinking into what they hold (the MP40's magazine well),
-	// so a smaller hand is only made narrower, along the gun
-	CG_VR_WeaponPose( weapon, origin, axis );
-	BG_VR_ModelPoint( origin, axis, span->supPalm, palm );
-	VectorNormalize2( axis[0], fwd );
-	if ( k > 1.0f ) {
-		for ( i = 0; i < 3; i++ ) {
-			ent->origin[i] = palm[i] + ( ent->origin[i] - palm[i] ) * k;
-			VectorScale( ent->axis[i], k, ent->axis[i] );
-		}
-	} else {
-		VectorSubtract( ent->origin, palm, d );
-		along = DotProduct( d, fwd );
-		VectorMA( ent->origin, ( k - 1.0f ) * along, fwd, ent->origin );
-		for ( i = 0; i < 3; i++ ) {
-			along = DotProduct( ent->axis[i], fwd );
-			VectorMA( ent->axis[i], ( k - 1.0f ) * along, fwd, ent->axis[i] );
-		}
-	}
-	VectorCopy( ent->origin, ent->oldorigin );
-	ent->nonNormalizedAxes = qtrue;
 }
 
 /*
