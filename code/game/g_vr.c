@@ -116,6 +116,10 @@ static qboolean G_VR_IsPlayer( gentity_t *ent ) {
 	return gVR && gVR->active && ent->client && ent->s.number == 0 && !ent->aiCharacter;
 }
 
+qboolean G_VR_Player( gentity_t *ent ) {
+	return ent && G_VR_IsPlayer( ent );
+}
+
 static void G_VR_Init( void ) {
 	int i;
 

@@ -984,6 +984,7 @@ qboolean LogAccuracyHit( gentity_t *target, gentity_t *attacker );
 void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint );
 qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out );
 qboolean G_VR_Aiming( gentity_t *ent );
+qboolean G_VR_Player( gentity_t *ent );   // RealRTCW-VR: the headset player
 extern qboolean g_vrHandUse;            // RealRTCW-VR: Cmd_Activate_f from a hand (g_vr.c)
 extern vec3_t g_vrHandFrom, g_vrHandTo;
 qboolean G_VR_LookRay( gentity_t *ent, float dist, vec3_t from, vec3_t to );   // RealRTCW-VR

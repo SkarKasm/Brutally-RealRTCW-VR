@@ -1506,7 +1506,8 @@ void Cmd_Activate_f( gentity_t *ent ) {
 		} else if ( ( Q_stricmp( traceEnt->classname, "misc_mg42" ) == 0 ) /*&& activatetime > oldactivatetime + 1000*/ && traceEnt->active == qfalse )         {
 			if ( !ent->active && traceEnt->takedamage ) {  // not a dead gun
 				// RF, dont allow activating MG42 if crouching
-				if ( !( ent->client->ps.pm_flags & PMF_DUCKED ) && !infront( traceEnt, ent ) ) {
+				// (RealRTCW-VR: bending down to a low gun in the headset crouches, and mounting stands you up anyway)
+				if ( ( !( ent->client->ps.pm_flags & PMF_DUCKED ) || G_VR_Player( ent ) ) && !infront( traceEnt, ent ) ) {
 					gclient_t   *cl;
 					cl = &level.clients[ ent->s.clientNum ];
 
