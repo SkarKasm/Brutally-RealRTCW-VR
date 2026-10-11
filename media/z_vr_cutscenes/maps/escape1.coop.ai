@@ -15,15 +15,18 @@ player
 		setclip weapon_luger 8
 
 		mu_start sound/music/c_military
-	}
 
-	playerstart
-	{
-		// RealRTCW-VR: the first one in starts the opening cutscene, for everyone
+		// RealRTCW-VR: the first one in starts the opening cutscene (co-op never sends
+		// playerstart to the script, so it goes from here)
 		globalaccum 2 abort_if_not_equal 0
 		globalaccum 2 set 1
 		trigger dummy cinematic1
 		trigger player cam1
+	}
+
+	playerstart
+	{
+
 	}
 
 	// ---Start Camera Section---

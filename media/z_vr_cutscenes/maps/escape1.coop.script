@@ -483,7 +483,8 @@ dummy
 		accum 0 bitset 0 // bitset = off  bitreset = on
 		accum 0 bitset 1
 		accum 1 set 0
-		accum 2 set 0	// 1: the cutscene is over (cine1_cleanup runs once)
+		accum 2 set 0	//Stop cine
+		accum 3 set 0	// RealRTCW-VR: 1 = the opening cutscene is over (cine1_cleanup runs once)
 	}
 
 	// ---Start Cinematic1---
@@ -512,23 +513,28 @@ dummy
 		trigger cine1_drz talk1		// Come in, Sergeant, Come in.
 		wait 2000
 		trigger cine1_drz anim1
+		accum 3 abort_if_not_equal 0
 		trigger player cam2
 		trigger cine1_nazi1 go1
 		wait 7500
 		trigger cine1_drz anim1
+		accum 3 abort_if_not_equal 0
 		trigger player cam3
 		wait 2500
 		trigger cine1_nazi1 talk1	// Orders, Herr Doctor?
 		wait 3000
 		trigger cine1_drz talk2		// Go and get zee other one...
+		accum 3 abort_if_not_equal 0
 		trigger player cam4
 		wait 3000
 		trigger cine1_nazi1 talk2	// Jawol!
 		wait 1500
+		accum 3 abort_if_not_equal 0
 		trigger player cam5
 		trigger cine1_nazi1 go2
 		wait 5250
 		trigger cine1_drz talk3		// Now, let's try again, shall we? Who do you work for?
+		accum 3 abort_if_not_equal 0
 		trigger player cam7
 		wait 4750
 		trigger dummy cinematic1a
@@ -542,6 +548,7 @@ dummy
 		wait 250
 		alertentity cine1_scream2
 		alertentity kill_c_nazi1
+		accum 3 abort_if_not_equal 0
 		trigger player cam8
 		wait 3750
 		trigger spawner dlight2off
@@ -550,9 +557,11 @@ dummy
 		wait 250
 		alertentity kill_c_nazi2
 		wait 250
+		accum 3 abort_if_not_equal 0
 		trigger player cam9
 //
 		wait 8500
+		accum 3 abort_if_not_equal 0
 		trigger player cam11
 		wait 200
 		trigger cine_door camera_up
@@ -564,6 +573,7 @@ dummy
 		wait 500
 		trigger cine1_bj cine_snd
 		wait 100
+		accum 3 abort_if_not_equal 0
 		trigger player cam11d
 		wait 3000
 		trigger dummy cine1_cleanup
@@ -572,8 +582,8 @@ dummy
 
 	trigger cine1_cleanup
 	{
-		accum 2 abort_if_not_equal 0
-		accum 2 set 1
+		accum 3 abort_if_not_equal 0
+		accum 3 set 1
 		trigger cine_door fast_up
 
 		alertentity kill_c_nazi1
@@ -694,7 +704,9 @@ cine_door
 {
 	spawn
 	{
-	
+		// RealRTCW-VR: if the cutscene never gets going, the cell still opens
+		wait 120000
+		trigger dummy cine1_cleanup
 	}
 
 	trigger camera_up
