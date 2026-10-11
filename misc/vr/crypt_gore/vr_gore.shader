@@ -85,3 +85,19 @@ vr_bloodpool
 		rgbGen identity
 	}
 }
+
+// blood soaked into a body (cg_vrextras.c VRX_AddBodyBlood): the body drawn again over itself,
+// the renderer setting each vertex's alpha by how hurt its part of the body is
+vr_bodyblood
+{
+	nopicmip
+	sort decal
+	{
+		map models/vr_gore/bodyblood.tga
+		alphaFunc GE128
+		depthFunc equal
+		rgbGen lightingDiffuse
+		alphaGen vertex
+		tcMod scale 2 2
+	}
+}

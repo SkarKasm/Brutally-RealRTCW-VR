@@ -2784,6 +2784,7 @@ void        CG_VRX_Wound( int entityNum, const vec3_t point, const vec3_t dir );
 void        CG_VRX_AddWounds( centity_t *cent, refEntity_t *body );
 void        CG_VRX_AddCryptGore( centity_t *cent, refEntity_t *body );
 void        CG_VRX_BloodPool( centity_t *cent, refEntity_t *body );
+qboolean    CG_VRX_BodyPoints( int clientNum, int group, orientation_t *or );
 void        CG_VRX_Downed( centity_t *cent, refEntity_t *body );
 qboolean    CG_VRX_GoreHead( centity_t *cent, refEntity_t *head );
 qboolean    CG_VRX_HeadSwapped( centity_t *cent );

@@ -771,6 +771,11 @@ qboolean IsHeadShot( gentity_t *targ, gentity_t *attacker, vec3_t dir, vec3_t po
 
 	head_shot_weapon = IsHeadShotWeapon( mod, targ, attacker );
 
+	// RealRTCW-VR: the shot went through the body itself (tight hit boxes): it knows
+	if ( G_VRX_HitRegion( targ, point ) != VRH_NONE ) {
+		return head_shot_weapon && G_VRX_HitRegion( targ, point ) == VRH_HEAD;
+	}
+
 	if ( head_shot_weapon ) {
 		head = G_Spawn();
 
