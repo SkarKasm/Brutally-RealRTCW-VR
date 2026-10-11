@@ -886,7 +886,7 @@ void G_VRX_Decap_f( gentity_t *ent ) {
 		neck[i] = atof( arg );
 	}
 	// within reach of the player, and on (near) the body
-	if ( Distance( neck, ent->r.currentOrigin ) > 120 || Distance( neck, body->r.currentOrigin ) > 80 ) {
+	if ( Distance( neck, ent->r.currentOrigin ) > 120 || Distance( neck, body->r.currentOrigin ) > 200 ) {     // (ragdolls slide)
 		return;
 	}
 	G_VRX_AddGoreBits( body, VRX_GB_HEAD );

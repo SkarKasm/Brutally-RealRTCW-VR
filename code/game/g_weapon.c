@@ -139,6 +139,9 @@ void G_KnifeHit( gentity_t *ent, trace_t *trp ) {
 	}
 
 	damage = G_GetWeaponDamage( ent->s.weapon ); // JPW		// default knife damage for frontal attacks
+	if ( ent->client && !ent->aiCharacter ) {
+		damage *= 5;        // RealRTCW-VR: the player's knife hits five times as hard
+	}
 
 	if ( traceEnt->client ) {
 		if ( ent->client->ps.serverCursorHint == HINT_KNIFE ) {
@@ -154,7 +157,7 @@ void G_KnifeHit( gentity_t *ent, trace_t *trp ) {
 // (SA) commented out right now as the ai's state always checks here as 'combat'
 
 //			if(ent->s.aiState == AISTATE_RELAXED) {
-			damage = 100;       // enough to drop a 'normal' (100 health) human with one jab
+			damage = 500;       // RealRTCW-VR: 5x; enough to drop a 'normal' (100 health) human with one jab
 			mod = MOD_KNIFE_STEALTH;
 //			} else {
 //				damage *= 10;

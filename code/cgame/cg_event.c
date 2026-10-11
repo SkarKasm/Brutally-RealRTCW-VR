@@ -2265,6 +2265,9 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		DEBUGNAME( "EV_MISSILE_HIT" );
 		ByteToDir( es->eventParm, dir );
 		CG_MissileHitPlayer( cent, es->weapon, position, dir, es->otherEntityNum );
+		if ( es->weapon == WP_KNIFE ) {
+			CG_VRX_KnifeHit( es->otherEntityNum, position );    // RealRTCW-VR: through a dead body's neck
+		}
 		break;
 	case EV_MISSILE_MISS_SMALL:
 		DEBUGNAME( "EV_MISSILE_MISS" );

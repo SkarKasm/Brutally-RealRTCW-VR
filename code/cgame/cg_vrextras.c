@@ -1374,6 +1374,19 @@ static void VRX_TryDecap( const vec3_t a, const vec3_t b, float radius ) {
 	}
 }
 
+// the server says a knife hit body at pos: on the neck (or near enough), the head comes off
+void CG_VRX_KnifeHit( int body, const vec3_t pos ) {
+	centity_t *cent;
+
+	if ( body < 0 || body >= MAX_CLIENTS || !cg.snap || cg.snap->ps.weapon != WP_KNIFE ) {
+		return;
+	}
+	cent = &cg_entities[body];
+	if ( cent->pe.headRefEnt.hModel && Distance( pos, cent->pe.headRefEnt.origin ) <= 14.0f ) {
+		VRX_TryDecap( pos, pos, 14.0f );
+	}
+}
+
 // without a headset: a knife swing at a body's neck
 void CG_VRX_KnifeSwing( void ) {
 	vec3_t end;
@@ -1399,7 +1412,7 @@ void CG_VRX_KnifeFrame( void ) {
 	VectorMA( cgvr.handOrigin[dom], 18.0f, fwd, tip );     // as the server's G_VR_KnifeStab
 	if ( lastTime && cg.time > lastTime && cg.time - lastTime < 200 &&
 		 Distance( tip, lastTip ) / ( ( cg.time - lastTime ) * 0.001f ) > 40.0f ) {
-		VRX_TryDecap( lastTip, tip, 5.0f );
+		VRX_TryDecap( lastTip, tip, 7.0f );
 	}
 	VectorCopy( tip, lastTip );
 	lastTime = cg.time;
