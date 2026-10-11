@@ -1790,6 +1790,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 		DEBUGTIME
 
 		CG_AddLocalEntities();
+		CG_VRX_AddLimbs();      // RealRTCW-VR: cut off limbs
 
 		DEBUGTIME
 

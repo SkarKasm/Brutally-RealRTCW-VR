@@ -4707,6 +4707,7 @@ void CG_Player( centity_t *cent ) {
 		CG_Ragdoll_Apply( cent, &legs );
 		CG_VRX_Surrender( cent, &legs );     // GORE & EXTRAS: hands up
 		CG_VRX_Downed( cent, &legs );        // or down on their knees
+		CG_VRX_HitReact( cent, &legs );      // or hurt where a bullet went in
 		if ( CG_VR_FullBody( cent ) ) {
 			// no idle animations on your own body in VR: the swaying stance moves the
 			// shoulders the arms hang from (and standing legs keep still)

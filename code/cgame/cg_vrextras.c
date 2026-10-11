@@ -213,7 +213,7 @@ static vrSkel_t vrSkels[VRX_MAX_SKELS];
 static int vrSkelNext;
 static qhandle_t vrWoundShaders[5];
 static qhandle_t vrGutsModel;
-static float vrxPoses[MAX_CLIENTS][VRX_MAX_BONES * 12];     // poses we draw with: the renderer reads them at the end of the frame
+static float vrxPoses[MAX_CLIENTS][VRX_MAX_BONES * 12 + 16];     // poses we draw with: the renderer reads them at the end of the frame
 
 // how thick the limb from this bone to its child is
 static float VRX_LimbRadius( const char *name ) {
@@ -471,6 +471,179 @@ static const char *VRX_LimbRoot( int limb, qboolean high ) {
 	}
 }
 
+/*
+Ghoul 2 style dismemberment (after Raven's Ghoul 2 in SoF2 / Jedi Academy, which turns a
+limb's surfaces off on the body and throws a copy of the model drawing only them): our
+bodies are one mesh, so the renderer drops the triangles skinned to the limb's bones
+(tr_animation.c R_VRX_Trailer), and the limb that came off is the same model again drawing
+only those, tumbling on its own.
+*/
+#define VRX_CUT_MAGIC       0x56524354      // "VRCT"
+#define VRX_CUT_WORDS       4               // 32 bones to a word (MDS_MAX_BONES 128)
+#define VRX_CUT_FLOATS      ( 2 + VRX_CUT_WORDS )
+
+// the bones of the limb from root down
+static void VRX_CutMask( vrSkel_t *sk, int root, unsigned mask[VRX_CUT_WORDS] ) {
+	int i, p;
+
+	for ( i = 0; i < sk->n && i < VRX_CUT_WORDS * 32; i++ ) {
+		for ( p = i; p >= 0 && p != root; p = sk->parents[p] ) {
+		}
+		if ( p == root ) {
+			mask[i >> 5] |= 1u << ( i & 31 );
+		}
+	}
+}
+
+// after a pose: draw without the masked bones (mode 0) or only them (1)
+static void VRX_WriteCut( float *t, int mode, const unsigned mask[VRX_CUT_WORDS] ) {
+	union { float f; int i; } u;
+	int k;
+
+	u.i = VRX_CUT_MAGIC;
+	t[0] = u.f;
+	t[1] = mode;
+	for ( k = 0; k < VRX_CUT_WORDS; k++ ) {
+		u.i = (int)mask[k];
+		t[2 + k] = u.f;
+	}
+}
+
+static qboolean VRX_HasCut( const float *t ) {
+	union { float f; int i; } u;
+
+	u.f = t[0];
+	return u.i == VRX_CUT_MAGIC;
+}
+
+#define VRX_MAX_LIMBS       8
+#define VRX_LIMB_LIFE       30000
+
+typedef struct {
+	int start;
+	refEntity_t ref;
+	float pose[VRX_MAX_BONES * 12 + VRX_CUT_FLOATS + 2];
+	vec3_t center;          // its middle in the model's space
+	vec3_t pos, vel;        // its middle in the world
+	vec3_t axis[3];
+	vec3_t spinAxis;
+	float spin;             // degrees a second
+	qboolean resting;
+	int nextDrip;
+} vrLimb_t;
+
+static vrLimb_t vrLimbs[VRX_MAX_LIMBS];
+static int vrLimbNext;
+
+// the limb from bone root of body (drawn with pose bones) flying off, thrown along along
+static qboolean VRX_MeshLimb( vrSkel_t *sk, const refEntity_t *body, const float *bones, int root,
+							  const vec3_t along, const vec3_t shot ) {
+	vrLimb_t *l;
+	unsigned mask[VRX_CUT_WORDS] = { 0 };
+	int i, k, count = 0;
+
+	if ( !body || !bones || root < 0 || sk->n > VRX_MAX_BONES ) {
+		return qfalse;
+	}
+	l = &vrLimbs[vrLimbNext];
+	vrLimbNext = ( vrLimbNext + 1 ) % VRX_MAX_LIMBS;
+	memset( l, 0, sizeof( *l ) );
+	memcpy( l->pose, bones, sizeof( float ) * 12 * sk->n );
+	VRX_CutMask( sk, root, mask );
+	VRX_WriteCut( l->pose + sk->n * 12, 1, mask );
+	for ( i = 0; i < sk->n; i++ ) {
+		if ( ( mask[i >> 5] & ( 1u << ( i & 31 ) ) ) && !( sk->flags[i] & BONEFLAG_TAG ) ) {
+			VectorAdd( l->center, bones + i * 12 + 9, l->center );
+			count++;
+		}
+	}
+	if ( !count ) {
+		return qfalse;
+	}
+	VectorScale( l->center, 1.0f / count, l->center );
+	l->ref = *body;
+	l->ref.ragdollBones = l->pose;
+	l->ref.ragdollMagic = RAGDOLL_MAGIC;
+	l->ref.customShader = 0;
+	l->ref.renderfx &= ~RF_THIRD_PERSON;
+	for ( k = 0; k < 3; k++ ) {
+		VectorCopy( body->axis[k], l->axis[k] );
+	}
+	VectorCopy( body->origin, l->pos );
+	for ( k = 0; k < 3; k++ ) {
+		VectorMA( l->pos, l->center[k], body->axis[k], l->pos );
+	}
+	VectorScale( along, 140, l->vel );
+	VectorMA( l->vel, 180, shot, l->vel );
+	l->vel[0] += crandom() * 60;
+	l->vel[1] += crandom() * 60;
+	l->vel[2] += 160 + random() * 140;
+	VectorSet( l->spinAxis, crandom(), crandom(), crandom() );
+	if ( VectorNormalize( l->spinAxis ) < 0.1f ) {
+		VectorSet( l->spinAxis, 0, 0, 1 );
+	}
+	l->spin = 400 + random() * 500;
+	l->start = cg.time;
+	return qtrue;
+}
+
+// every frame: the limbs that came off, falling, bouncing and lying where they land
+void CG_VRX_AddLimbs( void ) {
+	float dt = cg.frametime * 0.001f;
+	vec3_t mins = { -3, -3, -3 }, maxs = { 3, 3, 3 }, end, dir;
+	trace_t tr;
+	int i, k;
+
+	if ( dt > 0.1f ) {
+		dt = 0.1f;
+	}
+	for ( i = 0; i < VRX_MAX_LIMBS; i++ ) {
+		vrLimb_t *l = &vrLimbs[i];
+
+		if ( !l->start ) {
+			continue;
+		}
+		if ( cg.time - l->start > VRX_LIMB_LIFE || cg.time < l->start ) {
+			l->start = 0;
+			continue;
+		}
+		if ( !l->resting && dt > 0 ) {
+			l->vel[2] -= 800 * dt;
+			VectorMA( l->pos, dt, l->vel, end );
+			CG_Trace( &tr, l->pos, mins, maxs, end, -1, CONTENTS_SOLID );
+			VectorCopy( tr.endpos, l->pos );
+			if ( tr.fraction < 1 ) {
+				float into = DotProduct( l->vel, tr.plane.normal );
+				VectorMA( l->vel, -1.6f * into, tr.plane.normal, l->vel );
+				VectorScale( l->vel, 0.45f, l->vel );
+				l->spin *= 0.4f;
+				if ( into < -40 ) {
+					CG_ImpactMark( cgs.media.bloodDotShaders[rand() % 5], tr.endpos, tr.plane.normal, random() * 360, 1, 1, 1, 1, qfalse, 6 + random() * 4, qfalse, -1 );
+				}
+				if ( tr.plane.normal[2] > 0.7f && VectorLength( l->vel ) < 40 ) {
+					l->resting = qtrue;
+					l->spin = 0;
+				}
+			}
+			if ( l->spin > 0 ) {
+				for ( k = 0; k < 3; k++ ) {
+					RotatePointAroundVector( dir, l->spinAxis, l->axis[k], l->spin * dt );
+					VectorCopy( dir, l->axis[k] );
+				}
+			}
+		}
+		// the model's origin, from where its middle is
+		VectorCopy( l->pos, l->ref.origin );
+		for ( k = 0; k < 3; k++ ) {
+			VectorMA( l->ref.origin, -l->center[k], l->axis[k], l->ref.origin );
+			VectorCopy( l->axis[k], l->ref.axis[k] );
+		}
+		VectorCopy( l->pos, l->ref.lightingOrigin );
+		l->ref.reFlags |= REFLAG_DEAD_LOD;
+		trap_R_AddRefEntityToScene( &l->ref );
+	}
+}
+
 // the limb flying off (RTCW's own gibs)
 static void VRX_LimbGib( vrWound_t *w, centity_t *cent, const vec3_t at, const vec3_t along ) {
 	static qhandle_t arm, leg;
@@ -490,7 +663,8 @@ static void VRX_LimbGib( vrWound_t *w, centity_t *cent, const vec3_t at, const v
 }
 
 // a cut or opened belly: on the front of the neck / belly, the way the body faced
-static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t bAxis[][3], vec3_t bPos[] ) {
+static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t bAxis[][3], vec3_t bPos[],
+						   const refEntity_t *body, const float *bones ) {
 	vec3_t ang, fwd, right, c, rel;
 	int b = VRX_FindBone( sk, w->kind == VRW_THROAT ? "Neck" : "Spine" );
 
@@ -512,7 +686,9 @@ static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t b
 		VectorNormalize( fwd );
 		VectorCopy( bPos[root], c );
 		PerpendicularVector( right, fwd );
-		VRX_LimbGib( w, cent, bPos[root], fwd );
+		if ( !VRX_MeshLimb( sk, body, bones, root, fwd, w->dir ) ) {
+			VRX_LimbGib( w, cent, bPos[root], fwd );      // (no pose to cut it from)
+		}
 		b = p;
 	} else if ( w->kind == VRW_STUMP ) {
 		int h = VRX_FindBone( sk, "Head" );
@@ -1138,12 +1314,12 @@ that goes first in the buffer, then the holes (model space, 12 floats each).
 
 static void VRX_AddBodyWounds( centity_t *cent, refEntity_t *body, vrSkel_t *sk, const float *bones,
 							   float holes[][12], int numHoles ) {
-	static float buf[MAX_CLIENTS][VRX_MAX_BONES * 12 + 2 + VRX_MAX_WOUNDS * 12];
+	static float buf[MAX_CLIENTS][VRX_MAX_BONES * 12 + VRX_CUT_FLOATS + 2 + VRX_MAX_WOUNDS * 12];
 	static qhandle_t shader;
 	union { float f; int i; } magic;
 	refEntity_t ov;
 	float *b;
-	int n = cent->currentState.number;
+	int n = cent->currentState.number, o;
 
 	if ( !numHoles || n < 0 || n >= MAX_CLIENTS || sk->n > VRX_MAX_BONES ) {
 		return;
@@ -1153,10 +1329,15 @@ static void VRX_AddBodyWounds( centity_t *cent, refEntity_t *body, vrSkel_t *sk,
 	}
 	b = buf[n];
 	memcpy( b, bones, sizeof( float ) * 12 * sk->n );
+	o = sk->n * 12;
+	if ( VRX_HasCut( bones + o ) ) {     // no holes on a limb that's gone
+		memcpy( b + o, bones + o, sizeof( float ) * VRX_CUT_FLOATS );
+		o += VRX_CUT_FLOATS;
+	}
 	magic.i = VRX_WOUND_MAGIC;
-	b[sk->n * 12] = magic.f;
-	b[sk->n * 12 + 1] = numHoles;
-	memcpy( b + sk->n * 12 + 2, holes, sizeof( float ) * 12 * numHoles );
+	b[o] = magic.f;
+	b[o + 1] = numHoles;
+	memcpy( b + o + 2, holes, sizeof( float ) * 12 * numHoles );
 	ov = *body;
 	ov.customShader = shader;
 	ov.customSkin = 0;
@@ -1236,7 +1417,7 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 			if ( w->kind == VRW_BULLET ) {
 				VRX_PlaceWound( w, sk, bAxis, bPos );
 			} else {
-				VRX_PlaceGore( w, cent, sk, bAxis, bPos );
+				VRX_PlaceGore( w, cent, sk, bAxis, bPos, body, bones );
 			}
 		}
 		if ( w->bone < 0 || w->bone >= sk->n ) {
@@ -1325,6 +1506,55 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 		}
 	}
 	VRX_AddBodyWounds( cent, body, sk, bones, holes, numHoles );
+}
+
+// vrtesthit larm|rarm|lleg|rleg|gut|chest (test aid): the nearest living character shot there
+static qboolean VRX_TestPoint( int c, int k, vec3_t out ) {
+	orientation_t or;
+
+	if ( !CG_VRX_BodyPoints( c, k / 4, &or ) ) {
+		return qfalse;
+	}
+	VectorCopy( k % 4 ? or.axis[k % 4 - 1] : or.origin, out );
+	return qtrue;
+}
+
+void CG_VRX_TestHit_f( void ) {
+	const char *part = CG_Argv( 1 );
+	int i, best = -1, a, b;
+	float d, bestD = 1e9f;
+	vec3_t p, q, dir;
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		centity_t *c = &cg_entities[i];
+		if ( i == cg.snap->ps.clientNum || !c->currentValid || c->currentState.eType != ET_PLAYER ||
+			 ( c->currentState.eFlags & EF_DEAD ) ) {
+			continue;
+		}
+		d = Distance( c->lerpOrigin, cg.refdef.vieworg );
+		if ( d < bestD ) {
+			bestD = d;
+			best = i;
+		}
+	}
+	if ( best < 0 ) {
+		return;
+	}
+	a = !Q_stricmp( part, "larm" ) ? VRB_LUA : !Q_stricmp( part, "rarm" ) ? VRB_RUA :
+		!Q_stricmp( part, "lleg" ) ? VRB_LTHIGH : !Q_stricmp( part, "rleg" ) ? VRB_RTHIGH :
+		!Q_stricmp( part, "gut" ) ? VRB_PELVIS : VRB_SPINE2;
+	b = a == VRB_LUA ? VRB_LFA : a == VRB_RUA ? VRB_RFA : a == VRB_LTHIGH ? VRB_LCALF :
+		a == VRB_RTHIGH ? VRB_RCALF : a == VRB_PELVIS ? VRB_SPINE2 : VRB_NECK;
+	if ( !VRX_TestPoint( best, a, p ) || !VRX_TestPoint( best, b, q ) ) {
+		return;
+	}
+	VectorAdd( p, q, p );
+	VectorScale( p, 0.5f, p );
+	VectorSubtract( p, cg.refdef.vieworg, dir );
+	VectorNormalize( dir );
+	CG_VRX_Flinch( best, p, dir );
+	CG_VRX_Wound( best, p, dir );
+	CG_Printf( "hit %d in the %s\n", best, part );
 }
 
 // vrposedump (test aid): the bones of the character nearest the view, as drawn last frame
@@ -1707,6 +1937,7 @@ void CG_VRX_Surrender( centity_t *cent, refEntity_t *body ) {
 		VRX_Turn( d, want, f, r );
 		VRX_RotateSubtree( pose, sk, b[1], r, pose + b[1] * 12 + 9 );
 	}
+	pose[sk->n * 12] = 0;      // nothing after the pose (no cut, CG_VRX_Dismember)
 	body->ragdollBones = pose;
 	body->ragdollMagic = RAGDOLL_MAGIC;
 }
@@ -1857,10 +2088,30 @@ void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
 		style = vrxDownStyle[n] >= 1 && vrxDownStyle[n] <= 3 ? vrxDownStyle[n] : 1 + n % 3;
 	}
 	pose = vrxPoses[n];
-	if ( body->ragdollBones && body->ragdollMagic == RAGDOLL_MAGIC && body->ragdollBones == pose ) {
-		sk = VRX_Skel( body, NULL );
-	} else {
-		sk = VRX_Skel( body, pose );
+	// the pose is built on one still frame of the animation, the one he was in when he went
+	// down: the idle playing underneath would make the downed sway and twitch
+	{
+		static int stillFor[MAX_CLIENTS], stillFrames[MAX_CLIENTS][4];
+		static vec3_t stillTorso[MAX_CLIENTS][3];
+		int since = groin ? vrxGroinTime[n] : vrxWentDown[n];
+		refEntity_t still = *body;
+
+		if ( stillFor[n] != since ) {
+			stillFor[n] = since;
+			stillFrames[n][0] = body->backlerp < 0.5f ? body->frame : body->oldframe;
+			stillFrames[n][1] = body->torsoBacklerp < 0.5f ? body->torsoFrame : body->oldTorsoFrame;
+			memcpy( stillTorso[n], body->torsoAxis, sizeof( stillTorso[n] ) );
+		}
+		memcpy( still.torsoAxis, stillTorso[n], sizeof( still.torsoAxis ) );
+		still.frame = still.oldframe = stillFrames[n][0];
+		still.torsoFrame = still.oldTorsoFrame = stillFrames[n][1];
+		still.backlerp = still.torsoBacklerp = 0;
+		if ( body->ragdollBones && body->ragdollMagic == RAGDOLL_MAGIC && body->ragdollBones == pose ) {
+			sk = VRX_Skel( body, NULL );
+		} else {
+			still.ragdollBones = NULL;
+			sk = VRX_Skel( &still, pose );
+		}
 	}
 	if ( !sk ) {
 		return;
@@ -2000,6 +2251,163 @@ void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
 		}
 		VRX_Lower( pose, sk, floor, 3.5f * f + ( 1 - f ) * 3.0f );
 	}
+	pose[sk->n * 12] = 0;      // nothing after the pose (no cut, CG_VRX_Dismember)
+	body->ragdollBones = pose;
+	body->ragdollMagic = RAGDOLL_MAGIC;
+}
+
+/*
+=================
+CG_VRX_HitReact
+
+Soldier of Fortune style hit reactions (SoF2 picks a pain animation by where the shot went in;
+here the living character's own pose is bent instead), on top of the flinch
+(CG_VRX_FlinchAngles), for a moment after a bullet hits:
+
+  an arm    flung back along the shot, the forearm flopping
+  a leg     the knee buckling, the body dropping onto it (a stumble)
+  the gut   doubled over, the near hand clutching the wound
+  the chest knocked back, the near hand clutching the wound
+=================
+*/
+void CG_VRX_HitReact( centity_t *cent, refEntity_t *body ) {
+	enum { LUA, LFA, LHAND, RUA, RFA, RHAND, LTH, LCALF, LFOOT, RTH, RCALF, RFOOT, PELVIS, SPINE, SPINE2, NECK, HEAD, NB };
+	static const char *names[NB] = {
+		"L UpperArm", "L Forearm", "L Hand", "R UpperArm", "R Forearm", "R Hand",
+		"L Thigh", "L Calf", "L Foot", "R Thigh", "R Calf", "R Foot",
+		"Pelvis", "Spine", "Spine2", "Neck", "Head"
+	};
+	int n = cent->currentState.number, b[NB], k, best = -1, t, dur, rise = 60;
+	float *pose, env, d, bestD = 1e9f, floor;
+	vrSkel_t *sk;
+	vec3_t hit, dir, rel, v, w;
+
+	if ( n >= MAX_CLIENTS || !CG_VRX( VRX_REACTIONS ) || !cent->pe.vrFlinchTime || body->ragdollBones ||
+		 ( cent->currentState.eFlags & EF_DEAD ) || CG_VR_FullBody( cent ) ) {
+		return;
+	}
+	t = cg.time - cent->pe.vrFlinchTime;
+	dur = CG_VRX( VRX_REACTIONS ) == 2 ? 1100 : 800;
+	if ( t < 0 || t >= dur ) {
+		return;
+	}
+	pose = vrxPoses[n];
+	sk = VRX_Skel( body, pose );
+	if ( !sk ) {
+		return;
+	}
+	for ( k = 0; k < NB; k++ ) {
+		b[k] = VRX_FindBone( sk, names[k] );
+		if ( b[k] < 0 && k != SPINE2 ) {
+			return;
+		}
+	}
+	if ( b[SPINE2] < 0 ) {
+		b[SPINE2] = b[SPINE];
+	}
+	// the shot in the model's own space
+	VectorSubtract( cent->pe.vrFlinchPoint, body->origin, rel );
+	for ( k = 0; k < 3; k++ ) {
+		hit[k] = DotProduct( rel, body->axis[k] );
+		dir[k] = DotProduct( cent->pe.vrFlinchDir, body->axis[k] );
+	}
+	// where it went in: the nearest joint, or the middle of a limb
+	for ( k = 0; k < NB; k++ ) {
+		int c = k == LUA ? b[LFA] : k == LFA ? b[LHAND] : k == RUA ? b[RFA] : k == RFA ? b[RHAND] :
+				k == LTH ? b[LCALF] : k == LCALF ? b[LFOOT] : k == RTH ? b[RCALF] : k == RCALF ? b[RFOOT] : -1;
+		VectorCopy( VRX_BP( pose, b[k] ), v );
+		if ( c >= 0 ) {
+			VectorAdd( v, VRX_BP( pose, c ), v );
+			VectorScale( v, 0.5f, v );
+		}
+		VectorSubtract( v, hit, w );
+		d = VectorLength( w );
+		if ( d < bestD ) {
+			bestD = d;
+			best = k;
+		}
+	}
+	if ( best < 0 || best == HEAD || best == NECK ) {
+		return;     // the head: the flinch snaps it
+	}
+	// fast in, slow out; a clutched wound is held a while
+	env = t < rise ? (float)t / rise : 1.0f - (float)( t - rise ) / ( dur - rise );
+	env = env < 0 ? 0 : env;
+	env = env * env * ( 3 - 2 * env );
+	floor = min( VRX_BP( pose, b[LFOOT] )[2], VRX_BP( pose, b[RFOOT] )[2] );
+
+	if ( best == LUA || best == LFA || best == LHAND || best == RUA || best == RFA || best == RHAND ) {
+		int ua = best <= LHAND ? LUA : RUA;
+		// the arm thrown back along the shot
+		VectorSubtract( VRX_BP( pose, b[ua + 1] ), VRX_BP( pose, b[ua] ), v );
+		VectorNormalize( v );
+		VectorMA( v, 1.4f, dir, w );
+		w[1] += ua == LUA ? 0.9f : -0.9f;       // and out to the side, so it shows from the front
+		w[2] += 0.3f;
+		VRX_Aim( pose, sk, b[ua], b[ua + 1], w, env * 0.85f );
+		VectorSubtract( VRX_BP( pose, b[ua + 2] ), VRX_BP( pose, b[ua + 1] ), v );
+		VectorNormalize( v );
+		VectorMA( v, 1.2f, dir, w );
+		w[2] -= 0.6f;
+		VRX_Aim( pose, sk, b[ua + 1], b[ua + 2], w, env * 0.8f );
+		VectorSet( v, -dir[0] * 0.15f, -dir[1] * 0.15f, 1 );
+		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, env * 0.25f, b[LTH], b[RTH] );
+	} else if ( best == LTH || best == LCALF || best == LFOOT || best == RTH || best == RCALF || best == RFOOT ) {
+		int th = best <= LFOOT ? LTH : RTH, other = th == LTH ? RTH : LTH;
+		float side = th == LTH ? 0.08f : -0.08f;
+		// the knee gives: thigh forward, shin back, the other knee bending a little too
+		VectorSet( v, 0.75f, side, -1 );
+		VRX_Aim( pose, sk, b[th], b[th + 1], v, env );
+		VectorSet( v, -0.55f, side, -1 );
+		VRX_Aim( pose, sk, b[th + 1], b[th + 2], v, env );
+		VectorSet( v, 0.25f, -side, -1 );
+		VRX_Aim( pose, sk, b[other], b[other + 1], v, env * 0.6f );
+		VectorSet( v, -0.15f, -side, -1 );
+		VRX_Aim( pose, sk, b[other + 1], b[other + 2], v, env * 0.6f );
+		// and over the hurt leg, reaching down for it
+		VectorSet( v, 0.35f, side * 3, 1 );
+		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, env * 0.7f, b[LTH], b[RTH] );
+		VRX_Lower( pose, sk, floor, 0 );
+	} else {
+		qboolean gut = hit[2] < VRX_BP( pose, b[SPINE2] )[2] - 2.0f;
+		int ua = hit[1] > VRX_BP( pose, b[PELVIS] )[1] ? LUA : RUA;
+		vec3_t at, was, now, r[3];
+
+		VectorSubtract( VRX_BP( pose, b[NECK] ), VRX_BP( pose, b[SPINE] ), was );
+		VectorSubtract( hit, VRX_BP( pose, b[SPINE] ), rel );
+
+		if ( gut ) {
+			VectorSet( v, 0.7f, 0, 0.7f );      // doubled over
+		} else {
+			VectorSet( v, dir[0] * 0.6f, dir[1] * 0.6f, 1 );       // knocked back
+		}
+		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, env * 0.8f, b[LTH], b[RTH] );
+		// the hand to the wound (where it is now, turned with the trunk)
+		VectorSubtract( VRX_BP( pose, b[NECK] ), VRX_BP( pose, b[SPINE] ), now );
+		VectorNormalize( was );
+		VectorNormalize( now );
+		VRX_Turn( was, now, 1, r );
+		for ( k = 0; k < 3; k++ ) {
+			at[k] = VRX_BP( pose, b[SPINE] )[k] + r[0][k] * rel[0] + r[1][k] * rel[1] + r[2][k] * rel[2];
+		}
+		VectorMA( at, -2.0f, dir, at );         // on the skin, not in it
+		VectorSubtract( at, VRX_BP( pose, b[ua] ), v );
+		v[2] -= 6.0f;
+		VRX_Aim( pose, sk, b[ua], b[ua + 1], v, env * 0.9f );
+		VRX_AimAt( pose, sk, b[ua + 1], b[ua + 2], at, env );
+		if ( gut ) {
+			VectorSet( v, 0.3f, 0.06f, -1 );
+			VRX_Aim( pose, sk, b[LTH], b[LCALF], v, env * 0.5f );
+			VectorSet( v, 0.3f, -0.06f, -1 );
+			VRX_Aim( pose, sk, b[RTH], b[RCALF], v, env * 0.5f );
+			VectorSet( v, -0.2f, 0.06f, -1 );
+			VRX_Aim( pose, sk, b[LCALF], b[LFOOT], v, env * 0.5f );
+			VectorSet( v, -0.2f, -0.06f, -1 );
+			VRX_Aim( pose, sk, b[RCALF], b[RFOOT], v, env * 0.5f );
+			VRX_Lower( pose, sk, floor, 0 );
+		}
+	}
+	pose[sk->n * 12] = 0;      // nothing after the pose (no cut, CG_VRX_Dismember)
 	body->ragdollBones = pose;
 	body->ragdollMagic = RAGDOLL_MAGIC;
 }
@@ -2079,14 +2487,15 @@ qboolean CG_VRX_BodyPoints( int clientNum, int group, orientation_t *or ) {
 =================
 CG_VRX_Dismember
 
-A body with limbs off: everything below each cut squeezed into the joint (the mesh is one
-piece, so the bones are folded away), on the pose being drawn (the ragdoll's, or the
-death animation's). Then it's drawn with that pose.
+A body with limbs off: the pose being drawn (the ragdoll's, or the animation's), with a cut
+after it telling the renderer to leave out the triangles skinned to each lost limb (Ghoul 2
+style; the limb itself flies off as VRX_MeshLimb).
 =================
 */
 
 void CG_VRX_Dismember( centity_t *cent, refEntity_t *body ) {
-	int n = cent->currentState.number, bits, limb, root, i, p;
+	int n = cent->currentState.number, bits, limb, root;
+	unsigned mask[VRX_CUT_WORDS] = { 0 };
 	float *pose;
 	vrSkel_t *sk;
 
@@ -2123,19 +2532,9 @@ void CG_VRX_Dismember( centity_t *cent, refEntity_t *body ) {
 		if ( root < 0 ) {
 			continue;
 		}
-		for ( i = 0; i < sk->n; i++ ) {
-			for ( p = i; p >= 0 && p != root; p = sk->parents[p] ) {
-			}
-			if ( p == root ) {
-				float *bm = pose + i * 12;
-				int k;
-				for ( k = 0; k < 9; k++ ) {
-					bm[k] *= 0.001f;
-				}
-				VectorCopy( pose + root * 12 + 9, bm + 9 );
-			}
-		}
+		VRX_CutMask( sk, root, mask );
 	}
+	VRX_WriteCut( pose + sk->n * 12, 0, mask );     // the renderer leaves those triangles out
 	body->ragdollBones = pose;
 	body->ragdollMagic = RAGDOLL_MAGIC;
 }

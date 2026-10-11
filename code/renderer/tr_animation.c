@@ -1143,6 +1143,44 @@ static void R_VRX_BodyBlood( mdsHeader_t *header, mdsSurface_t *surface, const r
 
 /*
 ==============
+R_VRX_Trailer
+
+RealRTCW-VR: what the cgame put after a ragdoll pose in ragdollBones, the pose being
+numBones * 12 floats. First, optionally, a cut (dismemberment, the way Ghoul 2 turns a
+limb's surfaces off): VRX_CUT_MAGIC, 0 to draw the body without the bones in the mask or 1
+to draw only them (the limb that came off), then the mask, 32 bones to a float's bits.
+Then, optionally, bullet holes (R_VRX_BodyWounds).
+==============
+*/
+#define VRX_CUT_MAGIC       0x56524354      // "VRCT"
+#define VRX_CUT_WORDS       ( ( MDS_MAX_BONES + 31 ) / 32 )
+
+typedef union { float f; int i; } vrxBits_t;
+
+static const float *R_VRX_Trailer( const mdsHeader_t *header, const refEntity_t *refent, int *cutMode, unsigned *cutMask ) {
+	const float *g;
+	vrxBits_t m;
+	int k;
+
+	*cutMode = -1;
+	if ( !refent->ragdollBones || refent->ragdollMagic != RAGDOLL_MAGIC ) {
+		return NULL;
+	}
+	g = refent->ragdollBones + header->numBones * 12;
+	m.f = g[0];
+	if ( m.i == VRX_CUT_MAGIC ) {
+		*cutMode = (int)g[1];
+		for ( k = 0; k < VRX_CUT_WORDS; k++ ) {
+			m.f = g[2 + k];
+			cutMask[k] = (unsigned)m.i;
+		}
+		g += 2 + VRX_CUT_WORDS;
+	}
+	return g;
+}
+
+/*
+==============
 R_VRX_BodyWounds
 
 RealRTCW-VR: bullet holes on a body, the way Ghoul 2 does its skin gore: the cgame draws the
@@ -1170,7 +1208,14 @@ static void R_VRX_BodyWounds( mdsHeader_t *header, const refEntity_t *refent, in
 	if ( !refent->ragdollBones || refent->ragdollMagic != RAGDOLL_MAGIC || numVerts > SHADER_MAX_VERTEXES ) {
 		return;
 	}
-	g = refent->ragdollBones + header->numBones * 12;
+	{
+		int cutMode;
+		unsigned cutMask[VRX_CUT_WORDS];
+		g = R_VRX_Trailer( header, refent, &cutMode, cutMask );
+	}
+	if ( !g ) {
+		return;
+	}
 	magic.f = g[0];
 	if ( magic.i != VRX_WOUND_MAGIC ) {
 		return;
@@ -1430,8 +1475,15 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	v = ( mdsVertex_t * )( (byte *)surface + surface->ofsVerts );
 	tempVert = ( float * )( tess.xyz + baseVertex );
 	tempNormal = ( float * )( tess.normal + baseVertex );
+	{
+		static byte cutVert[MDS_MAX_VERTS];
+		unsigned cutMask[VRX_CUT_WORDS];
+		int cutMode;
+
+	R_VRX_Trailer( header, refent, &cutMode, cutMask );
 	for ( j = 0; j < render_count; j++, tempVert += 4, tempNormal += 4 ) {
 		mdsWeight_t *w;
+		float cutW = 0;
 
 		VectorClear( tempVert );
 
@@ -1439,6 +1491,12 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 		for ( k = 0 ; k < v->numWeights ; k++, w++ ) {
 			bone = &bones[w->boneIndex];
 			LocalAddScaledMatrixTransformVectorTranslate( w->offset, w->boneWeight, bone->matrix, bone->translation, tempVert );
+			if ( cutMode >= 0 && ( cutMask[w->boneIndex >> 5] & ( 1u << ( w->boneIndex & 31 ) ) ) ) {
+				cutW += w->boneWeight;
+			}
+		}
+		if ( j < MDS_MAX_VERTS ) {
+			cutVert[j] = cutW >= 0.5f;
 		}
 		LocalMatrixTransformVector( v->normal, bones[v->weights[0].boneIndex].matrix, tempNormal );
 
@@ -1446,6 +1504,23 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 		tess.texCoords[baseVertex + j][0][1] = v->texCoords[1];
 
 		v = (mdsVertex_t *)&v->weights[v->numWeights];
+	}
+	// RealRTCW-VR dismemberment: the triangles mostly on the cut bones dropped (the body),
+	// or only those kept (the limb that came off)
+	if ( cutMode >= 0 && render_count <= MDS_MAX_VERTS ) {
+		int out = oldIndexes, in, cut;
+		for ( in = oldIndexes; in + 2 < tess.numIndexes; in += 3 ) {
+			cut = cutVert[tess.indexes[in] - baseVertex] + cutVert[tess.indexes[in + 1] - baseVertex] + cutVert[tess.indexes[in + 2] - baseVertex];
+			if ( ( cut >= 2 ) != ( cutMode == 1 ) ) {
+				continue;
+			}
+			tess.indexes[out] = tess.indexes[in];
+			tess.indexes[out + 1] = tess.indexes[in + 1];
+			tess.indexes[out + 2] = tess.indexes[in + 2];
+			out += 3;
+		}
+		tess.numIndexes = out;
+	}
 	}
 	if ( tess.shader && !Q_stricmp( tess.shader->name, "vr_bodyblood" ) ) {
 		R_VRX_BodyBlood( header, surface, refent, baseVertex, render_count );
