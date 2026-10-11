@@ -2,19 +2,27 @@
 from gla import *
 names=[b['name'] for b in bones]
 J=['pelvis','lower_lumbar','thoracic','cervical','cranium','lhumerus','lradius','lhand','rhumerus','rradius','rhand','lfemurYZ','ltibia','ltalus','rfemurYZ','rtibia','rtalus']
-A=['shot_gut_longwrithe_onback','guttobackfalltokneelookhand01','shot_chest_standwrithe_onfront','shot_lleg_writhe_onback','shot_rleg_writhe_onback','shot_ltarm_writhe_onrside','shot_rtarm_writhe_onrside','male01_wounded_sittingcorner_helpless']
+# (name, first frame, mirrored): the long stagger on his feet before some of them fall is cut to
+# a moment; the right leg/arm ones hold the same frames as the left in the .gla, so they're the
+# left ones mirrored
+A=[('shot_gut_longwrithe_onback',48,0),('guttobackfalltokneelookhand01',0,0),('shot_chest_standwrithe_onfront',84,0),
+   ('shot_lleg_writhe_onback',0,0),('shot_lleg_writhe_onback',0,1),('shot_ltarm_writhe_onrside',0,0),('shot_ltarm_writhe_onrside',0,1),
+   ('male01_wounded_sittingcorner_helpless',0,0)]
+MIR=[0,1,2,3,4,8,9,10,5,6,7,14,15,16,11,12,13]
 idx=[names.index(j) for j in J]
 out=[];starts=[];counts=[]
-for a in A:
+for a,first,mir in A:
     s,n,fps=anims[a]; assert fps==20
-    starts.append(len(out)); counts.append(n)
-    for f in range(s,s+n):
+    starts.append(len(out)); counts.append(n-first)
+    for f in range(s+first,s+n):
         W=frame(f)
         row=[]
         for i in idx:
             x,y,z=W[i][:3,3]*scale
-            row+= [-y,x,z]       # SoF2 (x left, -y forward) -> RTCW (x forward, y left)
-        out.append(row)
+            row.append([-y,x,z])   # SoF2 (x left, -y forward) -> RTCW (x forward, y left)
+        if mir:
+            row=[[p[0],-p[1],p[2]] for p in (row[m] for m in MIR)]
+        out.append(sum(row,[]))
 F=np.array(out)
 P=lambda r,j: F[r,j*3:j*3+3]
 leg=np.linalg.norm(P(0,11)-P(0,12))+np.linalg.norm(P(0,12)-P(0,13))
@@ -24,7 +32,7 @@ with open('cg_vrsof2anims.h','w') as h:
     h.write('// per frame (20 a second) the model-space positions of %d joints, x forward y left z up, in 1/32 units\n'%len(J))
     h.write('// joints: %s\n'%' '.join(J))
     h.write('#define VRX_SOF2_JOINTS %d\n#define VRX_SOF2_ANIMS %d\n#define VRX_SOF2_LEG %.3ff\n'%(len(J),len(A),leg))
-    h.write('// animations: %s\n'%' '.join(A))
+    h.write('// animations: %s\n'%' '.join(a+('(mirrored)' if m else '')+('(from %d)'%f if f else '') for a,f,m in A))
     h.write('static const int vrxSof2Start[VRX_SOF2_ANIMS] = { %s };\n'%', '.join(map(str,starts)))
     h.write('static const int vrxSof2Frames[VRX_SOF2_ANIMS] = { %s };\n'%', '.join(map(str,counts)))
     h.write('static const short vrxSof2Pose[%d][%d] = {\n'%(len(out),len(J)*3))
