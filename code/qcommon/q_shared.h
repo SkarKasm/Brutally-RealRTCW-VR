@@ -1593,6 +1593,7 @@ extern translateTextString_t translateTextStrings[MAX_TRANSLATETEXTSTRINGS];
 // unused
 #define WBUTTON_ADS         64 // RealRTCW
 #define WBUTTON_EXTRA7      128
+#define WBUTTON_VR_LEFTGUN  WBUTTON_EXTRA7  // RealRTCW-VR: dual wielding, this command fires the off hand's gun
 //----(SA) end
 
 #define MOVE_RUN            120         // if forwardmove or rightmove are >= MOVE_RUN,

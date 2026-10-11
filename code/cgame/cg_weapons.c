@@ -6156,7 +6156,7 @@ void CG_FireWeapon( centity_t *cent, int event ) {
 	// RealRTCW-VR: recoil is felt in the hand instead of kicking the aim, and the bullet's
 	// impact shows straight away
 	if ( cg.snap && ent->number == cg.snap->ps.clientNum && ent->weapon != WP_KNIFE ) {
-		cgvr.lastShotLeft = cgVR && cgVR->dualWield && cgVR->akimboLeft;
+		cgvr.lastShotLeft = cgVR && cgVR->dualWield && event == EV_FIRE_WEAPONB;
 		cgvr.shotTime[cgvr.lastShotLeft ? 1 : 0] = cg.time;
 		CG_VR_Haptic( cgvr.lastShotLeft ? !CG_VR_DominantHand() : CG_VR_DominantHand(), 0.8f, 60 );
 		if ( !cgvr.lastShotLeft ) {

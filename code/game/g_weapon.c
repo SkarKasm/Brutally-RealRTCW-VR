@@ -1912,7 +1912,7 @@ qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out ) {
 		return qfalse;
 	}
 	dom = gVR->rightHanded ? VR_HAND_RIGHT : VR_HAND_LEFT;
-	if ( gVR->akimboLeft && gVR->dualWield ) {
+	if ( g_dualLeftShot && gVR->dualWield ) {
 		dom = !dom;     // dual pistols: the off hand's gun fired
 	}
 	if ( !gVR->handValid[dom] ) {
@@ -1942,7 +1942,7 @@ qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out ) {
 		vec3_t angles, axis[3], muzzle;
 
 		// the aim in world space: pitch/roll from the hand, yaw from the usercmd
-		VectorSet( angles, gVR->akimboLeft && gVR->dualWield ? ent->client->ps.viewangles[PITCH] : gVR->weaponAngles[PITCH],
+		VectorSet( angles, g_dualLeftShot && gVR->dualWield ? ent->client->ps.viewangles[PITCH] : gVR->weaponAngles[PITCH],
 				   ent->client->ps.viewangles[YAW], gVR->weaponAngles[ROLL] );
 		AnglesToAxis( angles, axis );
 		VectorCopy( out, muzzle );

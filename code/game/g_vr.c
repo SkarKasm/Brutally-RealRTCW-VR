@@ -776,6 +776,37 @@ static qboolean G_VR_GrabItem( gentity_t *ent, const vec3_t hand ) {
 	return qfalse;
 }
 
+// a hand touching an item picks it up as the body touching it would (treasure on a shelf
+// or a mantel the body can't get up to): only what the body would take by touch
+#define VR_HAND_TOUCH       4.0f
+
+static void G_VR_HandTouchItems( gentity_t *ent ) {
+	vec3_t hand;
+	gentity_t *e;
+	trace_t tr;
+	int h, i;
+
+	if ( ent->client->ps.stats[STAT_HEALTH] <= 0 || ent->client->ps.pm_type != PM_NORMAL ) {
+		return;
+	}
+	for ( h = 0; h < 2; h++ ) {
+		if ( !gVR->handValid[h] ) {
+			continue;
+		}
+		G_VR_HandWorld( ent, h, hand );
+		for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
+			e = &g_entities[i];
+			if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item || e->touch != Touch_Item_Auto ) {
+				continue;
+			}
+			if ( G_VR_BoxDist( hand, e->r.absmin, e->r.absmax ) <= VR_HAND_TOUCH ) {
+				memset( &tr, 0, sizeof( tr ) );
+				e->touch( e, ent, &tr );
+			}
+		}
+	}
+}
+
 static void G_VR_HandUse( gentity_t *ent, const vec3_t hand ) {
 	vec3_t eye, dir;
 
@@ -1122,6 +1153,7 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 	}
 	G_VR_Init();
 	gVR->flatGrabbed = 0;
+	G_VR_HandTouchItems( ent );
 
 	dom = gVR->rightHanded ? VR_HAND_RIGHT : VR_HAND_LEFT;
 	off = !dom;

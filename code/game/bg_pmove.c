@@ -5173,6 +5173,12 @@ extern int bg_vrAkimbo;     // bg_misc.c
 int Pmove( pmove_t *pmove ) {
 	int finalTime;
 
+	// RealRTCW-VR: which gun of a dual pair fires comes with each command, so a shot is never
+	// taken with the other hand's flag (the client runs more frames than the game)
+	if ( pmove->vrAim ) {
+		pmove->vrAkimbo = ( pmove->cmd.wbuttons & WBUTTON_VR_LEFTGUN ) ? 2 : 1;
+	}
+
 	// Ridah
 	if ( pmove->ps->eFlags & EF_DUMMY_PMOVE ) {
 		bg_vrAkimbo = pmove->vrAkimbo - 1;  PmoveSingle( pmove );  bg_vrAkimbo = -1;

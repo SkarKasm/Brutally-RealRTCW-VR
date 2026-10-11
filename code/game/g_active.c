@@ -790,7 +790,8 @@ void ClientEvents( gentity_t *ent, int oldEventSequence ) {
 		case EV_FIRE_WEAPON:
 		case EV_FIRE_WEAPONB:
 		case EV_FIRE_WEAPON_LASTSHOT:
-			g_dualLeftShot = event == EV_FIRE_WEAPONB && BG_DualActive( &ent->client->ps );  // RealRTCW-VR
+			g_dualLeftShot = event == EV_FIRE_WEAPONB && ( BG_DualActive( &ent->client->ps ) ||   // RealRTCW-VR
+				ent->client->ps.weapon == WP_AKIMBO || ent->client->ps.weapon == WP_DUAL_TT33 );
 			FireWeapon( ent );
 			g_dualLeftShot = qfalse;
 			break;
