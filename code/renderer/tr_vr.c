@@ -187,6 +187,30 @@ void RE_VR_PresentMirror( unsigned int sourceFramebuffer, int sourceWidth, int s
 				int w = (int)( winH * srcAspect );
 				dx0 = ( winW - w ) / 2; dx1 = dx0 + w;
 			}
+		} else if ( vrRender.eye >= 0 && r_vrMirrorFov && r_vrMirrorFov->value > 10.0f &&
+					vrRender.fovTan[1] - vrRender.fovTan[0] > 0.01f && vrRender.fovTan[2] - vrRender.fovTan[3] > 0.01f ) {
+			// a flat screen's view: vr_mirrorFov degrees across, centred on the line of sight
+			// (not the lens edges the headset doesn't show)
+			const float *t = vrRender.fovTan;
+			float pxPerTanX = sourceWidth / ( t[1] - t[0] ), pxPerTanY = sourceHeight / ( t[2] - t[3] );
+			float hw = tan( DEG2RAD( ( r_vrMirrorFov->value > 150.0f ? 150.0f : r_vrMirrorFov->value ) * 0.5f ) );
+			float w = 2.0f * hw * pxPerTanX, h;
+
+			h = ( w / pxPerTanX ) / winAspect * pxPerTanY;     // the window's shape, in tangents
+			if ( w > sourceWidth ) {
+				h *= sourceWidth / w;
+				w = sourceWidth;
+			}
+			if ( h > sourceHeight ) {
+				w *= sourceHeight / h;
+				h = sourceHeight;
+			}
+			sx0 = (int)( cx * sourceWidth - w * 0.5f );
+			sx0 = sx0 < 0 ? 0 : ( sx0 > sourceWidth - (int)w ? sourceWidth - (int)w : sx0 );
+			sx1 = sx0 + (int)w;
+			sy0 = (int)( cy * sourceHeight - h * 0.5f );
+			sy0 = sy0 < 0 ? 0 : ( sy0 > sourceHeight - (int)h ? sourceHeight - (int)h : sy0 );
+			sy1 = sy0 + (int)h;
 		} else if ( srcAspect < winAspect ) {
 			// a band of the image as wide as it is, around the line of sight
 			int h = (int)( sourceWidth / winAspect );

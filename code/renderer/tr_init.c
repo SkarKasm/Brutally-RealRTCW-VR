@@ -136,6 +136,7 @@ cvar_t  *r_texturebits;
 cvar_t  *r_ext_multisample;
 cvar_t  *r_fbo;
 cvar_t  *r_vrMirrorFit;
+cvar_t  *r_vrMirrorFov;
 
 cvar_t  *r_drawBuffer;
 cvar_t  *r_glIgnoreWicked3D;
@@ -1269,6 +1270,7 @@ void R_Register( void ) {
 	ri.Cvar_CheckRange( r_ext_multisample, 0, 4, qtrue );
 	r_fbo = ri.Cvar_Get( "r_fbo", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_vrMirrorFit = ri.Cvar_Get( "vr_mirrorFit", "0", CVAR_ARCHIVE );
+	r_vrMirrorFov = ri.Cvar_Get( "vr_mirrorFov", "90", CVAR_ARCHIVE );
 	ri.Cvar_CheckRange( r_fbo, 0, 1, qtrue );
 	r_overBrightBits = ri.Cvar_Get( "r_overBrightBits", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "0", CVAR_ARCHIVE | CVAR_LATCH );
