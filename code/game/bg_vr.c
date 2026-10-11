@@ -66,6 +66,7 @@ int BG_VR_ReloadClass( int weapon ) {
 	case WP_M1941SCOPE:
 	case WP_GARAND:
 	case WP_SNOOPERSCOPE:
+	case WP_MG42M:          // its ammo box comes off, and it's cocked by hand
 		return VRR_MAG;
 	case WP_MAUSER:
 	case WP_SNIPERRIFLE:
@@ -191,6 +192,17 @@ void BG_VR_WeaponGeom( int weapon, qboolean vanillaGuns, vrWeaponGeom_t *out ) {
 	}
 	if ( out->travel < 4.0f ) {
 		out->travel = 4.0f;
+	}
+
+	// the hand held MG42 has no separate cocking handle part: it's on the right of the
+	// receiver, ahead of the grip, and pulled well back. Its ammo box comes off to the left.
+	if ( weapon == WP_MG42M ) {
+		VectorSet( out->charge, out->grip[0] + 9.7f, out->grip[1] - 2.7f, out->grip[2] + 10.3f );
+		VectorSet( out->chargeDir, -1, 0, 0 );
+		out->travel = 7.0f;
+		if ( out->magPart >= 0 ) {
+			VectorSet( out->magDir, 0, 0.7f, -0.7f );
+		}
 	}
 
 	// where magazines / clips / shells go in

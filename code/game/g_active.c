@@ -1285,6 +1285,22 @@ void ClientThink_real( gentity_t *ent ) {
 		}
 	}
 
+	// RealRTCW-VR: vr_debug 6 traces throwables (why a throw doesn't start)
+	if ( pm.vrAim && ( ent->client->ps.weapon == WP_DYNAMITE || ent->client->ps.weapon == WP_GRENADE_LAUNCHER ||
+					   ent->client->ps.weapon == WP_GRENADE_PINEAPPLE ) &&
+		 trap_Cvar_VariableIntegerValue( "vr_debug" ) == 6 ) {
+		static int lastPrint, lastButtons;
+		playerState_t *ps = &ent->client->ps;
+		if ( ( pm.cmd.buttons & BUTTON_ATTACK ) != lastButtons || level.time - lastPrint > 500 ) {
+			G_Printf( "VR throw pre: wp %d btn %d wb %d state %d wt %d wd %d gtl %d clip %d ammo %d lean %.1f water %d flags %x knives %d held %d\n",
+					  ps->weapon, pm.cmd.buttons, pm.cmd.wbuttons, ps->weaponstate, ps->weaponTime, ps->weaponDelay,
+					  ps->grenadeTimeLeft, ps->ammoclip[BG_FindClipForWeapon( ps->weapon )],
+					  ps->ammo[BG_FindAmmoForWeapon( ps->weapon )], ps->leanf, ent->waterlevel, ps->eFlags,
+					  ps->holdable[HI_KNIVES], ps->persistant[PERS_HWEAPON_USE] );
+			lastPrint = level.time;
+			lastButtons = pm.cmd.buttons & BUTTON_ATTACK;
+		}
+	}
 	monsterslick = Pmove( &pm );
 
 	// RealRTCW-VR: the knife hurts by physically stabbing with it; hand reloading, grabbing
