@@ -2226,15 +2226,21 @@ void ClientCommand( int clientNum ) {
 		return;
 	}
 	if ( ( Q_stricmp( cmd, "vrtestbody" ) == 0 || Q_stricmp( cmd, "vrtestaim" ) == 0 ) && CheatsOk( ent ) ) {
-		qboolean aim = Q_stricmp( cmd, "vrtestaim" ) == 0;
+		qboolean aim = Q_stricmp( cmd, "vrtestaim" ) == 0, head = qfalse;
 		gentity_t *e, *best = NULL;
 		float d, bestDist = 1e9f;
 		vec3_t fwd, p, ang;
 		int i;
 
+		if ( aim ) {     // vrtestaim head: at the head of the nearest living one
+			char arg[16];
+			trap_Argv( 1, arg, sizeof( arg ) );
+			head = !Q_stricmp( arg, "head" );
+		}
+
 		for ( i = 1; i < level.maxclients; i++ ) {
 			e = &g_entities[i];
-			if ( e->inuse && e->client && e->aiCharacter && ( aim ? e->health <= 0 : e->health > 0 ) &&
+			if ( e->inuse && e->client && e->aiCharacter && ( aim && !head ? e->health <= 0 : e->health > 0 ) &&
 				 e->r.linked && !( e->r.svFlags & SVF_NOCLIENT ) && ( e->takedamage || e->health <= 0 ) && !( e->flags & FL_GODMODE ) &&
 				 ( d = Distance( e->r.currentOrigin, ent->r.currentOrigin ) ) < bestDist ) {
 				best = e;
@@ -2246,6 +2252,12 @@ void ClientCommand( int clientNum ) {
 			p[2] += ent->client->ps.viewheight;
 			VectorSubtract( best->r.currentOrigin, p, fwd );
 			fwd[2] += ( best->r.absmin[2] + best->r.absmax[2] ) * 0.5f - best->r.currentOrigin[2];
+			if ( head ) {
+				orientation_t or;
+				if ( trap_GetTag( best->s.number, "tag_head", &or ) ) {
+					VectorSubtract( or.origin, p, fwd );
+				}
+			}
 			vectoangles( fwd, ang );
 			SetClientViewAngle( ent, ang );
 		} else if ( best ) {
