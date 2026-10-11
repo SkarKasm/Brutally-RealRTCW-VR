@@ -1980,15 +1980,13 @@ void CG_VRX_Surrender( centity_t *cent, refEntity_t *body ) {
 =================
 CG_VRX_Downed
 
-Someone shot down (VRX_GB_DOWNED), one of three ways (the server's pick, VRX_GoreMarker):
+Someone shot down (VRX_GB_DOWNED) plays one of Soldier of Fortune II's agony animations,
+picked by the server from where the shot went in (G_VRX_KnockDown): falling, then writhing on
+the floor until someone finishes him (VRX_Sof2Downed). A shot in the balls doubles him over
+for a while instead.
 
-1  knocked onto his back, propped on his elbows, head up looking ahead (a stun)
-2  flat on his back, the left hand on his chest, the right arm reaching out
-3  on his knees, the left hand clutching his chest, leaning over with the right arm
-   stretched out to the ground (coughing blood)
-
-Like CG_VRX_Surrender, a pose (eased in) handed to the renderer as ragdollBones, in the
-model's own space: x forward, y left, z up.
+Like CG_VRX_Surrender, a pose handed to the renderer as ragdollBones, in the model's own
+space: x forward, y left, z up.
 =================
 */
 static int vrxWentDown[MAX_CLIENTS];
@@ -2080,6 +2078,120 @@ static void VRX_Lower( float *pose, vrSkel_t *sk, float floor, float height ) {
 	}
 }
 
+/*
+SoF2's agony animations (cg_vrsof2anims.h, joint positions taken from its skeleton) put on
+this skeleton: the body turned to the animation's (the line up the back, the line across the
+hips), then each bone turned to point where the animation's does, then the pelvis put at the
+animation's height and drift, scaled by how long the legs are. Past the end the last stretch
+plays back and forth, slower: he keeps writhing.
+*/
+#include "cg_vrsof2anims.h"
+
+// CG_VRX_Downed's bones (LUA ... HEAD) in the animation data
+static const int vrxSof2Of[17] = { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 0, 1, 2, 3, 4 };
+
+static void VRX_Sof2Joints( int anim, int ms, vec3_t out[VRX_SOF2_JOINTS] ) {
+	int n = vrxSof2Frames[anim], tail = n * 35 / 100, f0, f1, j, k;
+	const short *p0, *p1;
+	float t = ms * 0.02f, fr;
+
+	if ( tail < 2 ) {
+		tail = 2;
+	}
+	if ( t > n - 1 ) {
+		float u = ( t - ( n - 1 ) ) * 0.6f, period = 2.0f * ( tail - 1 );
+		u = fmod( u, period );
+		t = n - 1 - ( u < tail - 1 ? u : period - u );
+	}
+	if ( t < 0 ) {
+		t = 0;
+	}
+	f0 = (int)t;
+	f1 = f0 + 1 < n ? f0 + 1 : f0;
+	fr = t - f0;
+	p0 = vrxSof2Pose[vrxSof2Start[anim] + f0];
+	p1 = vrxSof2Pose[vrxSof2Start[anim] + f1];
+	for ( j = 0; j < VRX_SOF2_JOINTS; j++ ) {
+		for ( k = 0; k < 3; k++ ) {
+			out[j][k] = ( ( 1 - fr ) * p0[j * 3 + k] + fr * p1[j * 3 + k] ) * ( 1.0f / 32 );
+		}
+	}
+}
+
+// turn every tree in the model by r about pivot
+static void VRX_TurnAll( float *pose, vrSkel_t *sk, vec3_t r[3], const vec3_t pivot ) {
+	vec3_t at;
+	int k;
+
+	VectorCopy( pivot, at );        // (pivot may be one of the bones)
+	for ( k = 0; k < sk->n; k++ ) {
+		if ( sk->parents[k] < 0 ) {
+			VRX_RotateSubtree( pose, sk, k, r, at );
+		}
+	}
+}
+
+// b: CG_VRX_Downed's bones; floor: where his feet stood
+static void VRX_Sof2Downed( float *pose, vrSkel_t *sk, const int *b, int anim, int ms, float floor ) {
+	enum { LUA, LFA, LHAND, RUA, RFA, RHAND, LTH, LCALF, LFOOT, RTH, RCALF, RFOOT, PELVIS, SPINE, SPINE2, NECK, HEAD };
+	static const int chain[][2] = {
+		{ NECK, HEAD }, { LUA, LFA }, { LFA, LHAND }, { RUA, RFA }, { RFA, RHAND },
+		{ LTH, LCALF }, { LCALF, LFOOT }, { RTH, RCALF }, { RCALF, RFOOT }
+	};
+	vec3_t J[VRX_SOF2_JOINTS], J0[VRX_SOF2_JOINTS], want, cur, up, r[3], d;
+	float f, s, leg, ankle0;
+	int k;
+
+	if ( anim < 0 || anim >= VRX_SOF2_ANIMS ) {
+		anim = 0;
+	}
+	f = ms / 150.0f;
+	f = f < 0 ? 0 : f > 1 ? 1 : f;
+	VRX_Sof2Joints( anim, ms, J );
+	VRX_Sof2Joints( anim, 0, J0 );
+#define VRX_J( a, i ) ( a )[vrxSof2Of[i]]
+	leg = Distance( VRX_BP( pose, b[LTH] ), VRX_BP( pose, b[LCALF] ) ) + Distance( VRX_BP( pose, b[LCALF] ), VRX_BP( pose, b[LFOOT] ) );
+	s = leg > 1 ? leg / VRX_SOF2_LEG : 1;
+
+	// the body: up the back, then across the hips
+	VectorSubtract( VRX_J( J, SPINE2 ), VRX_J( J, PELVIS ), up );
+	VectorNormalize( up );
+	VectorSubtract( VRX_BP( pose, b[SPINE2] ), VRX_BP( pose, b[PELVIS] ), cur );
+	VectorNormalize( cur );
+	VRX_Turn( cur, up, f, r );
+	VRX_TurnAll( pose, sk, r, VRX_BP( pose, b[PELVIS] ) );
+	VectorSubtract( VRX_BP( pose, b[SPINE2] ), VRX_BP( pose, b[PELVIS] ), up );
+	VectorNormalize( up );
+	VectorSubtract( VRX_J( J, LTH ), VRX_J( J, RTH ), want );
+	VectorMA( want, -DotProduct( want, up ), up, want );
+	VectorSubtract( VRX_BP( pose, b[LTH] ), VRX_BP( pose, b[RTH] ), cur );
+	VectorMA( cur, -DotProduct( cur, up ), up, cur );
+	if ( VectorNormalize( want ) > 0.01f && VectorNormalize( cur ) > 0.01f ) {
+		VRX_Turn( cur, want, f, r );
+		VRX_TurnAll( pose, sk, r, VRX_BP( pose, b[PELVIS] ) );
+	}
+
+	// the back (the thighs hang off it here), then the head, arms and legs
+	VectorSubtract( VRX_J( J, NECK ), VRX_J( J, SPINE ), want );
+	VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], want, f, b[LTH], b[RTH] );
+	for ( k = 0; k < (int)ARRAY_LEN( chain ); k++ ) {
+		VectorSubtract( VRX_J( J, chain[k][1] ), VRX_J( J, chain[k][0] ), want );
+		VRX_Aim( pose, sk, b[chain[k][0]], b[chain[k][1]], want, f );
+	}
+
+	// the pelvis where the animation has it: its height over the ankles it stood on, its drift
+	ankle0 = min( VRX_J( J0, LFOOT )[2], VRX_J( J0, RFOOT )[2] );
+	want[0] = ( VRX_J( J, PELVIS )[0] - VRX_J( J0, PELVIS )[0] ) * s;
+	want[1] = ( VRX_J( J, PELVIS )[1] - VRX_J( J0, PELVIS )[1] ) * s;
+	want[2] = floor + 3.0f + ( VRX_J( J, PELVIS )[2] - ankle0 ) * s;
+	VectorSubtract( want, VRX_BP( pose, b[PELVIS] ), d );
+	VectorScale( d, f, d );
+	for ( k = 0; k < sk->n; k++ ) {
+		VectorAdd( VRX_BP( pose, k ), d, VRX_BP( pose, k ) );
+	}
+#undef VRX_J
+}
+
 void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
 	enum { LUA, LFA, LHAND, RUA, RFA, RHAND, LTH, LCALF, LFOOT, RTH, RCALF, RFOOT, PELVIS, SPINE, SPINE2, NECK, HEAD, NB };
 	static const char *names[NB] = {
@@ -2090,7 +2202,7 @@ void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
 	int n = cent->currentState.number, b[NB], k, root = -1, style;
 	float *pose, f, floor;
 	vrSkel_t *sk;
-	vec3_t r[3], v, chest, pivot;
+	vec3_t v, pivot;
 	qboolean groin = qfalse;
 
 	if ( n >= MAX_CLIENTS || ( cent->currentState.eFlags & EF_DEAD ) ) {
@@ -2114,12 +2226,15 @@ void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
 		f = f > 1 ? 1 : f;
 		style = 0;
 	} else {
-		if ( !vrxWentDown[n] ) {
+		static int wentStyle[MAX_CLIENTS];
+
+		style = vrxDownStyle[n] >= 1 && vrxDownStyle[n] <= VRX_DOWN_STYLES ? vrxDownStyle[n] : 1 + n % VRX_DOWN_STYLES;
+		if ( !vrxWentDown[n] || wentStyle[n] != style ) {     // (put down again another way: vrtestbody)
 			vrxWentDown[n] = cg.time;
+			wentStyle[n] = style;
 		}
 		f = ( cg.time - vrxWentDown[n] ) / 400.0f;
 		f = f > 1 ? 1 : f;
-		style = vrxDownStyle[n] >= 1 && vrxDownStyle[n] <= 3 ? vrxDownStyle[n] : 1 + n % 3;
 	}
 	pose = vrxPoses[n];
 	// the pose is built on one still frame of the animation, the one he was in when he went
@@ -2209,81 +2324,8 @@ void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
 		crotch[1] -= 3.0f;
 		VRX_AimAt( pose, sk, b[RFA], b[RHAND], crotch, f );
 		VRX_Lower( pose, sk, low, 0 );
-	} else if ( style == 3 ) {
-		// on his knees: thighs down, calves back along the floor
-		VectorSet( v, 0.25f, 0.08f, -1 );
-		VRX_Aim( pose, sk, b[LTH], b[LCALF], v, f );
-		VectorSet( v, 0.25f, -0.08f, -1 );
-		VRX_Aim( pose, sk, b[RTH], b[RCALF], v, f );
-		VectorSet( v, -1, 0, -0.12f );
-		VRX_Aim( pose, sk, b[LCALF], b[LFOOT], v, f );
-		VRX_Aim( pose, sk, b[RCALF], b[RFOOT], v, f );
-		// leaning well over
-		VectorSet( v, 0.8f, 0, 0.6f );
-		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, f, b[LTH], b[RTH] );
-		VRX_Lower( pose, sk, floor, 2.0f );
-		// left hand to the chest
-		VectorSet( v, 0.3f, 0.2f, -1 );
-		VRX_Aim( pose, sk, b[LUA], b[LFA], v, f );
-		VectorAdd( VRX_BP( pose, b[SPINE2] ), VRX_BP( pose, b[NECK] ), chest );
-		VectorScale( chest, 0.5f, chest );
-		chest[0] += 5.0f;
-		VRX_AimAt( pose, sk, b[LFA], b[LHAND], chest, f );
-		// right arm out to the floor in front
-		VectorSet( v, 0.7f, -0.2f, -0.7f );
-		VRX_Aim( pose, sk, b[RUA], b[RFA], v, f );
-		VectorSet( v, 0.6f, -0.05f, -0.8f );
-		VRX_Aim( pose, sk, b[RFA], b[RHAND], v, f );
 	} else {
-		// knocked over onto his back: legs out straight, then the whole body tipped over
-		// backwards about his feet
-		VectorSet( v, 0.15f, 0.06f, -1 );
-		VRX_Aim( pose, sk, b[LTH], b[LCALF], v, f );
-		VRX_Aim( pose, sk, b[LCALF], b[LFOOT], v, f );
-		VectorSet( v, 0.15f, -0.06f, -1 );
-		VRX_Aim( pose, sk, b[RTH], b[RCALF], v, f );
-		VRX_Aim( pose, sk, b[RCALF], b[RFOOT], v, f );
-		VectorSet( v, 0, 0, 1 );
-		{
-			vec3_t back = { -1, 0, 0.04f }, up = { 0, 0, 1 };
-			VectorNormalize( back );
-			VRX_Turn( up, back, f, r );
-		}
-		for ( k = 0; k < sk->n; k++ ) {     // every tree in the model (tags can be roots too)
-			if ( sk->parents[k] < 0 ) {
-				VRX_RotateSubtree( pose, sk, k, r, pivot );
-			}
-		}
-		if ( style == 1 ) {
-			// propped up on his elbows, head up looking ahead
-			VectorSet( v, -0.75f, 0, 0.66f );
-			VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, f, b[LTH], b[RTH] );
-			VectorSet( v, -0.15f, 0, 1 );
-			VRX_Aim( pose, sk, b[NECK], b[HEAD], v, f );
-			VectorSet( v, -0.25f, 0.35f, -1 );
-			VRX_Aim( pose, sk, b[LUA], b[LFA], v, f );
-			VectorSet( v, -0.25f, -0.35f, -1 );
-			VRX_Aim( pose, sk, b[RUA], b[RFA], v, f );
-			VectorSet( v, 1, 0.1f, -0.12f );
-			VRX_Aim( pose, sk, b[LFA], b[LHAND], v, f );
-			VectorSet( v, 1, -0.1f, -0.12f );
-			VRX_Aim( pose, sk, b[RFA], b[RHAND], v, f );
-		} else {
-			// flat out: the head turned up a little, left hand on his chest, right arm reaching out
-			VectorSet( v, -0.6f, 0, 0.8f );
-			VRX_Aim( pose, sk, b[NECK], b[HEAD], v, f * 0.6f );
-			VectorSet( v, 0.65f, -0.05f, 0.75f );
-			VRX_Aim( pose, sk, b[LUA], b[LFA], v, f );
-			VectorAdd( VRX_BP( pose, b[SPINE2] ), VRX_BP( pose, b[NECK] ), chest );
-			VectorScale( chest, 0.5f, chest );
-			chest[2] += 5.0f;
-			VRX_AimAt( pose, sk, b[LFA], b[LHAND], chest, f );
-			VectorSet( v, -0.15f, -1, 0.2f );
-			VRX_Aim( pose, sk, b[RUA], b[RFA], v, f );
-			VectorSet( v, -0.05f, -1, 0.45f );
-			VRX_Aim( pose, sk, b[RFA], b[RHAND], v, f );
-		}
-		VRX_Lower( pose, sk, floor, 3.5f * f + ( 1 - f ) * 3.0f );
+		VRX_Sof2Downed( pose, sk, b, style - 1, cg.time - vrxWentDown[n], floor );
 	}
 	pose[sk->n * 12] = 0;      // nothing after the pose (no cut, CG_VRX_Dismember)
 	body->ragdollBones = pose;
