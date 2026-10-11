@@ -460,8 +460,9 @@ static qboolean G_VRX_Downed( gentity_t *e ) {
 // 1 gut, long writhe on his back   2 gut, to his knees looking at his bloody hand
 // 3 chest, writhing onto his front  4/5 left/right leg, writhing on his back
 // 6/7 left/right arm, writhing on his side   8 slumped, sitting, helpless
-#define VRX_DOWN_GRACE  6000    // ms after going down that stray fire can't finish him
+#define VRX_DOWN_GRACE  10000   // ms after going down that stray fire can't finish him
 static int vrxDownedAt[MAX_GENTITIES];
+static float vrxDownedYaw[MAX_GENTITIES];
 
 static void G_VRX_KnockDown( gentity_t *targ, gentity_t *attacker, int region ) {
 	cast_state_t *cs = AICast_GetCastState( targ->s.number );
@@ -483,6 +484,7 @@ static void G_VRX_KnockDown( gentity_t *targ, gentity_t *attacker, int region ) 
 	m->count = attacker->s.number;
 	m->timestamp = level.time + 900;
 	vrxDownedAt[targ->s.number] = level.time;
+	vrxDownedYaw[targ->s.number] = targ->client->ps.viewangles[YAW];
 	if ( cs ) {
 		G_VRX_DropWeapon( targ, cs );
 		cs->noAttackTime = level.time + 3600000;
@@ -552,6 +554,38 @@ void G_VRX_TestState( gentity_t *targ, gentity_t *by, qboolean groin, int style 
 	}
 }
 
+// finishing someone downed on purpose: the player's knife, a kick, or a shot to the head
+// from close by (a body shot, close or not, is just more pain)
+static qboolean G_VRX_Finisher( gentity_t *targ, gentity_t *attacker, const vec3_t dir, const vec3_t point, int mod,
+								qboolean headshot ) {
+	if ( !attacker || !attacker->client || attacker->aiCharacter ) {
+		return qfalse;
+	}
+	if ( G_VRX_Knife( mod ) || mod == MOD_KICKED ) {
+		return qtrue;
+	}
+	return Distance( attacker->r.currentOrigin, targ->r.currentOrigin ) < 200.0f &&
+		   ( headshot || ( point && G_VRX_ShotAtHead( targ, dir, point ) ) );
+}
+
+// the downed stay where they fell: no walking, no sliding, no turning round (ClientThink_real)
+void G_VRX_HoldDowned( gentity_t *ent, usercmd_t *ucmd ) {
+	vec3_t ang;
+
+	if ( !ent->client || !ent->aiCharacter || ent->health <= 0 || !( G_VRX_GoreBits( ent ) & VRX_GB_DOWNED ) ) {
+		return;
+	}
+	ucmd->forwardmove = ucmd->rightmove = ucmd->upmove = 0;
+	ucmd->buttons &= ~( BUTTON_ATTACK | BUTTON_WALKING );
+	ucmd->wbuttons = 0;
+	ent->client->ps.velocity[0] = ent->client->ps.velocity[1] = 0;
+	if ( ent->client->ps.velocity[2] > 0 ) {
+		ent->client->ps.velocity[2] = 0;
+	}
+	VectorSet( ang, 0, vrxDownedYaw[ent->s.number], 0 );
+	SetClientViewAngle( ent, ang );
+}
+
 int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
 			   int mod, int take, qboolean headshot ) {
 	vec3_t ang, right, rel;
@@ -563,10 +597,8 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 	// do half, and for the first seconds none can finish him (so he's seen going down); a
 	// blast, or finishing him on purpose (knife, kick, a shot from close by), still does
 	if ( targ->client && targ->aiCharacter && targ->health > 0 && take > 0 && mod != MOD_UNKNOWN &&
-		 G_VRX_Downed( targ ) && !G_VRX_Blast( mod ) &&
-		 !( attacker && attacker->client && !attacker->aiCharacter && ( G_VRX_Knife( mod ) || mod == MOD_KICKED ||
-			Distance( attacker->r.currentOrigin, targ->r.currentOrigin ) < 160.0f ) ) ) {
-		take = take > 1 ? take / 2 : 1;
+		 G_VRX_Downed( targ ) && !G_VRX_Blast( mod ) && !G_VRX_Finisher( targ, attacker, dir, point, mod, headshot ) ) {
+		take = take > 3 ? take / 4 : 1;
 		if ( take >= targ->health && level.time < vrxDownedAt[targ->s.number] + VRX_DOWN_GRACE ) {
 			take = targ->health - 1;
 		}
@@ -580,8 +612,7 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 		return take;
 	}
 	// finishing the downed: a knife, a kick, or any shot from close by
-	if ( G_VRX_Downed( targ ) && ( G_VRX_Knife( mod ) || mod == MOD_KICKED ||
-		 Distance( attacker->r.currentOrigin, targ->r.currentOrigin ) < 160.0f ) ) {
+	if ( G_VRX_Downed( targ ) && G_VRX_Finisher( targ, attacker, dir, point, mod, headshot ) ) {
 		vrxExecution = qtrue;
 		return targ->health + 50;
 	}
@@ -601,7 +632,7 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 		}
 		if ( take >= targ->health && targ->health > max * 0.3f && !G_VRX_Heavy( targ, attacker, mod, take ) && random() < 0.5f ) {
 			G_VRX_KnockDown( targ, attacker, region );
-			return targ->health - max * 0.2f;
+			return targ->health - max * 0.35f;
 		}
 	}
 	if ( headshot || !point || take >= targ->health || !G_VRX_Heavy( targ, attacker, mod, take ) ||

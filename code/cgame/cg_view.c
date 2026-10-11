@@ -567,10 +567,12 @@ static void CG_VR_OffsetFirstPersonView( void ) {
 	if ( ps->stats[STAT_HEALTH] > 0 && ( cgVR->lean[0] || cgVR->lean[1] ) ) {
 		vec3_t to, mins = { -4, -4, -4 }, maxs = { 4, 4, 4 };
 		trace_t tr;
+		// the lean is in play space: turned into the world like the head (CG_VR_SetHead)
+		float a = DEG2RAD( SHORT2ANGLE( ps->delta_angles[YAW] ) ), c = cos( a ), s = sin( a );
 
 		VectorCopy( cg.refdef.vieworg, to );
-		to[0] += cgVR->lean[0];
-		to[1] += cgVR->lean[1];
+		to[0] += cgVR->lean[0] * c - cgVR->lean[1] * s;
+		to[1] += cgVR->lean[0] * s + cgVR->lean[1] * c;
 		CG_Trace( &tr, cg.refdef.vieworg, mins, maxs, to, ps->clientNum, MASK_PLAYERSOLID );
 		if ( tr.startsolid ) {
 			VectorCopy( cg.refdef.vieworg, tr.endpos );
