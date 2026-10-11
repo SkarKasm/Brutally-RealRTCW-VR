@@ -45,6 +45,7 @@ the Free Software Foundation, either version 3 of the License, or
 #define RD_GRAVITY          "400"       // vr_ragdollGravity: about real gravity at RTCW's scale (the game's own 800 slams bodies down)
 #define RD_HEAD_LEN         9.0f        // neck joint to the top of the skull
 #define RD_ANCHOR_SLACK     20.0f       // how far the pelvis may drift from the server's body
+#define RD_SETTLE_MS        7000        // after this long on the ground a body stops for good (no twitching)
 #define RD_SLEEP_MOVE       0.04f       // a point moving less than this per step is at rest
 #define RD_SLEEP_STEPS      45
 #define RD_KILL_PUSH        110.0f      // speed of the fall away from the killer
@@ -142,6 +143,8 @@ typedef struct {
 	qboolean    asleep;
 
 	int         startTime;          // when it went limp (muscle tone fades from here)
+	int         settleBy;           // from then on, lying on the ground, it stops for good
+	qboolean    settled;            // stopped for good: only a kick, a blast or a hand moves it again
 	int         numTone;
 	rdLink_t    tone[RD_MAX_TONE];  // posture links, fading (RD_Tone)
 
@@ -864,6 +867,8 @@ static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 	rd->model = body->hModel;
 	rd->simTime = cg.time;
 	rd->startTime = cg.time;
+	rd->settleBy = cg.time + RD_SETTLE_MS;
+	rd->settled = qfalse;
 	rd->inUse = qtrue;
 	RD_ApplyPending( rd );
 	return qtrue;
@@ -1232,6 +1237,15 @@ static void RD_Wake( ragdoll_t *rd ) {
 	rd->stillSteps = 0;
 }
 
+// a kick or a blast: moving again, and it settles again a little after
+static void RD_Unsettle( ragdoll_t *rd ) {
+	rd->settled = qfalse;
+	if ( rd->settleBy < cg.time + 2500 ) {
+		rd->settleBy = cg.time + 2500;
+	}
+	RD_Wake( rd );
+}
+
 static void RD_PushPoints( ragdoll_t *rd, const vec3_t point, const vec3_t vel ) {
 	float w;
 	int k;
@@ -1270,7 +1284,7 @@ static void RD_Blast( ragdoll_t *rd, const vec3_t origin, float radius, float st
 		VectorNormalize( dir );
 		VectorMA( rd->old[k], -RD_STEP * w * strength, dir, rd->old[k] );
 	}
-	RD_Wake( rd );
+	RD_Unsettle( rd );
 }
 
 static rdPending_t *RD_PendingSlot( void ) {
@@ -1329,8 +1343,14 @@ void CG_Ragdoll_Hit( int entityNum, const vec3_t point, const vec3_t dir, float 
 
 	rd = RD_Find( entityNum );
 	if ( rd ) {
+		if ( rd->settled && speed < 400.0f ) {
+			return;     // stopped for good: a bullet doesn't move it, a kick does
+		}
 		VectorScale( vel, CG_VRX_Knock( qfalse ), vel );    // shot reactions: bodies knocked harder
 		RD_PushPoints( rd, point, vel );
+		if ( speed >= 400.0f ) {
+			RD_Unsettle( rd );
+		}
 		return;
 	}
 	CG_VRX_Flinch( entityNum, point, dir );     // someone alive flinches
@@ -1449,6 +1469,25 @@ void CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body ) {
 	rd->grabber = grabbed ? cent->currentState.dl_intensity : 0;
 	if ( grabbed ) {
 		rd->asleep = qfalse;
+		rd->settled = qfalse;
+		rd->settleBy = cg.time + 2500;
+	} else if ( !rd->settled && cg.time >= rd->settleBy ) {
+		// long enough: if it's lying on something, it stops for good (no helicopters, no
+		// creeping about; its blood pool stays put under it)
+		trace_t tr;
+		vec3_t down;
+		VectorCopy( rd->p[P_PELVIS], down );
+		down[2] -= 16;
+		CG_Trace( &tr, rd->p[P_PELVIS], NULL, NULL, down, rd->entityNum, MASK_SOLID );
+		if ( tr.fraction < 1.0f ) {
+			rd->settled = qtrue;
+			rd->asleep = qtrue;
+		} else {
+			rd->settleBy = cg.time + 500;
+		}
+	} else if ( rd->settled ) {
+		rd->asleep = qtrue;
+		VectorCopy( cent->lerpOrigin, rd->lastOrigin );
 	} else if ( rd->asleep ) {
 		// woken when the server moves the body (thrown, pushed by a mover...)
 		if ( Distance( cent->lerpOrigin, rd->lastOrigin ) > 0.5f ) {

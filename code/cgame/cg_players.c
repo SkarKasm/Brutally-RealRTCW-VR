@@ -5499,6 +5499,10 @@ qboolean CG_GetTag( int clientNum, char *tagname, orientation_t *or ) {
 	vec3_t org;
 	int i;
 
+	if ( !Q_strncmp( tagname, "vrcaps:", 7 ) ) {       // RealRTCW-VR: the tight hit boxes
+		return CG_VRX_BodyPoints( clientNum, atoi( tagname + 7 ), or );
+	}
+
 	ci = &cgs.clientinfo[ clientNum ];
 
 	if ( !ci->isSkeletal ) {

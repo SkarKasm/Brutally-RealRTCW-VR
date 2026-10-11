@@ -72,4 +72,44 @@ typedef enum {
 #define VRX_HUMAN_MALE( c ) ( ( c ) == AICHAR_SOLDIER || ( c ) == AICHAR_AMERICAN || ( c ) == AICHAR_VENOM || \
 							  ( c ) == AICHAR_BLACKGUARD || ( c ) == AICHAR_PARTISAN )
 
+// the body's own skeleton, for hits only where the body really is (cgame CG_GetTag
+// "vrcaps:N" gives points 4N..4N+3, in or.origin then or.axis[0..2], world space)
+typedef enum {
+	VRB_PELVIS, VRB_SPINE2, VRB_NECK, VRB_HEAD,
+	VRB_LUA, VRB_LFA, VRB_LHAND,
+	VRB_RUA, VRB_RFA, VRB_RHAND,
+	VRB_LTHIGH, VRB_LCALF, VRB_LFOOT, VRB_LTOE,
+	VRB_RTHIGH, VRB_RCALF, VRB_RFOOT, VRB_RTOE,
+	VRB_COUNT
+} vrBodyPoint_t;
+
+#define VRX_GROIN_MS 2800     // how long a shot in the balls doubles someone over
+#define VRB_GROUPS      ( ( VRB_COUNT + 3 ) / 4 )
+
+// where a shot met someone
+typedef enum {
+	VRH_NONE,
+	VRH_HEAD,
+	VRH_CHEST,
+	VRH_BELLY,
+	VRH_GROIN,
+	VRH_LARM,
+	VRH_RARM,
+	VRH_LLEG,
+	VRH_RLEG,
+	VRH_COUNT
+} vrHitRegion_t;
+
+// body parts soaked in blood (cgame, vr_bodyblood: two bits each in the overlay's shaderRGBA)
+typedef enum {
+	VRW_REGION_CHEST,
+	VRW_REGION_BELLY,
+	VRW_REGION_LARM,
+	VRW_REGION_RARM,
+	VRW_REGION_LLEG,
+	VRW_REGION_RLEG,
+	VRW_REGION_COUNT
+} vrWoundRegion_t;
+
+
 #endif

@@ -967,6 +967,7 @@ void Bullet_Fire_Extended( gentity_t *source, gentity_t *attacker, vec3_t start,
 	// et sdk antilag
 	// Using MASK_SHOT so we can gib corpses.
 	G_Trace( source, &tr, start, NULL, NULL, end, source->s.number, MASK_SHOT );
+	G_VRX_ShotRefine( &tr, start, end, MASK_SHOT );     // RealRTCW-VR: only through the body itself
 
 	AICast_ProcessBullet( attacker, start, tr.endpos );
 

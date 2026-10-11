@@ -1062,6 +1062,86 @@ void R_CalcBones( mdsHeader_t *header, const refEntity_t *refent, int *boneList,
 
 /*
 ==============
+R_VRX_BodyBlood
+
+RealRTCW-VR: the cgame's wound overlay, a second copy of a body drawn with the shader
+"vr_bodyblood" (cg_vrextras.c CG_VRX_AddWounds). Each vertex's alpha is how badly hurt the
+body parts its bones belong to are: two bits a part in shaderRGBA (chest, belly, left arm,
+right arm, left leg, right leg).
+==============
+*/
+#define VRX_BB_SLOTS 8
+static const mdsHeader_t *vrxBBHeader[VRX_BB_SLOTS];
+static signed char vrxBBRegion[VRX_BB_SLOTS][MDS_MAX_BONES];
+static int vrxBBNext;
+
+static int R_VRX_BoneRegion( const char *name ) {
+	int side = strstr( name, "L " ) ? 0 : ( strstr( name, "R " ) ? 1 : -1 );
+
+	if ( strstr( name, "Head" ) || strstr( name, "Neck" ) ) {
+		return -1;
+	}
+	if ( side >= 0 && ( strstr( name, "Arm" ) || strstr( name, "Hand" ) || strstr( name, "Finger" ) ) ) {
+		return 2 + side;
+	}
+	if ( side >= 0 && ( strstr( name, "Thigh" ) || strstr( name, "Calf" ) || strstr( name, "Foot" ) || strstr( name, "Toe" ) ) ) {
+		return 4 + side;
+	}
+	if ( strstr( name, "Clavicle" ) || strstr( name, "Spine2" ) || strstr( name, "Spine3" ) ) {
+		return 0;
+	}
+	if ( strstr( name, "Spine" ) || strstr( name, "Pelvis" ) ) {
+		return 1;
+	}
+	return -1;
+}
+
+static void R_VRX_BodyBlood( mdsHeader_t *header, mdsSurface_t *surface, const refEntity_t *refent, int first, int count ) {
+	static const float levels[4] = { 0, 175, 215, 255 };
+	unsigned bits = refent->shaderRGBA[0] | ( refent->shaderRGBA[1] << 8 ) | ( refent->shaderRGBA[2] << 16 ) | ( (unsigned)refent->shaderRGBA[3] << 24 );
+	float part[6];
+	signed char *region = NULL;
+	mdsVertex_t *v;
+	int i, j, k;
+
+	for ( i = 0; i < VRX_BB_SLOTS; i++ ) {
+		if ( vrxBBHeader[i] == header ) {
+			region = vrxBBRegion[i];
+			break;
+		}
+	}
+	if ( !region ) {
+		mdsBoneInfo_t *info = ( mdsBoneInfo_t * )( (byte *)header + header->ofsBones );
+		i = vrxBBNext;
+		vrxBBNext = ( vrxBBNext + 1 ) % VRX_BB_SLOTS;
+		vrxBBHeader[i] = header;
+		region = vrxBBRegion[i];
+		for ( k = 0; k < header->numBones && k < MDS_MAX_BONES; k++ ) {
+			region[k] = R_VRX_BoneRegion( info[k].name );
+		}
+	}
+	for ( k = 0; k < 6; k++ ) {
+		part[k] = levels[( bits >> ( k * 2 ) ) & 3];
+	}
+	v = ( mdsVertex_t * )( (byte *)surface + surface->ofsVerts );
+	for ( j = 0; j < count; j++ ) {
+		float a = 0;
+		for ( k = 0; k < v->numWeights; k++ ) {
+			int b = v->weights[k].boneIndex;
+			if ( b >= 0 && b < MDS_MAX_BONES && region[b] >= 0 ) {
+				a += v->weights[k].boneWeight * part[(int)region[b]];
+			}
+		}
+		tess.vertexColors[first + j][0] = 255;
+		tess.vertexColors[first + j][1] = 255;
+		tess.vertexColors[first + j][2] = 255;
+		tess.vertexColors[first + j][3] = a > 255 ? 255 : (byte)a;
+		v = (mdsVertex_t *)&v->weights[v->numWeights];
+	}
+}
+
+/*
+==============
 RB_SurfaceAnim
 ==============
 */
@@ -1209,6 +1289,9 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 		tess.texCoords[baseVertex + j][0][1] = v->texCoords[1];
 
 		v = (mdsVertex_t *)&v->weights[v->numWeights];
+	}
+	if ( tess.shader && !Q_stricmp( tess.shader->name, "vr_bodyblood" ) ) {
+		R_VRX_BodyBlood( header, surface, refent, baseVertex, render_count );
 	}
 
 	DBG_SHOWTIME

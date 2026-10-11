@@ -218,6 +218,178 @@ static void G_VRX_Dismember( gentity_t *targ, gentity_t *inflictor, const vec3_t
 }
 
 /*
+==============================================================================
+
+Tight hit boxes
+
+A shot that meets a character's box only hits if it goes through the body itself: the
+skeleton the cgame drew him with (CG_GetTag "vrcaps:N"), as capsules round the bones,
+a ball for the head and one for the groin. Through the gaps it carries on past him.
+Where it met him (VRH_*) goes to the damage: head shots, groin shots, which limb.
+
+==============================================================================
+*/
+
+static int vrxHitEnt = -1;
+static int vrxHitRegion;
+static vec3_t vrxHitPoint;
+
+// where the ray o + t d (d unit, t up to maxT) first meets the capsule a-b of radius r
+static qboolean G_VRX_RayCapsule( const vec3_t o, const vec3_t d, float maxT, const vec3_t a, const vec3_t b, float r, float *tOut ) {
+	vec3_t ab, w, p, q;
+	float B, C, D, E, den, s, t, dist;
+
+	VectorSubtract( b, a, ab );
+	VectorSubtract( o, a, w );
+	B = DotProduct( d, ab );
+	C = DotProduct( ab, ab );
+	D = DotProduct( d, w );
+	E = DotProduct( ab, w );
+	den = C - B * B;
+	if ( C < 1e-6f ) {
+		s = 0;
+	} else if ( den < 1e-6f ) {
+		s = 0;
+	} else {
+		s = ( E - B * D ) / den;    // the segment parameter nearest the line
+	}
+	s = s < 0 ? 0 : ( s > 1 ? 1 : s );
+	VectorMA( a, s, ab, q );
+	VectorSubtract( q, o, p );
+	t = DotProduct( p, d );
+	VectorMA( o, t, d, p );
+	dist = Distance( p, q );
+	if ( dist > r ) {
+		return qfalse;
+	}
+	t -= sqrt( r * r - dist * dist );
+	if ( t > maxT || t < -2 * r ) {
+		return qfalse;
+	}
+	*tOut = t < 0 ? 0 : t;
+	return qtrue;
+}
+
+// 1: the shot from start to end goes through e's body (hit: where, vrxHitRegion: what);
+// 0: through the gaps; -1: no skeleton to go by (the box it is)
+static int G_VRX_BodyTrace( gentity_t *e, const vec3_t start, const vec3_t end, vec3_t hit ) {
+	static const struct { int a, b; float r; int region; } caps[] = {
+		{ VRB_SPINE2, VRB_NECK, 7.0f, VRH_CHEST },
+		{ VRB_PELVIS, VRB_SPINE2, 7.0f, VRH_BELLY },
+		{ VRB_NECK, VRB_HEAD, 2.8f, VRH_CHEST },
+		{ VRB_LUA, VRB_LFA, 3.2f, VRH_LARM }, { VRB_LFA, VRB_LHAND, 2.8f, VRH_LARM },
+		{ VRB_RUA, VRB_RFA, 3.2f, VRH_RARM }, { VRB_RFA, VRB_RHAND, 2.8f, VRH_RARM },
+		{ VRB_LTHIGH, VRB_LCALF, 4.8f, VRH_LLEG }, { VRB_LCALF, VRB_LFOOT, 3.8f, VRH_LLEG }, { VRB_LFOOT, VRB_LTOE, 2.8f, VRH_LLEG },
+		{ VRB_RTHIGH, VRB_RCALF, 4.8f, VRH_RLEG }, { VRB_RCALF, VRB_RFOOT, 3.8f, VRH_RLEG }, { VRB_RFOOT, VRB_RTOE, 2.8f, VRH_RLEG },
+	};
+	vec3_t pt[VRB_GROUPS * 4], d, u, a, b, up, right, fwd, groin;
+	orientation_t or;
+	float maxT, t, best = 1e9f, groinT = 1e9f;
+	int g, k, region = VRH_NONE;
+
+	for ( g = 0; g < VRB_GROUPS; g++ ) {
+		if ( !trap_GetTag( e->s.number, va( "vrcaps:%i", g ), &or ) ) {
+			return -1;
+		}
+		VectorCopy( or.origin, pt[g * 4] );
+		for ( k = 0; k < 3; k++ ) {
+			VectorCopy( or.axis[k], pt[g * 4 + 1 + k] );
+		}
+	}
+	if ( Distance( pt[VRB_PELVIS], e->r.currentOrigin ) > 96.0f ) {
+		return -1;      // not where the server has him: the cgame's drawing is stale
+	}
+	VectorSubtract( end, start, d );
+	maxT = VectorNormalize( d );
+
+	for ( k = 0; k < (int)ARRAY_LEN( caps ); k++ ) {
+		if ( G_VRX_RayCapsule( start, d, maxT, pt[caps[k].a], pt[caps[k].b], caps[k].r, &t ) && t < best ) {
+			best = t;
+			region = caps[k].region;
+		}
+	}
+	// the head: a ball above the neck; the hands
+	VectorSubtract( pt[VRB_HEAD], pt[VRB_NECK], u );
+	VectorNormalize( u );
+	VectorMA( pt[VRB_HEAD], 3.5f, u, a );
+	if ( G_VRX_RayCapsule( start, d, maxT, a, a, 5.0f, &t ) && t < best ) {
+		best = t;
+		region = VRH_HEAD;
+	}
+	for ( k = 0; k < 2; k++ ) {
+		int fa = k ? VRB_RFA : VRB_LFA, hand = k ? VRB_RHAND : VRB_LHAND;
+		VectorSubtract( pt[hand], pt[fa], u );
+		VectorMA( pt[hand], 0.5f, u, b );
+		if ( G_VRX_RayCapsule( start, d, maxT, pt[hand], b, 2.4f, &t ) && t < best ) {
+			best = t;
+			region = k ? VRH_RARM : VRH_LARM;
+		}
+	}
+	// the groin: between the tops of the thighs, a little down and forward
+	VectorSubtract( pt[VRB_SPINE2], pt[VRB_PELVIS], up );
+	VectorSubtract( pt[VRB_RTHIGH], pt[VRB_LTHIGH], right );
+	if ( VectorNormalize( up ) > 0.1f && VectorNormalize( right ) > 0.1f ) {
+		CrossProduct( up, right, fwd );
+		VectorAdd( pt[VRB_LTHIGH], pt[VRB_RTHIGH], groin );
+		VectorScale( groin, 0.5f, groin );
+		VectorMA( groin, -4.0f, up, groin );
+		VectorMA( groin, 2.5f, fwd, groin );
+		if ( G_VRX_RayCapsule( start, d, maxT, groin, groin, 3.6f, &groinT ) && groinT < best + 3.0f ) {
+			best = groinT < best ? groinT : best;
+			region = VRH_GROIN;
+		}
+	}
+	if ( region == VRH_NONE ) {
+		return 0;
+	}
+	VectorMA( start, best, d, hit );
+	vrxHitEnt = e->s.number;
+	vrxHitRegion = region;
+	VectorCopy( hit, vrxHitPoint );
+	return 1;
+}
+
+// a bullet's trace, but through the gaps round a character's body
+void G_VRX_ShotRefine( trace_t *tr, const vec3_t start, const vec3_t end, int mask ) {
+	vec3_t from, hit;
+	float total = Distance( start, end );
+	int k, r;
+
+	vrxHitEnt = -1;
+	for ( k = 0; k < 4; k++ ) {
+		gentity_t *e;
+		if ( tr->fraction >= 1.0f || tr->entityNum >= MAX_CLIENTS || tr->startsolid ) {
+			return;
+		}
+		e = &g_entities[tr->entityNum];
+		if ( !e->client || !e->aiCharacter || e->health <= 0 ) {
+			return;
+		}
+		r = G_VRX_BodyTrace( e, start, end, hit );
+		if ( r < 0 ) {
+			return;
+		}
+		if ( r > 0 ) {
+			VectorCopy( hit, tr->endpos );
+			tr->fraction = total > 0 ? Distance( start, hit ) / total : 0;
+			return;
+		}
+		// missed him: on past
+		VectorCopy( tr->endpos, from );
+		trap_Trace( tr, from, NULL, NULL, (float *)end, e->s.number, mask );
+		tr->fraction = total > 0 ? Distance( start, tr->endpos ) / total : 1;
+	}
+}
+
+// where the shot that hit targ at point met him (VRH_NONE: not known)
+int G_VRX_HitRegion( gentity_t *targ, const vec3_t point ) {
+	if ( vrxHitEnt != targ->s.number || !point || Distance( point, vrxHitPoint ) > 3.0f ) {
+		return VRH_NONE;
+	}
+	return vrxHitRegion;
+}
+
+/*
 =================
 G_VRX_Hit (g_dismember 2)
 
@@ -267,6 +439,7 @@ static void G_VRX_KnockDown( gentity_t *targ, gentity_t *attacker ) {
 
 	G_VRX_AddGoreBits( targ, VRX_GB_DOWNED );
 	m = G_VRX_Marker( targ, qtrue );
+	m->s.time2 = 1 + rand() % 3;       // how he goes down (cgame CG_VRX_Downed)
 	m->count = attacker->s.number;
 	m->timestamp = level.time + 900;
 	if ( cs ) {
@@ -308,10 +481,29 @@ static void G_VRX_Cripple( gentity_t *targ, gentity_t *attacker, int arm, const 
 	}
 }
 
+// a shot in the balls: he doubles over clutching them for a few seconds (cgame CG_VRX_Downed)
+static void G_VRX_GroinHit( gentity_t *targ, gentity_t *attacker ) {
+	cast_state_t *cs = AICast_GetCastState( targ->s.number );
+	gentity_t *m = G_VRX_Marker( targ, qtrue );
+
+	m->s.time = level.time;
+	m->count = attacker->s.number;
+	if ( cs ) {
+		if ( cs->noAttackTime < level.time + VRX_GROIN_MS ) {
+			cs->noAttackTime = level.time + VRX_GROIN_MS;
+		}
+		if ( cs->pauseTime < level.time + VRX_GROIN_MS ) {
+			cs->pauseTime = level.time + VRX_GROIN_MS;
+		}
+	}
+	VectorClear( targ->client->ps.velocity );
+}
+
 int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
 			   int mod, int take, qboolean headshot ) {
 	vec3_t ang, right, rel;
 	float side;
+	int region;
 
 	vrxExecution = qfalse;
 	if ( mod == MOD_UNKNOWN || !targ->client || !targ->aiCharacter || targ->health <= 0 || take <= 0 || !attacker || !attacker->client ||
@@ -325,6 +517,12 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 		vrxExecution = qtrue;
 		return targ->health + 50;
 	}
+	// where the tight hit boxes say it landed (VRH_NONE: not known, go by height)
+	region = point ? G_VRX_HitRegion( targ, point ) : VRH_NONE;
+	if ( region == VRH_GROIN && take < targ->health && !G_VRX_Downed( targ ) ) {
+		G_VRX_GroinHit( targ, attacker );
+		return take;
+	}
 	// a body shot that leaves them nearly dead: down on their knees
 	if ( !headshot && take < targ->health && !G_VRX_Downed( targ ) && ( !point || !G_VRX_ShotAtHead( targ, dir, point ) ) ) {
 		int max = targ->client->ps.stats[STAT_MAX_HEALTH] > 0 ? targ->client->ps.stats[STAT_MAX_HEALTH] : 100;
@@ -336,6 +534,18 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 	if ( headshot || !point || take >= targ->health || !G_VRX_Heavy( targ, attacker, mod, take ) ||
 		 G_VRX_ShotAtHead( targ, dir, point ) ) {
 		return take;
+	}
+	if ( region == VRH_LLEG || region == VRH_RLEG ) {
+		return random() < 0.5f ? targ->health + 50 : take;
+	}
+	if ( region == VRH_LARM || region == VRH_RARM ) {
+		if ( !( G_VRX_GoreBits( targ ) & ( VRX_GB_LARM | VRX_GB_RARM ) ) && random() < 0.6f ) {
+			G_VRX_Cripple( targ, attacker, region == VRH_RARM ? VRX_GB_RARM : VRX_GB_LARM, dir, point );
+		}
+		return take;
+	}
+	if ( region != VRH_NONE ) {
+		return take;        // the head, chest, belly or groin: no limb
 	}
 	// which limb: by height, and how far out to the side (for someone standing)
 	VectorSet( ang, 0, targ->client->ps.viewangles[YAW], 0 );
@@ -983,7 +1193,8 @@ static void G_VRX_MarkersFrame( void ) {
 		}
 		body = &g_entities[e->s.otherEntityNum2];
 		if ( !body->inuse || !body->client ||
-			 ( body->health > 0 && !( e->s.density & ( VRX_GB_SCARED | VRX_GB_SURRENDER | VRX_GB_CRIPPLED | VRX_GB_DOWNED ) ) ) ) {
+			 ( body->health > 0 && !( e->s.density & ( VRX_GB_SCARED | VRX_GB_SURRENDER | VRX_GB_CRIPPLED | VRX_GB_DOWNED ) ) &&
+			   !( e->s.time && level.time < e->s.time + VRX_GROIN_MS + 500 ) ) ) {
 			G_FreeEntity( e );
 			continue;
 		}
@@ -991,12 +1202,12 @@ static void G_VRX_MarkersFrame( void ) {
 			// bleeding out, still running from whoever did it
 			gentity_t *by = e->count >= 0 && e->count < MAX_CLIENTS && g_entities[e->count].inuse ? &g_entities[e->count] : NULL;
 			cast_state_t *cs = AICast_GetCastState( body->s.number );
-			e->timestamp = level.time + ( ( e->s.density & VRX_GB_CRIPPLED ) ? 600 : 900 );
+			e->timestamp = level.time + ( ( e->s.density & VRX_GB_CRIPPLED ) ? 1000 : 1500 );    // about half a minute either way
 			if ( cs && by && ( e->s.density & VRX_GB_CRIPPLED ) ) {
 				VectorCopy( by->r.currentOrigin, cs->dangerEntityPos );
 				cs->dangerEntityValidTime = level.time + 3600000;
 			}
-			G_Damage( body, by, by ? by : body, NULL, NULL, ( e->s.density & VRX_GB_CRIPPLED ) ? 6 : 2, DAMAGE_NO_KNOCKBACK | DAMAGE_NO_PROTECTION, MOD_UNKNOWN );
+			G_Damage( body, by, by ? by : body, NULL, NULL, ( e->s.density & VRX_GB_CRIPPLED ) ? 3 : 1, DAMAGE_NO_KNOCKBACK | DAMAGE_NO_PROTECTION, MOD_UNKNOWN );
 			if ( !e->inuse ) {
 				continue;
 			}
