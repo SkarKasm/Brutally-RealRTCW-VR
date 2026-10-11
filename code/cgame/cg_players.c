@@ -4706,6 +4706,7 @@ void CG_Player( centity_t *cent ) {
 		// RealRTCW-VR: the dead go limp; a VR player sees their own body, arms on the controllers
 		CG_Ragdoll_Apply( cent, &legs );
 		CG_VRX_Surrender( cent, &legs );     // GORE & EXTRAS: hands up
+		CG_VRX_Downed( cent, &legs );        // or down on their knees
 		if ( CG_VR_FullBody( cent ) ) {
 			// no idle animations on your own body in VR: the swaying stance moves the
 			// shoulders the arms hang from (and standing legs keep still)
@@ -4727,6 +4728,7 @@ void CG_Player( centity_t *cent ) {
 		CG_VRX_Dismember( cent, &legs );    // RealRTCW-VR: limbs off, then wounds on the pose being drawn
 		CG_VRX_AddWounds( cent, &legs );
 		CG_VRX_AddCryptGore( cent, &legs );     // the crypt's torn soldier pieces
+		CG_VRX_BloodPool( cent, &legs );        // the blood spreading under a body
 
 		CG_AddRefEntityWithPowerups( &legs, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
 		CG_FlatLegs( cent, &legs );     // RealRTCW-VR: your own legs on flatscreen

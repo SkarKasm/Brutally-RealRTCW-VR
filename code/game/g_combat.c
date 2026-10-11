@@ -1424,6 +1424,9 @@ void G_DamageExt( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		}
 	}
 
+	// RealRTCW-VR: GORE & EXTRAS, limbs off the living and executions of the downed
+	take = G_VRX_Hit( targ, inflictor, attacker, dir, point, mod, take, hitEventType == HIT_HEADSHOT );
+
 	if ( targ->client && targ->client->ps.stats[STAT_HEALTH] > 0 ) {
 		if ( hitEventType ) {
 			if ( !hitEventOut ) {

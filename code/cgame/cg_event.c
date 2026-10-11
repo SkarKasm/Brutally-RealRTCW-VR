@@ -2224,6 +2224,15 @@ case EV_FILL_CLIP_FULL:
 		DEBUGNAME( "EV_WOLFKICK_HIT_FLESH" );
 		CG_Bullet( es->pos.trBase, es->otherEntityNum, dir, qtrue, es->eventParm, qtrue, es->otherEntityNum2 );
 		trap_S_StartSound( NULL, es->number, CHAN_AUTO, cgs.media.fkickflesh );
+		// RealRTCW-VR: a body kicked goes flying
+		if ( es->eventParm >= 0 && es->eventParm < MAX_CLIENTS && es->otherEntityNum >= 0 && es->otherEntityNum < MAX_GENTITIES ) {
+			vec3_t kick;
+			VectorSubtract( es->pos.trBase, cg_entities[es->otherEntityNum].lerpOrigin, kick );
+			kick[2] = 0;
+			VectorNormalize( kick );
+			kick[2] = 0.45f;
+			CG_Ragdoll_Hit( es->eventParm, es->pos.trBase, kick, 650.0f );
+		}
 		break;
 
 	case EV_WOLFKICK_MISS:

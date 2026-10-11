@@ -1012,6 +1012,8 @@ void G_VRX_PropHold( gentity_t *ent, const vec3_t hand, const vec3_t angles );
 void G_VRX_PropRelease( gentity_t *ent, const vec3_t vel );
 void G_VRX_TestProp( gentity_t *ent );
 int G_VRX_GoreBits( gentity_t *body );
+int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
+			   int mod, int take, qboolean headshot );
 void G_VRX_AddGoreBits( gentity_t *body, int bits );
 void G_VRX_Decap_f( gentity_t *ent );
 void G_VRX_TestDecap( gentity_t *ent );

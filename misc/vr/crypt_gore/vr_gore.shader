@@ -72,3 +72,16 @@ vr_neckinside_body
 		rgbGen lightingDiffuse
 	}
 }
+
+// RealRTCW-VR: the blood spreading under a body (cg_vrextras.c CG_VRX_BloodPool, a mark),
+// multiplied onto the floor so it takes the floor's own light; bloodpool.tga from bloodpool_tex.py
+vr_bloodpool
+{
+	polygonOffset
+	nopicmip
+	{
+		clampmap models/vr_gore/bloodpool.tga
+		blendFunc GL_DST_COLOR GL_ZERO
+		rgbGen identity
+	}
+}
