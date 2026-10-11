@@ -433,14 +433,28 @@ static qboolean G_VRX_Downed( gentity_t *e ) {
 	return ( G_VRX_GoreBits( e ) & ( VRX_GB_SURRENDER | VRX_GB_CRIPPLED | VRX_GB_DOWNED ) ) != 0;
 }
 
-// a body shot that leaves someone nearly dead can put them on their knees
-static void G_VRX_KnockDown( gentity_t *targ, gentity_t *attacker ) {
+// a body shot that leaves someone nearly dead puts them down, writhing in agony; which of the
+// SoF2 animations (cgame CG_VRX_Downed) goes by where the shot went in:
+// 1 gut, long writhe on his back   2 gut, to his knees looking at his bloody hand
+// 3 chest, writhing onto his front  4/5 left/right leg, writhing on his back
+// 6/7 left/right arm, writhing on his side   8 slumped, sitting, helpless
+static void G_VRX_KnockDown( gentity_t *targ, gentity_t *attacker, int region ) {
 	cast_state_t *cs = AICast_GetCastState( targ->s.number );
 	gentity_t *m;
+	int style;
 
+	switch ( region ) {
+	case VRH_BELLY: style = random() < 0.6f ? 1 : 2; break;
+	case VRH_CHEST: style = random() < 0.6f ? 3 : 1; break;
+	case VRH_LLEG:  style = 4; break;
+	case VRH_RLEG:  style = 5; break;
+	case VRH_LARM:  style = 6; break;
+	case VRH_RARM:  style = 7; break;
+	default:        { static const int any[4] = { 1, 2, 3, 8 }; style = any[rand() % 4]; } break;
+	}
 	G_VRX_AddGoreBits( targ, VRX_GB_DOWNED );
 	m = G_VRX_Marker( targ, qtrue );
-	m->s.time2 = 1 + rand() % 3;       // how he goes down (cgame CG_VRX_Downed)
+	m->s.time2 = style;       // how he goes down (cgame CG_VRX_Downed)
 	m->count = attacker->s.number;
 	m->timestamp = level.time + 900;
 	if ( cs ) {
@@ -506,8 +520,8 @@ void G_VRX_TestState( gentity_t *targ, gentity_t *by, qboolean groin, int style 
 		G_VRX_GroinHit( targ, by );
 		return;
 	}
-	G_VRX_KnockDown( targ, by );
-	if ( style >= 1 && style <= 3 ) {
+	G_VRX_KnockDown( targ, by, VRH_NONE );
+	if ( style >= 1 && style <= VRX_DOWN_STYLES ) {
 		G_VRX_Marker( targ, qtrue )->s.time2 = style;
 	}
 }
@@ -540,7 +554,7 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 	if ( !headshot && take < targ->health && !G_VRX_Downed( targ ) && ( !point || !G_VRX_ShotAtHead( targ, dir, point ) ) ) {
 		int max = targ->client->ps.stats[STAT_MAX_HEALTH] > 0 ? targ->client->ps.stats[STAT_MAX_HEALTH] : 100;
 		if ( targ->health - take <= max * 0.3f && random() < 0.6f ) {
-			G_VRX_KnockDown( targ, attacker );
+			G_VRX_KnockDown( targ, attacker, region );
 			return take;
 		}
 	}

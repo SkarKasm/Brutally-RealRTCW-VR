@@ -83,6 +83,7 @@ typedef enum {
 	VRB_COUNT
 } vrBodyPoint_t;
 
+#define VRX_DOWN_STYLES 8     // ways to go down: the SoF2 agony animations (cgame cg_vrsof2anims.h)
 #define VRX_GROIN_MS 2800     // how long a shot in the balls doubles someone over
 #define VRB_GROUPS      ( ( VRB_COUNT + 3 ) / 4 )
 
