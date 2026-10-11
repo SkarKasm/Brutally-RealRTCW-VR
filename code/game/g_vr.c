@@ -829,7 +829,41 @@ or friendly is used the way the use button would, by what the hand is reaching f
 qboolean g_vrHandUse;           // Cmd_Activate_f traces g_vrHandFrom -> g_vrHandTo instead
 vec3_t g_vrHandFrom, g_vrHandTo;
 
-static gentity_t *G_VR_FindItem( const vec3_t hand ) {
+// a hand's reach for items: out past the hand along the arm (eyes to hand), up to whatever
+// is in the way, so things a little too far, deep on a shelf or over a ledge can be taken
+#define VR_HAND_REACH       16.0f
+
+static float G_VR_ReachDist( gentity_t *ent, const vec3_t hand, const vec3_t mins, const vec3_t maxs ) {
+	vec3_t eye, dir, end, p;
+	trace_t tr;
+	float d, best, len, t;
+
+	best = G_VR_BoxDist( hand, mins, maxs );
+	if ( best > VR_HAND_REACH + 8.0f ) {
+		return best;    // nowhere near
+	}
+	G_VR_Eye( ent, eye );
+	VectorSubtract( hand, eye, dir );
+	if ( VectorNormalize( dir ) < 1.0f ) {
+		return best;
+	}
+	VectorMA( hand, VR_HAND_REACH, dir, end );
+	trap_Trace( &tr, hand, NULL, NULL, end, ent->s.number, MASK_SOLID );
+	if ( tr.startsolid ) {
+		return best;
+	}
+	len = VR_HAND_REACH * tr.fraction;
+	for ( t = 2.0f; t <= len; t += 2.0f ) {
+		VectorMA( hand, t, dir, p );
+		d = G_VR_BoxDist( p, mins, maxs );
+		if ( d < best ) {
+			best = d;
+		}
+	}
+	return best;
+}
+
+static gentity_t *G_VR_FindItem( gentity_t *ent, const vec3_t hand ) {
 	gentity_t *e, *best = NULL;
 	float margin = G_VR_AssistMargin( VR_ITEM_MARGIN ), d, bestDist = 1e9f;
 	int i;
@@ -839,7 +873,7 @@ static gentity_t *G_VR_FindItem( const vec3_t hand ) {
 		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item ) {
 			continue;
 		}
-		d = G_VR_BoxDist( hand, e->r.absmin, e->r.absmax );
+		d = G_VR_ReachDist( ent, hand, e->r.absmin, e->r.absmax );
 		if ( d <= margin && d < bestDist ) {
 			best = e;
 			bestDist = d;
@@ -849,7 +883,7 @@ static gentity_t *G_VR_FindItem( const vec3_t hand ) {
 }
 
 static qboolean G_VR_GrabItem( gentity_t *ent, const vec3_t hand ) {
-	gentity_t *e = G_VR_FindItem( hand );
+	gentity_t *e = G_VR_FindItem( ent, hand );
 	trace_t tr;
 
 	if ( e ) {
@@ -1218,7 +1252,7 @@ void G_VR_GrabHint( gentity_t *ent ) {
 	}
 	if ( vrp->grabbed < 0 && !vrp->heldItem ) {
 		G_VR_HandWorld( ent, !G_VR_DomHand( ent ), hand );
-		can = G_VR_FindBody( ent, hand ) || G_VR_FindItem( hand ) ||
+		can = G_VR_FindBody( ent, hand ) || G_VR_FindItem( ent, hand ) ||
 			  ( G_VRX_PropHeld( ent ) < 0 && G_VRX_FindProp( hand, G_VR_AssistMargin( VR_ITEM_MARGIN ) ) );
 	}
 	if ( can ) {
@@ -1258,7 +1292,7 @@ static void G_VR_HandTouchItems( gentity_t *ent ) {
 			if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item || e->touch != Touch_Item_Auto ) {
 				continue;
 			}
-			if ( G_VR_BoxDist( hand, e->r.absmin, e->r.absmax ) <= VR_HAND_TOUCH ) {
+			if ( G_VR_ReachDist( ent, hand, e->r.absmin, e->r.absmax ) <= VR_HAND_TOUCH ) {
 				memset( &tr, 0, sizeof( tr ) );
 				e->touch( e, ent, &tr );
 			}
