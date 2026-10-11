@@ -3585,9 +3585,10 @@ void CL_Video_f( void )
 	char  filename[ MAX_OSPATH ];
 	int   i, last;
 
-	if( !clc.demoplaying )
+	// VR mod: allow capturing live gameplay too (trailers), not just demo playback
+	if( clc.state != CA_ACTIVE && !clc.demoplaying )
 	{
-		Com_Printf( "The video command can only be used when playing back demos\n" );
+		Com_Printf( "The video command can only be used in game or when playing back demos\n" );
 		return;
 	}
 
