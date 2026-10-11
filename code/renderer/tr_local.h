@@ -1489,6 +1489,7 @@ void     RE_VR_EndPasses( void );
 void     RE_VR_PresentMirror( unsigned int sourceFramebuffer, int sourceWidth, int sourceHeight );
 void     R_VR_MirrorShutdown( void );
 extern cvar_t *r_vrMirrorFit;
+extern cvar_t *r_vrMirrorFov;
 void     *R_VR_GLProc( const char *name );
 unsigned int R_VR_CurrentTarget( void );
 

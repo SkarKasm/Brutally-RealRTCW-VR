@@ -106,6 +106,7 @@ cvar_t  *r_allowExtensions;
 
 cvar_t  *r_ext_compressed_textures;
 cvar_t  *r_vrMirrorFit;
+cvar_t  *r_vrMirrorFov;
 cvar_t  *r_ext_multitexture;
 cvar_t  *r_ext_compiled_vertex_array;
 cvar_t  *r_ext_texture_env_add;
@@ -1206,6 +1207,7 @@ void R_Register( void ) {
 	//
 	r_allowExtensions = ri.Cvar_Get( "r_allowExtensions", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_vrMirrorFit = ri.Cvar_Get( "vr_mirrorFit", "0", CVAR_ARCHIVE );
+	r_vrMirrorFov = ri.Cvar_Get( "vr_mirrorFov", "90", CVAR_ARCHIVE );
 	r_ext_compressed_textures = ri.Cvar_Get( "r_ext_compressed_textures", "0", CVAR_ARCHIVE | CVAR_LATCH );   // (SA) ew, a spelling change I missed from the missionpack
 	r_ext_multitexture = ri.Cvar_Get( "r_ext_multitexture", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ext_compiled_vertex_array = ri.Cvar_Get( "r_ext_compiled_vertex_array", "1", CVAR_ARCHIVE | CVAR_LATCH );

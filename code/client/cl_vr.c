@@ -3189,7 +3189,7 @@ qboolean CL_VR_RenderFrame( void ) {
 		}
 		re.EndFrame( NULL, NULL );
 
-		if ( eye == 0 && mirror == 1 && !uiInWorld ) {
+		if ( eye == 1 && mirror == 1 && !uiInWorld ) {     // the right eye
 			re.VR_PresentMirror( fbo, xr.eyes[eye].width, xr.eyes[eye].height );
 		}
 		VR_ReleaseSwapchain( &xr.eyes[eye] );
