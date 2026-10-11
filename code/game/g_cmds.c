@@ -2739,7 +2739,7 @@ int Cmd_WolfKick_f( gentity_t *ent ) {
 	int kicktime = level.time;
 	qboolean solidKick = qfalse;    // don't play "hit" sound on a trigger unless it's an func_invisible_user
 
-	int damage = 15;
+	int damage = 35;    // RealRTCW-VR: a kick that hurts (was 15)
 
 	if ( ent->client->ps.leanf ) {
 		return 0;   // no kick when leaning
@@ -2893,6 +2893,20 @@ int Cmd_WolfKick_f( gentity_t *ent ) {
 		}
 
 		G_Damage( traceEnt, ent, ent, forward, tr.endpos, damage, 0, MOD_KICKED );   //----(SA)	modified
+
+		// RealRTCW-VR: and sends a man flying back (bodies: the cgame's ragdoll, EV_WOLFKICK_HIT_FLESH)
+		if ( traceEnt->client && traceEnt->aiCharacter && traceEnt->health > 0 &&
+			 traceEnt->aiCharacter != AICHAR_SUPERSOLDIER &&
+			 traceEnt->aiCharacter != AICHAR_HEINRICH && traceEnt->aiCharacter != AICHAR_PROTOSOLDIER ) {
+			vec3_t push;
+			VectorSet( push, forward[0], forward[1], 0 );
+			VectorNormalize( push );
+			VectorScale( push, 450.0f, push );
+			push[2] = 160.0f;
+			VectorAdd( traceEnt->client->ps.velocity, push, traceEnt->client->ps.velocity );
+			traceEnt->client->ps.pm_time = 400;
+			traceEnt->client->ps.pm_flags |= PMF_TIME_KNOCKBACK;
+		}
 	}
 
 	return ( 1 );

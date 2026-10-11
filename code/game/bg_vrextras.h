@@ -45,6 +45,7 @@ typedef enum {
 	VRG_BELLY,          // disembowelled
 	VRG_DECAP,          // the head cut off a dead body
 	VRG_LIMBS,          // limbs off (s.density the new VRX_GB_ bits, s.frame those cut high)
+	VRG_HEADPOP,        // the head blown apart by a shot (or stamped on), at origin
 	VRG_COUNT
 } vrGore_t;
 
@@ -61,6 +62,8 @@ typedef enum {
 #define VRX_GB_RLEG         16
 #define VRX_GB_SCARED       32      // alive, running from a thrown head
 #define VRX_GB_SURRENDER    64      // alive, weapon dropped, hands up
+#define VRX_GB_CRIPPLED     128     // alive with an arm shot off: unarmed, running, bleeding out
+#define VRX_GB_DOWNED       512     // alive, shot down to their knees: slumped, bleeding out, waiting to be finished
 #define VRX_GB_BLOWN        256     // killed by a blast close by: torn open (skinned head, ribs, guts)
 
 // the crypt's torn soldier pieces (z_vr_assets.pk3, cut from crypt1.bsp), and who can wear them:

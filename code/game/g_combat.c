@@ -1351,6 +1351,9 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		targ->client->lasthurt_mod = mod;
 	}
 
+	// RealRTCW-VR: GORE & EXTRAS, limbs off the living and executions of the downed
+	take = G_VRX_Hit( targ, inflictor, attacker, dir, point, mod, take, headShot );
+
 	// do the damage
 	if ( take ) {
 		// this makes it easier to make the mg42 work with this new friendlyfire code

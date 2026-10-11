@@ -369,8 +369,37 @@ CG_VRX_GoreEvent
 EV_VR_GORE: a killing blow did something gory to a body (g_vrextras.c G_VRX_Kill).
 =================
 */
+static int vrxGoreBits[MAX_GENTITIES];      // (below: from the gore markers)
+
 void CG_VRX_GoreEvent( entityState_t *es ) {
 	vrWound_t *w;
+
+	if ( es->eventParm == VRG_HEADPOP ) {
+		// the head blown apart: skull and brains flying, the neck pumping
+		centity_t *body = es->otherEntityNum >= 0 && es->otherEntityNum < MAX_CLIENTS ? &cg_entities[es->otherEntityNum] : NULL;
+		vec3_t p, d;
+		if ( !CG_VRX_Gore( VRX_DISMEMBER ) || !body ) {
+			return;
+		}
+		if ( body->pe.headRefEnt.hModel ) {
+			VectorMA( body->pe.headRefEnt.origin, 4.0f, body->pe.headRefEnt.axis[2], p );
+		} else {
+			VectorCopy( es->pos.trBase, p );
+		}
+		vrxGoreBits[es->otherEntityNum] |= VRX_GB_HEAD;     // gone now, not when the marker arrives
+		CG_GibHead( p );
+		CG_GibHead( p );        // (two lots: a skull's worth of bits and plenty of brain)
+		CG_AddBloodTrails( p, tv( 0, 0, 1 ), 180, 900, 12, 0.9f );
+		if ( VectorNormalize2( es->origin2, d ) > 0.1f ) {
+			CG_AddBloodTrails( p, d, 260, 600, 8, 0.7f );   // out the far side
+		}
+		trap_S_StartSound( p, ENTITYNUM_WORLD, CHAN_AUTO, cgs.media.gibSound );
+		w = VRX_NewWound( es->otherEntityNum, VRW_STUMP, es->pos.trBase, es->origin2 );
+		if ( w ) {
+			w->size = 2.6f;
+		}
+		return;
+	}
 
 	if ( !CG_VRX_Gore( VRX_THROAT ) && !( es->eventParm == VRG_BELLY && es->density && CG_VRX_Gore( VRX_DISMEMBER ) ) ) {
 		return;     // (a shotgun's disembowelling goes with dismemberment)
@@ -1264,7 +1293,11 @@ int CG_VRX_GoreBits( centity_t *cent ) {
 
 	if ( !( cent->currentState.eFlags & EF_DEAD ) ) {
 		// alive (a new character in the slot): only being scared or giving up shows
-		vrxGoreBits[n] &= VRX_GB_SCARED | VRX_GB_SURRENDER;
+		int keep = VRX_GB_SCARED | VRX_GB_SURRENDER | VRX_GB_CRIPPLED | VRX_GB_DOWNED;
+		if ( vrxGoreBits[n] & VRX_GB_CRIPPLED ) {
+			keep |= VRX_GB_LARM | VRX_GB_RARM;      // an arm shot off someone still running
+		}
+		vrxGoreBits[n] &= keep;
 	}
 	return vrxGoreBits[n];
 }
@@ -1535,6 +1568,116 @@ void CG_VRX_Surrender( centity_t *cent, refEntity_t *body ) {
 
 /*
 =================
+CG_VRX_Downed
+
+Someone shot down to their knees (VRX_GB_DOWNED): the calves folded back under them, the
+whole body lowered onto the knees, the upper body slumped forward and the arms hanging,
+eased in. Like CG_VRX_Surrender, a pose handed to the renderer as ragdollBones.
+=================
+*/
+static int vrxWentDown[MAX_CLIENTS];
+
+void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
+	static const char *legs[2][3] = { { "L Thigh", "L Calf", "L Foot" }, { "R Thigh", "R Calf", "R Foot" } };
+	static const char *arms[2][3] = { { "L UpperArm", "L Forearm", "L Hand" }, { "R UpperArm", "R Forearm", "R Hand" } };
+	int n = cent->currentState.number, side, b[3], k, i, spine;
+	float *pose, f, ground = 1e9f, lowest = 1e9f, drop;
+	vrSkel_t *sk;
+	vec3_t r[3], d, want;
+
+	if ( n >= MAX_CLIENTS || ( cent->currentState.eFlags & EF_DEAD ) ||
+		 !( CG_VRX_GoreBits( cent ) & VRX_GB_DOWNED ) ) {
+		if ( n < MAX_CLIENTS ) {
+			vrxWentDown[n] = 0;
+		}
+		return;
+	}
+	if ( !vrxWentDown[n] ) {
+		vrxWentDown[n] = cg.time;
+	}
+	f = ( cg.time - vrxWentDown[n] ) / 350.0f;
+	f = f > 1 ? 1 : f;
+	pose = vrxPoses[n];
+	if ( body->ragdollBones && body->ragdollMagic == RAGDOLL_MAGIC && body->ragdollBones == pose ) {
+		sk = VRX_Skel( body, NULL );
+	} else {
+		sk = VRX_Skel( body, pose );
+	}
+	if ( !sk ) {
+		return;
+	}
+	// the knees down onto the floor: calves folded back
+	for ( side = 0; side < 2; side++ ) {
+		for ( k = 0; k < 3; k++ ) {
+			b[k] = VRX_FindBone( sk, legs[side][k] );
+		}
+		if ( b[0] < 0 || b[1] < 0 || b[2] < 0 ) {
+			return;
+		}
+		ground = min( ground, pose[b[2] * 12 + 11] );
+		// thigh straight down, a little forward
+		VectorSubtract( pose + b[1] * 12 + 9, pose + b[0] * 12 + 9, d );
+		VectorNormalize( d );
+		VectorSet( want, 0.25f, side ? -0.08f : 0.08f, -1 );
+		VectorNormalize( want );
+		VRX_Turn( d, want, f, r );
+		VRX_RotateSubtree( pose, sk, b[0], r, pose + b[0] * 12 + 9 );
+		// calf back along the floor
+		VectorSubtract( pose + b[2] * 12 + 9, pose + b[1] * 12 + 9, d );
+		VectorNormalize( d );
+		VectorSet( want, -1, 0, -0.12f );
+		VectorNormalize( want );
+		VRX_Turn( d, want, f, r );
+		VRX_RotateSubtree( pose, sk, b[1], r, pose + b[1] * 12 + 9 );
+		lowest = min( lowest, pose[b[1] * 12 + 11] );
+		lowest = min( lowest, pose[b[2] * 12 + 11] );
+	}
+	// everything down onto the knees
+	drop = lowest - ground;
+	if ( drop > 0 ) {
+		for ( i = 0; i < sk->n; i++ ) {
+			pose[i * 12 + 11] -= drop;
+		}
+	}
+	// slumped forward
+	spine = VRX_FindBone( sk, "Spine" );
+	if ( spine >= 0 ) {
+		VectorSet( d, 0, 0, 1 );
+		VectorSet( want, 0.55f, 0, 0.83f );
+		VRX_Turn( d, want, f, r );
+		VRX_RotateSubtree( pose, sk, spine, r, pose + spine * 12 + 9 );
+	}
+	// arms hanging, one clutching the belly
+	for ( side = 0; side < 2; side++ ) {
+		for ( k = 0; k < 3; k++ ) {
+			b[k] = VRX_FindBone( sk, arms[side][k] );
+		}
+		if ( b[0] < 0 || b[1] < 0 || b[2] < 0 || ( CG_VRX_GoreBits( cent ) & ( side ? VRX_GB_RARM : VRX_GB_LARM ) ) ) {
+			continue;
+		}
+		VectorSubtract( pose + b[1] * 12 + 9, pose + b[0] * 12 + 9, d );
+		VectorNormalize( d );
+		VectorSet( want, side ? 0.35f : 0.1f, side ? -0.2f : 0.25f, -1 );
+		VectorNormalize( want );
+		VRX_Turn( d, want, f, r );
+		VRX_RotateSubtree( pose, sk, b[0], r, pose + b[0] * 12 + 9 );
+		VectorSubtract( pose + b[2] * 12 + 9, pose + b[1] * 12 + 9, d );
+		VectorNormalize( d );
+		if ( side ) {
+			VectorSet( want, 0.6f, 0.75f, 0.1f );     // the right hand across onto the belly
+		} else {
+			VectorSet( want, 0.2f, 0.1f, -1 );
+		}
+		VectorNormalize( want );
+		VRX_Turn( d, want, f, r );
+		VRX_RotateSubtree( pose, sk, b[1], r, pose + b[1] * 12 + 9 );
+	}
+	body->ragdollBones = pose;
+	body->ragdollMagic = RAGDOLL_MAGIC;
+}
+
+/*
+=================
 CG_VRX_Dismember
 
 A body with limbs off: everything below each cut squeezed into the joint (the mesh is one
@@ -1548,10 +1691,13 @@ void CG_VRX_Dismember( centity_t *cent, refEntity_t *body ) {
 	float *pose;
 	vrSkel_t *sk;
 
-	if ( n >= MAX_CLIENTS || !( cent->currentState.eFlags & EF_DEAD ) || !CG_VRX_Gore( VRX_DISMEMBER ) ) {
+	if ( n >= MAX_CLIENTS || !CG_VRX_Gore( VRX_DISMEMBER ) ) {
 		return;
 	}
 	bits = CG_VRX_GoreBits( cent ) & ( VRX_GB_LARM | VRX_GB_RARM | VRX_GB_LLEG | VRX_GB_RLEG );
+	if ( !( cent->currentState.eFlags & EF_DEAD ) ) {
+		bits &= VRX_GB_LARM | VRX_GB_RARM;      // the living only ever lose an arm (crippled)
+	}
 	if ( !bits ) {
 		return;
 	}
@@ -1561,7 +1707,9 @@ void CG_VRX_Dismember( centity_t *cent, refEntity_t *body ) {
 		if ( !sk ) {
 			return;
 		}
-		memcpy( pose, body->ragdollBones, sizeof( float ) * 12 * sk->n );
+		if ( body->ragdollBones != pose ) {     // (a pose of ours already: hands up, or down on the knees)
+			memcpy( pose, body->ragdollBones, sizeof( float ) * 12 * sk->n );
+		}
 	} else {
 		sk = VRX_Skel( body, pose );
 		if ( !sk ) {
@@ -1591,4 +1739,91 @@ void CG_VRX_Dismember( centity_t *cent, refEntity_t *body ) {
 	}
 	body->ragdollBones = pose;
 	body->ragdollMagic = RAGDOLL_MAGIC;
+}
+
+/*
+=================
+CG_VRX_BloodPool
+
+A dead body ready to draw: the blood spreading out under it, from the chest (from the
+neck, bigger, when the head is gone; bigger for the torn open and cut up), flat on the
+floor and following the body if it slides. Drawn fresh each frame (a temporary mark), so
+it grows and goes with the body.
+=================
+*/
+static int vrxPoolStart[MAX_CLIENTS];
+static float vrxPoolSpin[MAX_CLIENTS];
+
+void CG_VRX_BloodPool( centity_t *cent, refEntity_t *body ) {
+	static qhandle_t shader;
+	static float pose[VRX_MAX_BONES * 12];
+	int n = cent->currentState.number, bits, b;
+	vrSkel_t *sk;
+	const float *bones;
+	vec3_t axis[3], bAxis[3], at, end;
+	trace_t tr;
+	float size, grow, t;
+	int k;
+
+	if ( n >= MAX_CLIENTS ) {
+		return;
+	}
+	if ( !( cent->currentState.eFlags & EF_DEAD ) || !CG_VRX_Gore( VRX_WOUNDS ) || !cg_blood.integer ) {
+		vrxPoolStart[n] = 0;
+		return;
+	}
+	if ( !vrxPoolStart[n] ) {
+		vrxPoolStart[n] = cg.time + 500;     // starts once he's down
+		vrxPoolSpin[n] = random() * 360;
+	}
+	if ( cg.time < vrxPoolStart[n] ) {
+		return;
+	}
+	if ( !shader ) {
+		shader = trap_R_RegisterShader( "vr_bloodpool" );
+		if ( !shader ) {
+			shader = -1;
+		}
+	}
+	if ( shader < 0 ) {
+		return;
+	}
+	bits = CG_VRX_GoreBits( cent );
+	if ( body->ragdollBones && body->ragdollMagic == RAGDOLL_MAGIC ) {
+		sk = VRX_Skel( body, NULL );
+		bones = body->ragdollBones;
+	} else {
+		sk = VRX_Skel( body, pose );
+		bones = pose;
+	}
+	if ( !sk ) {
+		return;
+	}
+	b = VRX_FindBone( sk, ( bits & VRX_GB_HEAD ) ? "Neck" : "Spine" );
+	if ( b < 0 ) {
+		return;
+	}
+	for ( k = 0; k < 3; k++ ) {
+		VectorCopy( body->axis[k], axis[k] );
+	}
+	VRX_BoneWorld( bones + b * 12, qfalse, axis, body->origin, bAxis, at );
+	VectorCopy( at, end );
+	end[2] -= 48;
+	at[2] += 4;
+	CG_Trace( &tr, at, NULL, NULL, end, n, MASK_SOLID );
+	if ( tr.fraction >= 1.0f || tr.startsolid || tr.plane.normal[2] < 0.6f ) {
+		return;
+	}
+	size = 20.0f;
+	if ( bits & ( VRX_GB_HEAD | VRX_GB_BLOWN ) ) {
+		size += 10.0f;
+	}
+	if ( bits & ( VRX_GB_LARM | VRX_GB_RARM | VRX_GB_LLEG | VRX_GB_RLEG ) ) {
+		size += 6.0f;
+	}
+	// spreads quickly at first, then slowly, over about ten seconds
+	t = ( cg.time - vrxPoolStart[n] ) / 10000.0f;
+	grow = t >= 1.0f ? 1.0f : 1.0f - ( 1.0f - t ) * ( 1.0f - t );
+	CG_ImpactMark( shader, tr.endpos, tr.plane.normal, vrxPoolSpin[n], 1, 1, 1, 1, qfalse,
+				   3.0f + size * grow, qtrue, 0 );
 }
