@@ -1142,6 +1142,208 @@ static void R_VRX_BodyBlood( mdsHeader_t *header, mdsSurface_t *surface, const r
 
 /*
 ==============
+R_VRX_Trailer
+
+RealRTCW-VR: what the cgame put after a ragdoll pose in ragdollBones, the pose being
+numBones * 12 floats. First, optionally, a cut (dismemberment, the way Ghoul 2 turns a
+limb's surfaces off): VRX_CUT_MAGIC, 0 to draw the body without the bones in the mask or 1
+to draw only them (the limb that came off), then the mask, 32 bones to a float's bits.
+Then, optionally, bullet holes (R_VRX_BodyWounds).
+==============
+*/
+#define VRX_CUT_MAGIC       0x56524354      // "VRCT"
+#define VRX_CUT_WORDS       ( ( MDS_MAX_BONES + 31 ) / 32 )
+
+typedef union { float f; int i; } vrxBits_t;
+
+static const float *R_VRX_Trailer( const mdsHeader_t *header, const refEntity_t *refent, int *cutMode, unsigned *cutMask ) {
+	const float *g;
+	vrxBits_t m;
+	int k;
+
+	*cutMode = -1;
+	if ( !refent->ragdollBones || refent->ragdollMagic != RAGDOLL_MAGIC ) {
+		return NULL;
+	}
+	g = refent->ragdollBones + header->numBones * 12;
+	m.f = g[0];
+	if ( m.i == VRX_CUT_MAGIC ) {
+		*cutMode = (int)g[1];
+		for ( k = 0; k < VRX_CUT_WORDS; k++ ) {
+			m.f = g[2 + k];
+			cutMask[k] = (unsigned)m.i;
+		}
+		g += 2 + VRX_CUT_WORDS;
+	}
+	return g;
+}
+
+/*
+==============
+R_VRX_BodyWounds
+
+RealRTCW-VR: bullet holes on a body, the way Ghoul 2 does its skin gore: the cgame draws the
+body again with the shader "vr_bodywound" (or vr_bodywound2..4, other holes) (cg_vrextras.c VRX_AddBodyWounds), and instead of
+the whole surface only the triangles round each hole are kept, as they are deformed this
+frame, with texture coordinates projected onto them from the hole's plane. So the holes sit
+on the skin and move with it. The holes come after the pose in ragdollBones: VRX_WOUND_MAGIC,
+the count, then 12 floats each: where (model space), the outward normal, which way is down
+along the skin, half the size, 1 or -1 to mirror it, and a spare.
+==============
+*/
+#define VRX_WOUND_MAGIC     0x56525744      // "VRWD"
+#define VRX_MAX_BODYWOUNDS  32
+
+static void R_VRX_BodyWounds( mdsHeader_t *header, const refEntity_t *refent, int firstVert, int numVerts, int firstIndex ) {
+	static vec4_t xyz[SHADER_MAX_VERTEXES], nrm[SHADER_MAX_VERTEXES];
+	static glIndex_t tri[SHADER_MAX_INDEXES];
+	const float *g;
+	int count, numTri, i, k, w;
+	union { float f; int i; } magic;
+
+	numTri = tess.numIndexes - firstIndex;
+	tess.numIndexes = firstIndex;       // only what's made here is drawn
+	tess.numVertexes = firstVert;
+	if ( !refent->ragdollBones || refent->ragdollMagic != RAGDOLL_MAGIC || numVerts > SHADER_MAX_VERTEXES ) {
+		return;
+	}
+	{
+		int cutMode;
+		unsigned cutMask[VRX_CUT_WORDS];
+		g = R_VRX_Trailer( header, refent, &cutMode, cutMask );
+	}
+	if ( !g ) {
+		return;
+	}
+	magic.f = g[0];
+	if ( magic.i != VRX_WOUND_MAGIC ) {
+		return;
+	}
+	count = (int)g[1];
+	count = count < 0 ? 0 : ( count > VRX_MAX_BODYWOUNDS ? VRX_MAX_BODYWOUNDS : count );
+	g += 2;
+
+	// the deformed surface, put aside
+	for ( i = 0; i < numVerts; i++ ) {
+		Vector4Copy( tess.xyz[firstVert + i], xyz[i] );
+		Vector4Copy( tess.normal[firstVert + i], nrm[i] );
+	}
+	for ( i = 0; i < numTri; i++ ) {
+		tri[i] = tess.indexes[firstIndex + i] - firstVert;
+	}
+
+	for ( w = 0; w < count; w++ ) {
+		const float *n = g + w * 12 + 3, *down = g + w * 12 + 6;
+		float size = g[w * 12 + 9], flip = g[w * 12 + 10] < 0 ? -1.0f : 1.0f, bestT = 1e9f;
+		vec3_t across, p, from;
+
+		if ( size <= 0 ) {
+			continue;
+		}
+		CrossProduct( down, n, across );
+		// the cgame only knows roughly where the skin is (round its bones): find it, the
+		// nearest triangle facing out along a line in through the hole
+		VectorMA( g + w * 12, 16.0f, n, from );
+		for ( i = 0; i + 2 < numTri; i += 3 ) {
+			const float *a, *b, *c;
+			vec3_t e1, e2, pv, tv, qv;
+			float det, u, v, t;
+
+			if ( tri[i] >= numVerts || tri[i + 1] >= numVerts || tri[i + 2] >= numVerts ) {
+				continue;
+			}
+			if ( DotProduct( nrm[tri[i]], n ) + DotProduct( nrm[tri[i + 1]], n ) + DotProduct( nrm[tri[i + 2]], n ) < 0.3f ) {
+				continue;
+			}
+			a = xyz[tri[i]]; b = xyz[tri[i + 1]]; c = xyz[tri[i + 2]];
+			VectorSubtract( b, a, e1 );
+			VectorSubtract( c, a, e2 );
+			CrossProduct( n, e2, pv );      // the line runs along -n
+			det = -DotProduct( e1, pv );
+			if ( det > -1e-6f && det < 1e-6f ) {
+				continue;
+			}
+			VectorSubtract( from, a, tv );
+			u = -DotProduct( tv, pv ) / det;
+			if ( u < 0 || u > 1 ) {
+				continue;
+			}
+			CrossProduct( tv, e1, qv );
+			v = -DotProduct( n, qv ) / det;
+			if ( v < 0 || u + v > 1 ) {
+				continue;
+			}
+			t = DotProduct( e2, qv ) / det;
+			if ( t >= 0 && t < 32.0f && t < bestT ) {
+				bestT = t;
+			}
+		}
+		if ( bestT > 1e8f ) {
+			continue;       // nothing of this surface there
+		}
+		VectorMA( from, -bestT, n, p );
+		for ( i = 0; i + 2 < numTri; i += 3 ) {
+			vec3_t e1, e2, tn, rel;
+			float st[3][2], d, facing = 0;
+			int out;
+
+			if ( tri[i] >= numVerts || tri[i + 1] >= numVerts || tri[i + 2] >= numVerts ) {
+				continue;
+			}
+			// facing the hole's way, and the hole near its plane
+			VectorSubtract( xyz[tri[i + 1]], xyz[tri[i]], e1 );
+			VectorSubtract( xyz[tri[i + 2]], xyz[tri[i]], e2 );
+			CrossProduct( e1, e2, tn );
+			if ( VectorNormalize( tn ) < 1e-6f ) {
+				continue;
+			}
+			for ( k = 0; k < 3; k++ ) {
+				facing += DotProduct( nrm[tri[i + k]], n );
+			}
+			if ( facing < 0.6f ) {      // (vertex normals, so the winding doesn't matter)
+				continue;
+			}
+			VectorSubtract( p, xyz[tri[i]], rel );
+			d = DotProduct( rel, tn );
+			if ( d > 2.0f || d < -2.0f ) {
+				continue;
+			}
+			// where its corners fall on the texture: the hole in the middle (the Soldier of
+			// Fortune 2 holes are splashes round it)
+			for ( k = 0; k < 3; k++ ) {
+				VectorSubtract( xyz[tri[i + k]], p, rel );
+				st[k][0] = 0.5f + flip * DotProduct( rel, across ) / ( 2.0f * size );
+				st[k][1] = 0.5f + DotProduct( rel, down ) / ( 2.0f * size );
+			}
+			out = 0;
+			for ( k = 0; k < 2; k++ ) {
+				if ( st[0][k] < 0 && st[1][k] < 0 && st[2][k] < 0 ) {
+					out = 1;
+				}
+				if ( st[0][k] > 1 && st[1][k] > 1 && st[2][k] > 1 ) {
+					out = 1;
+				}
+			}
+			if ( out ) {
+				continue;
+			}
+			if ( tess.numVertexes + 3 > SHADER_MAX_VERTEXES || tess.numIndexes + 3 > SHADER_MAX_INDEXES ) {
+				return;
+			}
+			for ( k = 0; k < 3; k++ ) {
+				int v = tess.numVertexes++;
+				Vector4Copy( xyz[tri[i + k]], tess.xyz[v] );
+				Vector4Copy( nrm[tri[i + k]], tess.normal[v] );
+				tess.texCoords[v][0][0] = st[k][0];
+				tess.texCoords[v][0][1] = st[k][1];
+				tess.indexes[tess.numIndexes++] = v;
+			}
+		}
+	}
+}
+
+/*
+==============
 RB_SurfaceAnim
 ==============
 */
@@ -1273,8 +1475,15 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	v = ( mdsVertex_t * )( (byte *)surface + surface->ofsVerts );
 	tempVert = ( float * )( tess.xyz + baseVertex );
 	tempNormal = ( float * )( tess.normal + baseVertex );
+	{
+		static byte cutVert[MDS_MAX_VERTS];
+		unsigned cutMask[VRX_CUT_WORDS];
+		int cutMode;
+
+	R_VRX_Trailer( header, refent, &cutMode, cutMask );
 	for ( j = 0; j < render_count; j++, tempVert += 4, tempNormal += 4 ) {
 		mdsWeight_t *w;
+		float cutW = 0;
 
 		VectorClear( tempVert );
 
@@ -1282,6 +1491,12 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 		for ( k = 0 ; k < v->numWeights ; k++, w++ ) {
 			bone = &bones[w->boneIndex];
 			LocalAddScaledMatrixTransformVectorTranslate( w->offset, w->boneWeight, bone->matrix, bone->translation, tempVert );
+			if ( cutMode >= 0 && ( cutMask[w->boneIndex >> 5] & ( 1u << ( w->boneIndex & 31 ) ) ) ) {
+				cutW += w->boneWeight;
+			}
+		}
+		if ( j < MDS_MAX_VERTS ) {
+			cutVert[j] = cutW >= 0.5f;
 		}
 		LocalMatrixTransformVector( v->normal, bones[v->weights[0].boneIndex].matrix, tempNormal );
 
@@ -1290,8 +1505,29 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 
 		v = (mdsVertex_t *)&v->weights[v->numWeights];
 	}
+	// RealRTCW-VR dismemberment: the triangles mostly on the cut bones dropped (the body),
+	// or only those kept (the limb that came off)
+	if ( cutMode >= 0 && render_count <= MDS_MAX_VERTS ) {
+		int out = oldIndexes, in, cut;
+		for ( in = oldIndexes; in + 2 < tess.numIndexes; in += 3 ) {
+			cut = cutVert[tess.indexes[in] - baseVertex] + cutVert[tess.indexes[in + 1] - baseVertex] + cutVert[tess.indexes[in + 2] - baseVertex];
+			if ( ( cut >= 2 ) != ( cutMode == 1 ) ) {
+				continue;
+			}
+			tess.indexes[out] = tess.indexes[in];
+			tess.indexes[out + 1] = tess.indexes[in + 1];
+			tess.indexes[out + 2] = tess.indexes[in + 2];
+			out += 3;
+		}
+		tess.numIndexes = out;
+	}
+	}
 	if ( tess.shader && !Q_stricmp( tess.shader->name, "vr_bodyblood" ) ) {
 		R_VRX_BodyBlood( header, surface, refent, baseVertex, render_count );
+	}
+	if ( tess.shader && !Q_stricmpn( tess.shader->name, "vr_bodywound", 12 ) ) {
+		R_VRX_BodyWounds( header, refent, baseVertex, render_count, oldIndexes );
+		return;
 	}
 
 	DBG_SHOWTIME

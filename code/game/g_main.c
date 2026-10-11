@@ -54,9 +54,7 @@ extern int bg_pmove_gameskill_integer;
 // done
 
 vmCvar_t g_gametype;
-#ifdef INGAME_CUTSCENES
 vmCvar_t g_skipcutscenes;
-#endif
 vmCvar_t g_maxspawnpoints;
 vmCvar_t g_maxlives;
 vmCvar_t g_enforcemaxlives;
@@ -209,9 +207,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_reloading, "g_reloading", "0", CVAR_ROM },   //----(SA)	added
 
 	{ &g_teleporttime, "g_teleporttime", "300000", CVAR_SERVERINFO | CVAR_LATCH, 0, qfalse  },   // 5 minutes by default
-#ifdef INGAME_CUTSCENES
 	{ &g_skipcutscenes, "g_skipcutscenes", "0", CVAR_ARCHIVE, 0, qtrue  },
-#endif
 	{ &g_maxspawnpoints, "g_maxspawnpoints", "0", CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_LATCH, 0, qfalse },
 	{ &g_maxlives, "g_maxlives", "0", CVAR_ARCHIVE | CVAR_LATCH | CVAR_SERVERINFO, 0, qfalse},
 	{ &g_enforcemaxlives, "g_enforcemaxlives", "1", CVAR_ARCHIVE, 0, qtrue},
@@ -1178,6 +1174,10 @@ void G_SpawnScriptCamera( void ) {
 
 	g_camEnt->r.svFlags |= SVF_NOCLIENT;        // only broadcast when in use
 
+	level.cameraOwner = -1;
+	level.cameraViewers = 0;
+	level.cameraInterrupted = qfalse;
+
 	if ( g_camEnt->s.number >= MAX_CLIENTS && g_camEnt->scriptName ) {
 		G_Script_ScriptParse( g_camEnt );
 		G_Script_ScriptEvent( g_camEnt, "spawn", "" );
@@ -1457,9 +1457,8 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	if ( g_gametype.integer == GT_COOP_BATTLE ) {
 		trap_Cvar_Set( "g_friendlyfire", "2" );
 		//trap_Cvar_Set("g_spawnpoints", "1");
-#ifdef INGAME_CUTSCENES
-		trap_Cvar_Set( "g_skipcutscenes", "1" );
-#endif
+		// RealRTCW-VR: cutscenes are skipped in battle by ScriptStartCam, not by overwriting the
+		// archived g_skipcutscenes (which then stayed on for every co-op game after)
 		trap_Cvar_Set( "g_freeze", "0" );
 		//trap_Cvar_Set("g_warmup", "20");
 		//trap_Cvar_Set("g_reinforce", "0");
@@ -3118,6 +3117,9 @@ void G_RunFrame( int levelTime ) {
 
 		G_RunThink( ent );
 	}
+
+	// RealRTCW-VR: count who is watching a script camera, let go of anyone stuck in one
+	G_CheckCameras();
 
 	// Ridah, move the AI
 	AICast_StartServerFrame( level.time );

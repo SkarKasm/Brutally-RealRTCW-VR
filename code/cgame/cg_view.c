@@ -1151,7 +1151,12 @@ static int CG_CalcViewValues( void ) {
 			cg.refdef.fov_y = cg.refdef.fov_y * 360 / M_PI;
 			cg.refdef.fov_x = fov;
 
-			trap_SendClientCommand( va( "setCameraOrigin %f %f %f", origin[0], origin[1], origin[2] ) );
+			// RealRTCW-VR: a reliable command every frame (twice in VR) floods a co-op server: the
+			// server makes a snapshot every 50 msec anyway, so tell it no more often than that
+			if ( cg.time - cg.cameraOriginTime >= 50 || cg.time < cg.cameraOriginTime ) {
+				cg.cameraOriginTime = cg.time;
+				trap_SendClientCommand( va( "setCameraOrigin %f %f %f", origin[0], origin[1], origin[2] ) );
+			}
 			return 0;
 
 		} else {
@@ -1680,6 +1685,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 		DEBUGTIME
 
 		CG_AddLocalEntities();
+		CG_VRX_AddLimbs();      // RealRTCW-VR: cut off limbs
 
 		DEBUGTIME
 

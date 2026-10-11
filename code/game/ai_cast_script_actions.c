@@ -3163,68 +3163,52 @@ AICast_ScriptAction_StartCam
 ===================
 */
 qboolean ScriptStartCam( cast_state_t *cs, char *params, qboolean black ) {
-#ifdef INGAME_CUTSCENES
 	char *pString, *token;
 	gentity_t *ent;
+	int oldId;
 
-	if ( !g_skipcutscenes.integer && g_gametype.integer == GT_SINGLE_PLAYER ) {
+	ent = &g_entities[cs->entityNum];
 
-		ent = &g_entities[cs->entityNum];
-
-		pString = params;
-		token = COM_Parse( &pString );
-		if ( !token[0] ) {
-			G_Error( "G_ScriptAction_Cam: filename parameter required\n" );
-		}
-	
-		// turn off noclient flag
-		ent->r.svFlags &= ~SVF_NOCLIENT;
-	
-		// issue a start camera command to the client
-		//trap_SendServerCommand( cs->entityNum, va( "startCam %s %d", token, (int)black ) );
-		// cameras for all connected clients
-		trap_SendServerCommand( -1, va( "startCam %s %d", token, (int)black ) );
-
-		return qtrue;
+	pString = params;
+	token = COM_Parse( &pString );
+	if ( !token[0] ) {
+		G_Error( "G_ScriptAction_Cam: filename parameter required\n" );
 	}
-#else
-	AICast_ScriptEvent( cs, "trigger", "cameraInterrupt" );
+
+	// RealRTCW-VR: no cutscenes wanted (g_skipcutscenes, or a 1vs1 battle): skip it the way
+	// a player pressing escape does, so the script's own clean-up still runs and nothing waits
+	if ( g_skipcutscenes.integer || g_gametype.integer == GT_COOP_BATTLE ) {
+		oldId = cs->castScriptStatus.scriptId;
+		AICast_ScriptEvent( cs, "trigger", "cameraInterrupt" );
+		// if the script changed, return false so we don't muck with it's variables
+		return ( oldId == cs->castScriptStatus.scriptId );
+	}
+
+	// turn off noclient flag
+	ent->r.svFlags &= ~SVF_NOCLIENT;
+
+	// issue a start camera command to every client (co-op's "player" script is only the first one's)
+	G_StartScriptCamera( cs->entityNum, token, black );
+
 	return qtrue;
-#endif
 }
 
 qboolean AICast_ScriptAction_StartCam( cast_state_t *cs, char *params ) {
-#ifdef INGAME_CUTSCENES
 	return ScriptStartCam( cs, params, qfalse );
-#else
-	return qtrue;
-#endif
 }
 
 qboolean AICast_ScriptAction_StartCamBlack( cast_state_t *cs, char *params ) {
-#ifdef INGAME_CUTSCENES
 	return ScriptStartCam( cs, params, qtrue );
-#else
-	return qtrue;
-#endif
 }
 
 qboolean AICast_ScriptAction_StopCamBlack( cast_state_t *cs, char *params ) {
-#ifdef INGAME_CUTSCENES
-	trap_SendServerCommand( cs->entityNum, "stopCamblack" );
+	G_StopScriptCamera( qtrue );
 	return qtrue;
-#else
-	return qtrue;
-#endif
 }
 
 qboolean AICast_ScriptAction_StopCam( cast_state_t *cs, char *params ) {
-#ifdef INGAME_CUTSCENES
-	trap_SendServerCommand( cs->entityNum, "stopCam" );
+	G_StopScriptCamera( qfalse );
 	return qtrue;
-#else
-	return qtrue;
-#endif
 }
 
 qboolean AICast_ScriptAction_Cigarette( cast_state_t *cs, char *params ) {

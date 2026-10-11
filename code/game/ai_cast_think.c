@@ -1093,7 +1093,7 @@ void AICast_StartServerFrame( int time ) {
 					//
 					// optimization, if they're not in the player's PVS, and they aren't trying to move, then don't bother thinking
 					if (    ( highPriority && ( elapsed > 300 ) )
-							||  ( g_entities[0].client && g_entities[0].client->cameraPortal )
+							||  ( level.cameraViewers > 0 )      // RealRTCW-VR: anyone watching a cutscene, not just client 0
 							||  ( highPriority && ( cs->vislist[0].visible_timestamp == cs->vislist[0].lastcheck_timestamp ) )
 							||  ( highPriority && ( pcs->vislist[cs->entityNum].visible_timestamp == pcs->vislist[cs->entityNum].lastcheck_timestamp ) )
 							||  ( VectorLength( ent->client->ps.velocity ) > 0 )

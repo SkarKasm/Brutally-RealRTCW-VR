@@ -2374,22 +2374,171 @@ void Cmd_Teleport_f( gentity_t *ent ) {
 
 /*
 =================
+G_StopClientCamera
+
+RealRTCW-VR: take one client out of the script camera, qfalse if it wasn't watching
+=================
+*/
+static qboolean G_StopClientCamera( gentity_t *ent ) {
+	if ( !ent->client || !ent->client->cameraPortal ) {
+		return qfalse;
+	}
+
+	ent->client->cameraPortal = NULL;
+	ent->s.eFlags &= ~EF_VIEWING_CAMERA;
+	ent->client->ps.eFlags &= ~EF_VIEWING_CAMERA;
+
+// (SA) trying this in client to avoid 1 frame of player drawing
+//		ent->s.eFlags &= ~EF_NODRAW;
+//		ent->client->ps.eFlags &= ~EF_NODRAW;
+
+	return qtrue;
+}
+
+/*
+=================
+G_CountCameraViewers
+=================
+*/
+static int G_CountCameraViewers( void ) {
+	int i, count = 0;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( g_entities[i].inuse && g_entities[i].client && g_entities[i].client->cameraPortal ) {
+			count++;
+		}
+	}
+
+	return count;
+}
+
+/*
+=================
+G_CameraCheckDone
+
+RealRTCW-VR: a client left the camera; once the last one has, the camera is over: the
+script hears "stopcam" once, not once per client
+=================
+*/
+static void G_CameraCheckDone( void ) {
+	level.cameraViewers = G_CountCameraViewers();
+	if ( level.cameraViewers ) {
+		return;
+	}
+
+	level.cameraOwner = -1;
+	if ( !g_camEnt ) {
+		return;
+	}
+
+	// go back into noclient mode
+	g_camEnt->r.svFlags |= SVF_NOCLIENT;
+	// send a script event
+	G_Script_ScriptEvent( g_camEnt, "stopcam", "" );
+}
+
+/*
+=================
+G_StartScriptCamera
+
+RealRTCW-VR: a script started a cutscene camera ("startcam"). Every client plays it: each one
+answers "startCamera" (frozen and out of harm's way, seeing what the camera sees) and
+"stopCamera" when its spline is done, or G_CheckCameras lets it go if it never says so.
+=================
+*/
+void G_StartScriptCamera( int owner, const char *name, qboolean black ) {
+	level.cameraOwner = owner;
+	level.cameraStartTime = level.time;
+	level.cameraInterrupted = qfalse;
+
+	trap_SendServerCommand( -1, va( "startCam %s %d", name, (int)black ) );
+}
+
+/*
+=================
+G_StopScriptCamera
+
+RealRTCW-VR: a script ended the camera ("stopcam", usually after a skip): end it for everyone,
+here as well, so no one stays frozen waiting on their client's answer
+=================
+*/
+void G_StopScriptCamera( qboolean black ) {
+	int i;
+	qboolean stopped = qfalse;
+
+	trap_SendServerCommand( -1, black ? "stopCamblack" : "stopCam" );
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( G_StopClientCamera( &g_entities[i] ) ) {
+			stopped = qtrue;
+		}
+	}
+
+	if ( stopped ) {
+		G_CameraCheckDone();
+	} else if ( !G_CountCameraViewers() ) {
+		level.cameraOwner = -1;
+	}
+}
+
+/*
+=================
+G_CheckCameras
+
+RealRTCW-VR: once a frame: count the clients watching the camera (the AI all think while one
+does) and let go of any that left, or whose camera stopped reporting (its "stopCamera" lost,
+or dropped by a dedicated server's flood protection), so no one is frozen for good
+=================
+*/
+#define CAMERA_TIMEOUT  5000
+
+void G_CheckCameras( void ) {
+	gentity_t *ent;
+	int i;
+	qboolean stopped = qfalse;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		ent = &g_entities[i];
+		if ( !ent->client || !ent->client->cameraPortal ) {
+			continue;
+		}
+		if ( !ent->inuse || ent->client->pers.connected != CON_CONNECTED
+			 || level.time - level.cameraUpdateTime[i] > CAMERA_TIMEOUT ) {
+			G_StopClientCamera( ent );
+			stopped = qtrue;
+		}
+	}
+
+	if ( stopped ) {
+		G_CameraCheckDone();
+	} else {
+		level.cameraViewers = G_CountCameraViewers();
+	}
+
+	// nobody took the camera up (it failed to load everywhere, they answered "stopCamera" straight away)
+	if ( level.cameraOwner >= 0 && !level.cameraViewers && level.time - level.cameraStartTime > CAMERA_TIMEOUT ) {
+		level.cameraOwner = -1;
+	}
+}
+
+/*
+=================
 Cmd_StartCamera_f
 =================
 */
 void Cmd_StartCamera_f( gentity_t *ent ) {
-#ifdef INGAME_CUTSCENES
+	// RealRTCW-VR: only while a script camera runs, it makes the player untouchable
+	if ( level.cameraOwner < 0 || !g_camEnt ) {
+		return;
+	}
+
 	g_camEnt->r.svFlags |= SVF_PORTAL;
 	g_camEnt->r.svFlags &= ~SVF_NOCLIENT;
 	ent->client->cameraPortal = g_camEnt;
 	ent->client->ps.eFlags |= EF_VIEWING_CAMERA;
 	ent->s.eFlags |= EF_VIEWING_CAMERA;
-
-	if ( g_skipcutscenes.integer && g_gametype.integer != GT_SINGLE_PLAYER ) {
-		AICast_ScriptEvent( AICast_GetCastState( ent->s.number ), "trigger", "cameraInterrupt" );
-#else
-		AICast_ScriptEvent( AICast_GetCastState( ent->s.number ), "trigger", "cameraInterrupt" );
-#endif
+	level.cameraUpdateTime[ent->s.number] = level.time;
+	level.cameraViewers = G_CountCameraViewers();
 
 // (SA) trying this in client to avoid 1 frame of player drawing
 //	ent->client->ps.eFlags |= EF_NODRAW;
@@ -2402,35 +2551,24 @@ Cmd_StopCamera_f
 =================
 */
 void Cmd_StopCamera_f( gentity_t *ent ) {
-#ifdef INGAME_CUTSCENES
 	gentity_t *sp;
 
-	if ( ent->client->cameraPortal ) {
-		// send a script event
-		G_Script_ScriptEvent( ent->client->cameraPortal, "stopcam", "" );
-		// go back into noclient mode
-		ent->client->cameraPortal->r.svFlags |= SVF_NOCLIENT;
-		ent->client->cameraPortal = NULL;
-		ent->s.eFlags &= ~EF_VIEWING_CAMERA;
-		ent->client->ps.eFlags &= ~EF_VIEWING_CAMERA;
-
-// (SA) trying this in client to avoid 1 frame of player drawing
-//		ent->s.eFlags &= ~EF_NODRAW;
-//		ent->client->ps.eFlags &= ~EF_NODRAW;
-
+	if ( G_StopClientCamera( ent ) ) {
 		// RF, if we are near the spawn point, save the "current" game, for reloading after death
-		sp = NULL;
-		// gcc: suggests () around assignment used as truth value
-		while ( ( sp = G_Find( sp, FOFS( classname ), "info_player_deathmatch" ) ) ) { // info_player_start becomes info_player_deathmatch in it's spawn functon
-			if ( Distance( ent->s.pos.trBase, sp->s.origin ) < 256 && trap_InPVS( ent->s.pos.trBase, sp->s.origin ) ) {
-				G_SaveGame( NULL );
-				break;
+		if ( g_gametype.integer == GT_SINGLE_PLAYER ) {
+			sp = NULL;
+			// gcc: suggests () around assignment used as truth value
+			while ( ( sp = G_Find( sp, FOFS( classname ), "info_player_deathmatch" ) ) ) { // info_player_start becomes info_player_deathmatch in it's spawn functon
+				if ( Distance( ent->s.pos.trBase, sp->s.origin ) < 256 && trap_InPVS( ent->s.pos.trBase, sp->s.origin ) ) {
+					G_SaveGame( NULL );
+					break;
+				}
 			}
 		}
+
+		// the last one out ends the camera
+		G_CameraCheckDone();
 	}
-#else
-	return;
-#endif
 }
 
 /*
@@ -2451,6 +2589,11 @@ void Cmd_SetCameraOrigin_f( gentity_t *ent ) {
 		trap_Argv( i + 1, buffer, sizeof( buffer ) );
 		ent->client->cameraOrigin[i] = atof( buffer );
 	}
+
+	// RealRTCW-VR: its camera is still running
+	if ( ent->client->cameraPortal ) {
+		level.cameraUpdateTime[ent->s.number] = level.time;
+	}
 }
 
 
@@ -2460,7 +2603,24 @@ Cmd_InterruptCamera_f
 ==============
 */
 void Cmd_InterruptCamera_f( gentity_t *ent ) {
-	AICast_ScriptEvent( AICast_GetCastState( ent->s.number ), "trigger", "cameraInterrupt" );
+	gentity_t *owner;
+
+	// RealRTCW-VR: any player watching may skip the cutscene, once. The skip goes to the script
+	// that started the camera (the first player's: "trigger player camX"), whose "cameraInterrupt"
+	// stops it for everyone and cleans up, as escape does in single player
+	if ( !ent->client->cameraPortal || level.cameraOwner < 0 || level.cameraInterrupted ) {
+		return;
+	}
+	level.cameraInterrupted = qtrue;
+
+	// as in single player the skip goes to a player's script; to this one's if the player who
+	// started it has left, or an AI's script started it
+	owner = &g_entities[level.cameraOwner];
+	if ( !owner->inuse || !owner->client || owner->aiCharacter ) {
+		owner = ent;
+	}
+
+	AICast_ScriptEvent( AICast_GetCastState( owner->s.number ), "trigger", "cameraInterrupt" );
 }
 
 /*
@@ -3677,7 +3837,12 @@ void ClientCommand( int clientNum ) {
 				AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
 				fwd[2] = 0;
 				VectorNormalize( fwd );
-				VectorMA( ent->r.currentOrigin, 56, fwd, p );
+				{
+					char arg[16];
+					trap_Argv( 1, arg, sizeof( arg ) );
+					// a little further off for the lying-down poses, so they fit on screen
+					VectorMA( ent->r.currentOrigin, !Q_stricmp( arg, "down" ) ? 96 : 56, fwd, p );
+				}
 				G_SetOrigin( best, p );
 				{
 					vec3_t face;
@@ -3697,6 +3862,10 @@ void ClientCommand( int clientNum ) {
 						VectorCopy( best->r.currentOrigin, low );
 						low[2] += 4;
 						G_Damage( best, ent, ent, fwd, low, 10000, DAMAGE_NO_PROTECTION, Q_stricmp( arg, "throat" ) ? MOD_KNIFE : MOD_KNIFE_STEALTH );
+					} else if ( !Q_stricmp( arg, "down" ) || !Q_stricmp( arg, "groin" ) ) {
+						char st[8];
+						trap_Argv( 2, st, sizeof( st ) );
+						G_VRX_TestState( best, ent, !Q_stricmp( arg, "groin" ), atoi( st ) );
 					} else if ( Q_stricmp( arg, "alive" ) ) {
 						G_Damage( best, ent, ent, NULL, NULL, 10000, DAMAGE_NO_PROTECTION, MOD_KNIFE_STEALTH );
 					}

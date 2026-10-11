@@ -1440,23 +1440,18 @@ static void CG_ServerCommand( void ) {
 	}
 
 	if ( !strcmp( cmd, "startCam" ) ) {
-#ifdef INGAME_CUTSCENES
 		qboolean startBlack = atoi( CG_Argv( 2 ) );
 
 		CG_StartCamera( CG_Argv( 1 ), startBlack );
 		return;
-#else
-		return;
-#endif
 	}
 
 	if ( !strcmp( cmd, "stopCam" ) ) {
-#ifdef INGAME_CUTSCENES
-		CG_StopCamera();
+		// RealRTCW-VR: the server ends everyone's camera, only stop one that is running
+		if ( cg.cameraMode ) {
+			CG_StopCamera();
+		}
 		return;
-#else
-		return;
-#endif
 	}
 
 	if ( !strcmp( cmd, "mvspd" ) ) {

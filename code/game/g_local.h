@@ -822,6 +822,13 @@ typedef struct {
 
 	// fretn - maybe not the best place to add this
 	char *maplist[MAX_MAPS];
+
+	// RealRTCW-VR: script cameras (cutscenes) shown to every client
+	int cameraOwner;                        // cast whose script started the camera, -1 if none
+	int cameraStartTime;
+	int cameraViewers;                      // clients watching it this frame
+	qboolean cameraInterrupted;             // a skip was already passed on to the script
+	int cameraUpdateTime[MAX_CLIENTS];      // last "setCameraOrigin" from each viewer
 } level_locals_t;
 
 //extern    qboolean	reloading;				// loading up a savegame
@@ -849,6 +856,9 @@ void StopFollowing( gentity_t *ent );
 void SetTeam( gentity_t *ent, const char *s, qboolean force );
 void SetWolfData( gentity_t *ent, char *ptype, char *weap, char *pistol, char *grenade, char *skinnum );    // DHM - Nerve
 void Cmd_FollowCycle_f( gentity_t *ent, int dir );
+void G_StartScriptCamera( int owner, const char *name, qboolean black );
+void G_StopScriptCamera( qboolean black );
+void G_CheckCameras( void );
 
 //
 // g_items.c
@@ -1002,6 +1012,7 @@ void Reached_Tramcar( gentity_t *ent );
 
 //
 // g_misc.c
+void G_VRX_TestState( gentity_t *targ, gentity_t *by, qboolean groin, int style );
 //
 void TeleportPlayer( gentity_t *player, vec3_t origin, vec3_t angles );
 
@@ -1249,9 +1260,7 @@ extern gentity_t       *g_camEnt;
 
 extern vmCvar_t g_gametype;
 extern vmCvar_t g_spawnpoints;
-#ifdef INGAME_CUTSCENES
 extern vmCvar_t g_skipcutscenes;
-#endif
 extern vmCvar_t g_maxspawnpoints;
 extern vmCvar_t g_maxlives;
 extern vmCvar_t g_enforcemaxlives;
