@@ -112,6 +112,28 @@ A blast takes one or two, close ones at the shoulder or hip; a heavy round takes
 it hit, at the elbow or knee. Never on the living.
 =================
 */
+// rockets, mortars, dynamite, air strikes, exploding barrels and the like: not hand grenades
+static qboolean G_VRX_HeavyBlast( int mod, gentity_t *inflictor ) {
+	switch ( mod ) {
+	case MOD_ROCKET:
+	case MOD_ROCKET_SPLASH:
+	case MOD_PANZERFAUST:
+	case MOD_MORTAR:
+	case MOD_MORTAR_SPLASH:
+	case MOD_DYNAMITE:
+	case MOD_DYNAMITE_SPLASH:
+	case MOD_AIRSTRIKE:
+	case MOD_EXPLOSIVE:
+		return qtrue;
+	case MOD_GRENADE:
+	case MOD_GRENADE_SPLASH:
+		// a barrel or crate going up (props_explosion*) is passed off as a grenade
+		return inflictor && inflictor->classname && !Q_strncmp( inflictor->classname, "props_explosion", 15 );
+	default:
+		return qfalse;
+	}
+}
+
 static qboolean G_VRX_Blast( int mod ) {
 	switch ( mod ) {
 	case MOD_GRENADE:
@@ -438,6 +460,9 @@ static qboolean G_VRX_Downed( gentity_t *e ) {
 // 1 gut, long writhe on his back   2 gut, to his knees looking at his bloody hand
 // 3 chest, writhing onto his front  4/5 left/right leg, writhing on his back
 // 6/7 left/right arm, writhing on his side   8 slumped, sitting, helpless
+#define VRX_DOWN_GRACE  6000    // ms after going down that stray fire can't finish him
+static int vrxDownedAt[MAX_GENTITIES];
+
 static void G_VRX_KnockDown( gentity_t *targ, gentity_t *attacker, int region ) {
 	cast_state_t *cs = AICast_GetCastState( targ->s.number );
 	gentity_t *m;
@@ -457,6 +482,7 @@ static void G_VRX_KnockDown( gentity_t *targ, gentity_t *attacker, int region ) 
 	m->s.time2 = style;       // how he goes down (cgame CG_VRX_Downed)
 	m->count = attacker->s.number;
 	m->timestamp = level.time + 900;
+	vrxDownedAt[targ->s.number] = level.time;
 	if ( cs ) {
 		G_VRX_DropWeapon( targ, cs );
 		cs->noAttackTime = level.time + 3600000;
@@ -533,6 +559,21 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 	int region;
 
 	vrxExecution = qfalse;
+	// the downed, writhing on the floor, aren't killed by stray fire: shots from further off
+	// do half, and for the first seconds none can finish him (so he's seen going down); a
+	// blast, or finishing him on purpose (knife, kick, a shot from close by), still does
+	if ( targ->client && targ->aiCharacter && targ->health > 0 && take > 0 && mod != MOD_UNKNOWN &&
+		 G_VRX_Downed( targ ) && !G_VRX_Blast( mod ) &&
+		 !( attacker && attacker->client && !attacker->aiCharacter && ( G_VRX_Knife( mod ) || mod == MOD_KICKED ||
+			Distance( attacker->r.currentOrigin, targ->r.currentOrigin ) < 160.0f ) ) ) {
+		take = take > 1 ? take / 2 : 1;
+		if ( take >= targ->health && level.time < vrxDownedAt[targ->s.number] + VRX_DOWN_GRACE ) {
+			take = targ->health - 1;
+		}
+		if ( take <= 0 ) {
+			return 0;
+		}
+	}
 	if ( mod == MOD_UNKNOWN || !targ->client || !targ->aiCharacter || targ->health <= 0 || take <= 0 || !attacker || !attacker->client ||
 		 attacker->aiCharacter || !G_VRX_Gore( VRX_DISMEMBER ) || G_VRX( VRX_DISMEMBER ) < 2 ||
 		 !VRX_HUMAN_MALE( targ->aiCharacter ) ) {
@@ -550,12 +591,17 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 		G_VRX_GroinHit( targ, attacker );
 		return take;
 	}
-	// a body shot that leaves them nearly dead: down on their knees
-	if ( !headshot && take < targ->health && !G_VRX_Downed( targ ) && ( !point || !G_VRX_ShotAtHead( targ, dir, point ) ) ) {
+	// a body shot that leaves them half dead, or one that would have killed someone not yet
+	// badly hurt: down, writhing (SoF2's agony animations, cgame CG_VRX_Downed)
+	if ( !headshot && !G_VRX_Downed( targ ) && ( !point || !G_VRX_ShotAtHead( targ, dir, point ) ) ) {
 		int max = targ->client->ps.stats[STAT_MAX_HEALTH] > 0 ? targ->client->ps.stats[STAT_MAX_HEALTH] : 100;
-		if ( targ->health - take <= max * 0.3f && random() < 0.6f ) {
+		if ( take < targ->health && targ->health - take <= max * 0.5f && random() < 0.85f ) {
 			G_VRX_KnockDown( targ, attacker, region );
 			return take;
+		}
+		if ( take >= targ->health && targ->health > max * 0.3f && !G_VRX_Heavy( targ, attacker, mod, take ) && random() < 0.5f ) {
+			G_VRX_KnockDown( targ, attacker, region );
+			return targ->health - max * 0.2f;
 		}
 	}
 	if ( headshot || !point || take >= targ->health || !G_VRX_Heavy( targ, attacker, mod, take ) ||
@@ -612,8 +658,8 @@ void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, con
 		return;
 	}
 	// a blast close by tears the body open (head shots are the cgame's: cg_vrextras.c head wounds)
-	if ( VRX_HUMAN_MALE( targ->aiCharacter ) && G_VRX_Blast( mod ) && G_VRX_Gore( VRX_DISMEMBER ) &&
-		 ( !inflictor || Distance( inflictor->r.currentOrigin, targ->r.currentOrigin ) < 200.0f ) ) {
+	if ( VRX_HUMAN_MALE( targ->aiCharacter ) && G_VRX_HeavyBlast( mod, inflictor ) && G_VRX_Gore( VRX_DISMEMBER ) &&
+		 ( !inflictor || Distance( inflictor->r.currentOrigin, targ->r.currentOrigin ) < 220.0f ) ) {
 		G_VRX_AddGoreBits( targ, VRX_GB_BLOWN );
 	}
 	G_VRX_Dismember( targ, inflictor, dir, point, mod, damage, headshot );
@@ -1254,7 +1300,7 @@ static void G_VRX_MarkersFrame( void ) {
 				VectorCopy( by->r.currentOrigin, cs->dangerEntityPos );
 				cs->dangerEntityValidTime = level.time + 3600000;
 			}
-			G_Damage( body, by, by ? by : body, NULL, NULL, ( e->s.density & VRX_GB_CRIPPLED ) ? 3 : 1, DAMAGE_NO_KNOCKBACK | DAMAGE_NO_PROTECTION, MOD_UNKNOWN );
+			G_Damage( body, by, by ? by : body, NULL, NULL, ( e->s.density & VRX_GB_CRIPPLED ) ? 3 : 2, DAMAGE_NO_KNOCKBACK | DAMAGE_NO_PROTECTION, MOD_UNKNOWN );
 			if ( !e->inuse ) {
 				continue;
 			}
