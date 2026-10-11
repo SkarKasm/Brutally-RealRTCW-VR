@@ -906,6 +906,13 @@ gentity_t *fire_grenade( gentity_t *self, vec3_t start, vec3_t dir, int grenadeW
 	// no self->client for shooter_grenade's
 	if ( self->client && self->client->ps.grenadeTimeLeft ) {
 		if ( grenadeWPID == WP_DYNAMITE || grenadeWPID == WP_DYNAMITE_ENG ) {   // remove any fraction of a 5 second 'click'
+			// RealRTCW-VR: holding the trigger through a throw is the wind-up, not a longer
+			// fuse (the flat game's quick click is the 5 seconds): only holding on past two
+			// seconds adds to it
+			if ( G_VR_Player( self ) ) {
+				self->client->ps.grenadeTimeLeft = self->client->ps.grenadeTimeLeft > 2000 ?
+					self->client->ps.grenadeTimeLeft - 2000 : 0;
+			}
 			self->client->ps.grenadeTimeLeft *= 5;
 			self->client->ps.grenadeTimeLeft -= ( self->client->ps.grenadeTimeLeft % 5000 );
 			self->client->ps.grenadeTimeLeft += 5000;
