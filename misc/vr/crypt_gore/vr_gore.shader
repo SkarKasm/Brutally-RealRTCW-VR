@@ -101,3 +101,16 @@ vr_bodyblood
 		tcMod scale 2 2
 	}
 }
+
+// bullet holes on a body (cg_vrextras.c VRX_AddBodyWounds): the body's own triangles round each
+// hole drawn again, the texture laid over them (tr_animation.c R_VRX_BodyWounds)
+vr_bodywound
+{
+	nopicmip
+	polygonOffset
+	{
+		clampmap models/vr_gore/bullethole.tga
+		blendFunc blend
+		rgbGen lightingDiffuse
+	}
+}

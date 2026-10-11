@@ -161,7 +161,7 @@ a rough thickness), on the side the shot came from.
 */
 
 #define VRX_MAX_WOUNDED     24
-#define VRX_MAX_WOUNDS      12
+#define VRX_MAX_WOUNDS      24
 #define VRX_MAX_BONES       128
 #define VRX_MAX_SKELS       8
 
@@ -180,6 +180,7 @@ typedef struct {
 	vec3_t      localT;         // and which way the wound runs (cuts)
 	vec3_t      hit, dir;       // the shot, while not on a bone
 	float       size, spin, aspect;
+	float       flip;           // bullet holes: mirrored or not
 	int         shader;
 	int         bleedEnd, nextSpurt;
 	int         limb, high;     // VRW_LIMB: which (VRX_GB_*), and cut at the shoulder / hip
@@ -205,6 +206,7 @@ typedef struct {
 } vrSkel_t;
 
 static vrWounded_t vrWounded[VRX_MAX_WOUNDED];
+static int vrxDownStyle[MAX_GENTITIES];      // how each one went down (from the gore markers)
 static qboolean VRX_HeadHit( int entityNum, const vec3_t point, const vec3_t dir );
 static void VRX_AddFleshCap( const vec3_t p, const vec3_t dir, float len, float width, const vec3_t light );
 static vrSkel_t vrSkels[VRX_MAX_SKELS];
@@ -339,6 +341,7 @@ static vrWound_t *VRX_NewWound( int entityNum, int kind, const vec3_t point, con
 	w->size = 1.8f + random() * 1.0f;
 	w->aspect = 1.0f;
 	w->spin = random() * 2.0f * M_PI;
+	w->flip = ( rand() & 1 ) ? 1.0f : -1.0f;
 	w->shader = rand() % 5;
 	return w;
 }
@@ -603,6 +606,18 @@ static void VRX_PlaceWound( vrWound_t *w, vrSkel_t *sk, vec3_t bAxis[][3], vec3_
 	w->localN[0] = DotProduct( n, bAxis[i][0] );
 	w->localN[1] = DotProduct( n, bAxis[i][1] );
 	w->localN[2] = DotProduct( n, bAxis[i][2] );
+	// which way the blood runs from it: down, along the skin (as he stood when hit)
+	{
+		vec3_t down = { 0, 0, -1 };
+		VectorMA( down, -DotProduct( down, n ), n, down );
+		if ( VectorNormalize( down ) < 0.1f ) {
+			VectorNegate( ab, down );
+		}
+		w->localT[0] = DotProduct( down, bAxis[i][0] );
+		w->localT[1] = DotProduct( down, bAxis[i][1] );
+		w->localT[2] = DotProduct( down, bAxis[i][2] );
+	}
+	w->size = 3.0f + random() * 1.2f;
 	w->bone = i;
 }
 
@@ -1111,58 +1126,42 @@ void CG_VRX_AddCryptGore( centity_t *cent, refEntity_t *body ) {
 
 /*
 =================
-VRX_AddBodyBlood
+VRX_AddBodyWounds
 
-Bullet holes as blood soaked into the part of the body that was hit, rather than marks
-stuck on: the body drawn again over itself with "vr_bodyblood", the renderer fading it in
-by how hurt the part each vertex belongs to is (tr_animation.c R_VRX_BodyBlood): two bits
-a part in shaderRGBA.
+Bullet holes the way Ghoul 2 does skin gore (Soldier of Fortune 2, Jedi Academy): the body
+drawn again with "vr_bodywound", the renderer keeping only its triangles round each hole and
+laying the hole's texture over them (tr_animation.c R_VRX_BodyWounds). It needs the pose, so
+that goes first in the buffer, then the holes (model space, 12 floats each).
 =================
 */
-static int VRX_WoundRegion( const char *name ) {
-	int side = strstr( name, "L " ) ? 0 : ( strstr( name, "R " ) ? 1 : -1 );
+#define VRX_WOUND_MAGIC     0x56525744      // "VRWD", as tr_animation.c
 
-	if ( strstr( name, "Head" ) || strstr( name, "Neck" ) ) {
-		return -1;
-	}
-	if ( side >= 0 && ( strstr( name, "Arm" ) || strstr( name, "Hand" ) || strstr( name, "Finger" ) ) ) {
-		return side ? VRW_REGION_RARM : VRW_REGION_LARM;
-	}
-	if ( side >= 0 && ( strstr( name, "Thigh" ) || strstr( name, "Calf" ) || strstr( name, "Foot" ) || strstr( name, "Toe" ) ) ) {
-		return side ? VRW_REGION_RLEG : VRW_REGION_LLEG;
-	}
-	if ( strstr( name, "Clavicle" ) || strstr( name, "Spine2" ) || strstr( name, "Spine3" ) ) {
-		return VRW_REGION_CHEST;
-	}
-	if ( strstr( name, "Spine" ) || strstr( name, "Pelvis" ) ) {
-		return VRW_REGION_BELLY;
-	}
-	return -1;
-}
-
-static void VRX_AddBodyBlood( vrWounded_t *wd, refEntity_t *body ) {
+static void VRX_AddBodyWounds( centity_t *cent, refEntity_t *body, vrSkel_t *sk, const float *bones,
+							   float holes[][12], int numHoles ) {
+	static float buf[MAX_CLIENTS][VRX_MAX_BONES * 12 + 2 + VRX_MAX_WOUNDS * 12];
 	static qhandle_t shader;
+	union { float f; int i; } magic;
 	refEntity_t ov;
-	unsigned bits = 0;
-	int k, lvl;
+	float *b;
+	int n = cent->currentState.number;
 
-	for ( k = 0; k < VRW_REGION_COUNT; k++ ) {
-		lvl = wd->parts[k] > 3 ? 3 : wd->parts[k];
-		bits |= lvl << ( k * 2 );
-	}
-	if ( !bits ) {
+	if ( !numHoles || n < 0 || n >= MAX_CLIENTS || sk->n > VRX_MAX_BONES ) {
 		return;
 	}
 	if ( !shader ) {
-		shader = trap_R_RegisterShader( "vr_bodyblood" );
+		shader = trap_R_RegisterShader( "vr_bodywound" );
 	}
+	b = buf[n];
+	memcpy( b, bones, sizeof( float ) * 12 * sk->n );
+	magic.i = VRX_WOUND_MAGIC;
+	b[sk->n * 12] = magic.f;
+	b[sk->n * 12 + 1] = numHoles;
+	memcpy( b + sk->n * 12 + 2, holes, sizeof( float ) * 12 * numHoles );
 	ov = *body;
 	ov.customShader = shader;
 	ov.customSkin = 0;
-	ov.shaderRGBA[0] = bits & 255;
-	ov.shaderRGBA[1] = ( bits >> 8 ) & 255;
-	ov.shaderRGBA[2] = ( bits >> 16 ) & 255;
-	ov.shaderRGBA[3] = ( bits >> 24 ) & 255;
+	ov.ragdollBones = b;
+	ov.ragdollMagic = RAGDOLL_MAGIC;
 	trap_R_AddRefEntityToScene( &ov );
 }
 
@@ -1181,7 +1180,8 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 	const float *bones;
 	vec3_t axis[3];
 	qboolean dead = ( cent->currentState.eFlags & EF_DEAD ) != 0;
-	int i, k;
+	float holes[VRX_MAX_WOUNDS][12];
+	int i, k, numHoles = 0;
 
 	for ( i = 0; i < VRX_MAX_WOUNDED; i++ ) {
 		if ( vrWounded[i].num && vrWounded[i].entityNum == cent->currentState.number ) {
@@ -1234,16 +1234,7 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 
 		if ( w->bone == -1 ) {
 			if ( w->kind == VRW_BULLET ) {
-				// a bullet hole: the part of the body it went into gets bloodier
 				VRX_PlaceWound( w, sk, bAxis, bPos );
-				if ( w->bone >= 0 && w->bone < sk->n ) {
-					k = VRX_WoundRegion( sk->names[w->bone] );
-					if ( k >= 0 ) {
-						wd->parts[k]++;
-					}
-				}
-				w->bone = -2;
-				continue;
 			} else {
 				VRX_PlaceGore( w, cent, sk, bAxis, bPos );
 			}
@@ -1259,6 +1250,26 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 		VectorMA( n, w->localN[1], bAxis[w->bone][1], n );
 		VectorMA( n, w->localN[2], bAxis[w->bone][2], n );
 		VectorNormalize( n );
+		if ( w->kind == VRW_BULLET ) {
+			// a bullet hole: laid on the body's own skin by the renderer (VRX_AddBodyWounds)
+			if ( numHoles < VRX_MAX_WOUNDS ) {
+				float *h = holes[numHoles++];
+				vec3_t down, rel;
+				VectorScale( bAxis[w->bone][0], w->localT[0], down );
+				VectorMA( down, w->localT[1], bAxis[w->bone][1], down );
+				VectorMA( down, w->localT[2], bAxis[w->bone][2], down );
+				VectorSubtract( p, body->origin, rel );
+				for ( k = 0; k < 3; k++ ) {     // into the model's own space
+					h[k] = DotProduct( rel, body->axis[k] );
+					h[3 + k] = DotProduct( n, body->axis[k] );
+					h[6 + k] = DotProduct( down, body->axis[k] );
+				}
+				h[9] = w->size;
+				h[10] = w->flip;
+				h[11] = 0;
+			}
+			continue;
+		}
 		VectorMA( p, 0.3f, n, p );      // just off the skin
 
 		if ( w->kind == VRW_BULLET ) {
@@ -1313,7 +1324,52 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 			trap_R_AddPolyToScene( vrWoundShaders[w->shader], 4, r );
 		}
 	}
-	VRX_AddBodyBlood( wd, body );
+	VRX_AddBodyWounds( cent, body, sk, bones, holes, numHoles );
+}
+
+// vrposedump (test aid): the bones of the character nearest the view, as drawn last frame
+// (model space: x forward, y left, z up), for checking poses offline
+void CG_VRX_PoseDump_f( void ) {
+	static float scratch[VRX_MAX_BONES * 12];
+	centity_t *best = NULL;
+	float bestD = 1e9f, d;
+	const float *bones;
+	vrSkel_t *sk;
+	refEntity_t *body;
+	int i;
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		centity_t *c = &cg_entities[i];
+		if ( !c->currentValid || i == cg.snap->ps.clientNum || !c->pe.legsRefEnt.hModel ) {
+			continue;
+		}
+		d = Distance( c->lerpOrigin, cg.refdef.vieworg );
+		if ( d < bestD ) {
+			bestD = d;
+			best = c;
+		}
+	}
+	if ( !best ) {
+		return;
+	}
+	body = &best->pe.legsRefEnt;
+	if ( body->ragdollBones && body->ragdollMagic == RAGDOLL_MAGIC ) {
+		sk = VRX_Skel( body, NULL );
+		bones = body->ragdollBones;
+	} else {
+		sk = VRX_Skel( body, scratch );
+		bones = scratch;
+	}
+	if ( !sk ) {
+		return;
+	}
+	CG_Printf( "VRPOSE %d %d bits %d style %d\n", best->currentState.number, sk->n, CG_VRX_GoreBits( best ),
+			   vrxDownStyle[best->currentState.number] );
+	for ( i = 0; i < sk->n; i++ ) {
+		const float *b = bones + i * 12;
+		CG_Printf( "VRB %d %d %d %.1f %.1f %.1f %s\n", i, sk->parents[i], sk->flags[i] & BONEFLAG_TAG ? 1 : 0,
+				   b[9], b[10], b[11], sk->names[i] );
+	}
 }
 
 // vrtestwound (test aid): a wound where the view meets a character, as a bullet would make
@@ -1347,7 +1403,6 @@ static int vrxGoreHigh[MAX_GENTITIES];      // and which limbs were cut high
 static int vrxDecapAsked[MAX_CLIENTS];      // when we last asked for a body
 
 // a gore marker entity: what's been done to its body (drawn as nothing)
-static int vrxDownStyle[MAX_GENTITIES];
 static int vrxGroinTime[MAX_GENTITIES];
 
 static void VRX_GoreMarker( centity_t *cent ) {
@@ -1692,6 +1747,45 @@ static void VRX_Aim( float *pose, vrSkel_t *sk, int a, int c, const vec3_t want,
 	VRX_RotateSubtree( pose, sk, a, r, VRX_BP( pose, a ) );
 }
 
+// is bone i bone top or under it
+static qboolean VRX_Under( vrSkel_t *sk, int i, int top ) {
+	for ( ; i >= 0; i = sk->parents[i] ) {
+		if ( i == top ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+// VRX_Aim for the trunk: in these skeletons the thighs hang off the spine, so turning the
+// spine swings the legs with it; they're turned back (about their own joints) after
+static void VRX_AimTrunk( float *pose, vrSkel_t *sk, int a, int c, const vec3_t want, float f, int lth, int rth ) {
+	vec3_t d, w, r[3], back[3];
+	int k, j;
+
+	if ( a < 0 || c < 0 ) {
+		return;
+	}
+	VectorSubtract( VRX_BP( pose, c ), VRX_BP( pose, a ), d );
+	if ( VectorNormalize( d ) < 0.01f ) {
+		return;
+	}
+	VectorNormalize2( want, w );
+	VRX_Turn( d, w, f, r );
+	VRX_RotateSubtree( pose, sk, a, r, VRX_BP( pose, a ) );
+	for ( k = 0; k < 3; k++ ) {
+		for ( j = 0; j < 3; j++ ) {
+			back[k][j] = r[j][k];
+		}
+	}
+	if ( lth >= 0 && lth != a && VRX_Under( sk, lth, a ) ) {
+		VRX_RotateSubtree( pose, sk, lth, back, VRX_BP( pose, lth ) );
+	}
+	if ( rth >= 0 && rth != a && VRX_Under( sk, rth, a ) ) {
+		VRX_RotateSubtree( pose, sk, rth, back, VRX_BP( pose, rth ) );
+	}
+}
+
 // turn bone a so its child c points at the point at
 static void VRX_AimAt( float *pose, vrSkel_t *sk, int a, int c, const vec3_t at, float f ) {
 	vec3_t want;
@@ -1813,7 +1907,7 @@ void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
 		VectorSet( v, -0.25f, -0.1f, -1 );
 		VRX_Aim( pose, sk, b[RCALF], b[RFOOT], v, f );
 		VectorSet( v, 0.7f, 0, 0.7f );
-		VRX_Aim( pose, sk, b[SPINE], b[NECK], v, f );
+		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, f, b[LTH], b[RTH] );
 		VectorSet( v, 0.3f, 0, 1 );
 		VRX_Aim( pose, sk, b[NECK], b[HEAD], v, f * 0.5f );
 		// both hands to the crotch
@@ -1841,7 +1935,7 @@ void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
 		VRX_Aim( pose, sk, b[RCALF], b[RFOOT], v, f );
 		// leaning well over
 		VectorSet( v, 0.8f, 0, 0.6f );
-		VRX_Aim( pose, sk, b[SPINE], b[NECK], v, f );
+		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, f, b[LTH], b[RTH] );
 		VRX_Lower( pose, sk, floor, 2.0f );
 		// left hand to the chest
 		VectorSet( v, 0.3f, 0.2f, -1 );
@@ -1870,11 +1964,15 @@ void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
 			VectorNormalize( back );
 			VRX_Turn( up, back, f, r );
 		}
-		VRX_RotateSubtree( pose, sk, root, r, pivot );
+		for ( k = 0; k < sk->n; k++ ) {     // every tree in the model (tags can be roots too)
+			if ( sk->parents[k] < 0 ) {
+				VRX_RotateSubtree( pose, sk, k, r, pivot );
+			}
+		}
 		if ( style == 1 ) {
 			// propped up on his elbows, head up looking ahead
 			VectorSet( v, -0.75f, 0, 0.66f );
-			VRX_Aim( pose, sk, b[SPINE], b[NECK], v, f );
+			VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, f, b[LTH], b[RTH] );
 			VectorSet( v, -0.15f, 0, 1 );
 			VRX_Aim( pose, sk, b[NECK], b[HEAD], v, f );
 			VectorSet( v, -0.25f, 0.35f, -1 );

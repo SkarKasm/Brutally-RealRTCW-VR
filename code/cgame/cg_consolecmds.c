@@ -813,7 +813,8 @@ typedef struct {
 } consoleCommand_t;
 
 static consoleCommand_t commands[] = {
-	{ "vrtestwound", CG_VRX_TestWound_f },       // RealRTCW-VR test aid
+	{ "vrtestwound", CG_VRX_TestWound_f },
+	{ "vrposedump", CG_VRX_PoseDump_f },       // RealRTCW-VR test aid       // RealRTCW-VR test aid
 	{"testgun", CG_TestGun_f},
 	{"testmodel", CG_TestModel_f},
 	{"nextframe", CG_TestModelNextFrame_f},

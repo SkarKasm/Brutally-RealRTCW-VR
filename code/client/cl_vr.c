@@ -1233,6 +1233,18 @@ void CL_VR_Init( void ) {
 	com_vr.rightHanded = 1;
 
 	if ( !vr_enable->integer ) {
+		// a VR session turns off the frame cap and vsync (the headset paces the game) and
+		// those are saved: put the flatscreen ones back, or the game runs at thousands of
+		// frames a second, faster than the server takes the commands ("Connection Interrupted")
+		cvar_t *flatFps = Cvar_Get( "vr_flatMaxfps", "125", CVAR_ARCHIVE );
+		cvar_t *flatSwap = Cvar_Get( "vr_flatSwapInterval", "1", CVAR_ARCHIVE );
+		if ( Cvar_VariableIntegerValue( "com_maxfps" ) <= 0 ) {
+			Cvar_Set( "com_maxfps", flatFps->integer > 0 ? flatFps->string : "125" );
+		}
+		if ( Cvar_VariableIntegerValue( "vr_flatSwapRestore" ) ) {
+			Cvar_Set( "r_swapInterval", flatSwap->string );
+			Cvar_Set( "vr_flatSwapRestore", "0" );
+		}
 		Com_Printf( "VR: disabled (vr_enable 0)\n" );
 		return;
 	}
@@ -1251,6 +1263,16 @@ void CL_VR_Init( void ) {
 
 	// settings the headset path depends on
 	Cvar_Set( "r_fbo", "1" );               // eyes are composited through the offscreen FBO
+	Cvar_Get( "vr_flatMaxfps", "125", CVAR_ARCHIVE );
+	Cvar_Get( "vr_flatSwapInterval", "1", CVAR_ARCHIVE );
+	Cvar_Get( "vr_flatSwapRestore", "0", CVAR_ARCHIVE );
+	if ( Cvar_VariableIntegerValue( "com_maxfps" ) > 0 ) {
+		Cvar_Set( "vr_flatMaxfps", Cvar_VariableString( "com_maxfps" ) );     // (for flatscreen, see above)
+	}
+	if ( !Cvar_VariableIntegerValue( "vr_flatSwapRestore" ) ) {
+		Cvar_Set( "vr_flatSwapInterval", Cvar_VariableString( "r_swapInterval" ) );
+		Cvar_Set( "vr_flatSwapRestore", "1" );
+	}
 	Cvar_Set( "r_swapInterval", "0" );      // xrWaitFrame paces the game, not the monitor
 	Cvar_Set( "com_maxfps", "0" );
 	Cvar_Set( "ui_fixedAspect", "0" );      // 640x480 UI stretched over the 4:3 panel

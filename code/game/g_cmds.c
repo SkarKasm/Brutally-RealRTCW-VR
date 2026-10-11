@@ -2252,7 +2252,12 @@ void ClientCommand( int clientNum ) {
 			AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
 			fwd[2] = 0;
 			VectorNormalize( fwd );
-			VectorMA( ent->r.currentOrigin, 56, fwd, p );
+			{
+				char arg[16];
+				trap_Argv( 1, arg, sizeof( arg ) );
+				// a little further off for the lying-down poses, so they fit on screen
+				VectorMA( ent->r.currentOrigin, !Q_stricmp( arg, "down" ) ? 96 : 56, fwd, p );
+			}
 			G_SetOrigin( best, p );
 			{
 				vec3_t face;
@@ -2272,6 +2277,10 @@ void ClientCommand( int clientNum ) {
 					VectorCopy( best->r.currentOrigin, low );
 					low[2] += 4;
 					G_Damage( best, ent, ent, fwd, low, 10000, DAMAGE_NO_PROTECTION, Q_stricmp( arg, "throat" ) ? MOD_KNIFE : MOD_KNIFE_STEALTH );
+				} else if ( !Q_stricmp( arg, "down" ) || !Q_stricmp( arg, "groin" ) ) {
+					char st[8];
+					trap_Argv( 2, st, sizeof( st ) );
+					G_VRX_TestState( best, ent, !Q_stricmp( arg, "groin" ), atoi( st ) );
 				} else if ( Q_stricmp( arg, "alive" ) ) {
 					G_Damage( best, ent, ent, NULL, NULL, 10000, DAMAGE_NO_PROTECTION, MOD_KNIFE_STEALTH );
 				}

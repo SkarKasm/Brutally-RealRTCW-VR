@@ -1012,6 +1012,7 @@ void G_VRX_PropHold( gentity_t *ent, const vec3_t hand, const vec3_t angles );
 void G_VRX_PropRelease( gentity_t *ent, const vec3_t vel );
 void G_VRX_TestProp( gentity_t *ent );
 int G_VRX_GoreBits( gentity_t *body );
+void G_VRX_TestState( gentity_t *targ, gentity_t *by, qboolean groin, int style );
 void G_VRX_ShotTrace( trace_t *tr, const vec3_t start, const vec3_t end, int passEnt, int mask );
 int G_VRX_HitRegion( gentity_t *targ, const vec3_t point );
 int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,

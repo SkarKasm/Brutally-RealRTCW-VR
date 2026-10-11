@@ -500,6 +500,18 @@ static void G_VRX_GroinHit( gentity_t *targ, gentity_t *attacker ) {
 	VectorClear( targ->client->ps.velocity );
 }
 
+// vrtestbody down N / groin (test aid): put him down (style N, 0 random) or double him over
+void G_VRX_TestState( gentity_t *targ, gentity_t *by, qboolean groin, int style ) {
+	if ( groin ) {
+		G_VRX_GroinHit( targ, by );
+		return;
+	}
+	G_VRX_KnockDown( targ, by );
+	if ( style >= 1 && style <= 3 ) {
+		G_VRX_Marker( targ, qtrue )->s.time2 = style;
+	}
+}
+
 int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
 			   int mod, int take, qboolean headshot ) {
 	vec3_t ang, right, rel;

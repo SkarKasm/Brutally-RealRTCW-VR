@@ -26,7 +26,7 @@ for j in range(N):
         c, r = coverage((i + 0.5) / N, (j + 0.5) / N)
         # thick and dark in the middle, a little thinner (redder) toward the edge
         dark = 0.10 + 0.12 * min(1.0, r)
-        rgb = (0.55 + 0.2 * min(1.0, r), dark * 0.25, dark * 0.2)
+        rgb = (0.26 + 0.14 * min(1.0, r), dark * 0.12, dark * 0.1)     # dark: the engine overbrights it
         out = [int(255 * (1 - c + c * v)) for v in rgb]
         pix += bytes((out[2], out[1], out[0], 255))
 if N:
