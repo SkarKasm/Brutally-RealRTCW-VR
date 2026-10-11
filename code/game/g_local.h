@@ -747,6 +747,11 @@ typedef struct {
 	int intermissiontime;               // time the intermission was started
 	char        *changemap;
 	qboolean readyToExit;               // at least one client wants to exit
+
+	// RealRTCW-VR: co-op's ready screen (G_VRX_ReadyThink)
+	qboolean vrStarted;                 // everyone pressed fire, the level (and its first cutscene) began
+	qboolean vrReady[MAX_CLIENTS];
+	qboolean vrNoTarget[MAX_CLIENTS];   // notarget given while waiting, taken back at the start
 	int exitTime;
 	vec3_t intermission_origin;         // also used for spectator spawns
 	vec3_t intermission_angle;
@@ -1261,6 +1266,9 @@ extern gentity_t       *g_camEnt;
 extern vmCvar_t g_gametype;
 extern vmCvar_t g_spawnpoints;
 extern vmCvar_t g_skipcutscenes;
+extern vmCvar_t g_vrReadyScreen;
+qboolean G_VRX_Waiting( void );
+void G_VRX_ReadyThink( void );
 extern vmCvar_t g_maxspawnpoints;
 extern vmCvar_t g_maxlives;
 extern vmCvar_t g_enforcemaxlives;

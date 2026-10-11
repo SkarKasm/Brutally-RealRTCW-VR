@@ -792,6 +792,17 @@ void ClientThink_real( gentity_t *ent ) {
 	// mark the time, so the connection sprite can be removed
 	ucmd = &ent->client->pers.cmd;
 
+	// RealRTCW-VR: co-op's ready screen: everyone stands still on the scoreboard until all
+	// have pressed fire (G_VRX_ReadyThink)
+	if ( G_VRX_Waiting() && !( ent->r.svFlags & SVF_CASTAI ) ) {
+		if ( ucmd->buttons & BUTTON_ATTACK ) {
+			level.vrReady[ent - g_entities] = qtrue;
+		}
+		ucmd->buttons = 0;
+		ucmd->wbuttons = 0;
+		ucmd->forwardmove = ucmd->rightmove = ucmd->upmove = 0;
+	}
+
 	// NERVE - SMF - parse client damage command
 	if ( ucmd->cld ) {
 		int id, enemynum;

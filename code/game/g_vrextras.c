@@ -1453,3 +1453,73 @@ static void G_VRX_HeadScare( vrxThrown_t *t, gentity_t *head ) {
 		G_VRX_AddGoreBits( e, VRX_GB_SCARED );
 	}
 }
+
+/*
+=================
+G_VRX_ReadyThink (g_vrReadyScreen)
+
+Co-op: a level starts on the scoreboard. Each player presses fire when ready; once all who
+are in have, the level begins: the "player" script's playerstart runs (the first cutscene)
+and everyone can move. Until then they stand still and the enemy can't see them. Whoever
+joins after the start just plays. cgame reads STAT_CLIENTS_READY: bit 14 waiting, bit 10
+this player ready, bits 0-4 how many are ready, 5-9 how many are in.
+=================
+*/
+qboolean G_VRX_Waiting( void ) {
+	return g_gametype.integer <= GT_COOP && g_vrReadyScreen.integer && !level.vrStarted && !level.intermissiontime;
+}
+
+void G_VRX_ReadyThink( void ) {
+	int i, humans = 0, ready = 0;
+	gclient_t *cl;
+	gentity_t *e;
+
+	if ( !G_VRX_Waiting() ) {
+		return;
+	}
+	for ( i = 0; i < level.maxclients; i++ ) {
+		cl = &level.clients[i];
+		e = &g_entities[i];
+		if ( cl->pers.connected != CON_CONNECTED || ( e->r.svFlags & SVF_CASTAI ) || cl->sess.sessionTeam == TEAM_SPECTATOR ) {
+			continue;
+		}
+		humans++;
+		if ( level.vrReady[i] ) {
+			ready++;
+		}
+	}
+	if ( !humans ) {
+		return;
+	}
+	if ( ready == humans ) {
+		gentity_t *player;
+
+		level.vrStarted = qtrue;
+		for ( i = 0; i < level.maxclients; i++ ) {
+			if ( level.vrNoTarget[i] ) {
+				g_entities[i].flags &= ~FL_NOTARGET;
+				level.vrNoTarget[i] = qfalse;
+			}
+			if ( !( g_entities[i].r.svFlags & SVF_CASTAI ) && level.clients[i].pers.connected == CON_CONNECTED ) {
+				level.clients[i].ps.stats[STAT_CLIENTS_READY] = 0;
+			}
+		}
+		player = AICast_FindEntityForName( "player" );
+		if ( player ) {
+			AICast_ScriptEvent( AICast_GetCastState( player->s.number ), "playerstart", "" );
+		}
+		return;
+	}
+	for ( i = 0; i < level.maxclients; i++ ) {
+		cl = &level.clients[i];
+		e = &g_entities[i];
+		if ( cl->pers.connected != CON_CONNECTED || ( e->r.svFlags & SVF_CASTAI ) ) {
+			continue;
+		}
+		if ( !( e->flags & FL_NOTARGET ) ) {
+			e->flags |= FL_NOTARGET;
+			level.vrNoTarget[i] = qtrue;
+		}
+		cl->ps.stats[STAT_CLIENTS_READY] = ( 1 << 14 ) | ( level.vrReady[i] ? 1 << 10 : 0 ) | ( humans << 5 ) | ready;
+	}
+}

@@ -704,7 +704,12 @@ cine_door
 {
 	spawn
 	{
-		// RealRTCW-VR: if the cutscene never gets going, the cell still opens
+
+	}
+
+	// RealRTCW-VR: if the cutscene never gets going, the cell still opens (player playerstart)
+	trigger failsafe
+	{
 		wait 120000
 		trigger dummy cine1_cleanup
 	}

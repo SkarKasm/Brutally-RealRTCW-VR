@@ -325,11 +325,41 @@ CG_DrawScoreboard
 Draw the normal in-game scoreboard
 =================
 */
+// RealRTCW-VR: co-op's ready screen (qagame G_VRX_ReadyThink): the level waits on the
+// scoreboard until everyone has pressed fire; STAT_CLIENTS_READY carries the state
+#define VRX_RS_WAITING  ( 1 << 14 )
+#define VRX_RS_ME       ( 1 << 10 )
+
+static qboolean CG_VRX_Waiting( void ) {
+	return cg.snap && cgs.gametype <= GT_COOP && cg.snap->ps.pm_type != PM_INTERMISSION &&
+		   ( cg.snap->ps.stats[STAT_CLIENTS_READY] & VRX_RS_WAITING );
+}
+
+static void CG_VRX_DrawReady( void ) {
+	int st = cg.snap->ps.stats[STAT_CLIENTS_READY], ready = st & 31, all = ( st >> 5 ) & 31;
+	static vec4_t gold = { 1.0f, 0.85f, 0.3f, 1.0f };
+	char *s;
+	int w;
+
+	s = ( st & VRX_RS_ME ) ? "READY - WAITING FOR THE OTHERS" : "PRESS FIRE WHEN READY";
+	w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
+	CG_DrawBigStringColor( ( SCREEN_WIDTH - w ) / 2, 24, s, gold );
+	s = va( "%i of %i players ready", ready, all );
+	w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
+	CG_DrawBigString( ( SCREEN_WIDTH - w ) / 2, 44, s, 1.0f );
+}
+
 qboolean CG_DrawScoreboard( void ) {
 	int x = 0, y = 0, w;
 	float fade;
 	float   *fadeColor;
 	char    *s;
+	qboolean waiting = CG_VRX_Waiting();
+
+	if ( waiting && cg.scoresRequestTime + 2000 < cg.time ) {
+		cg.scoresRequestTime = cg.time;
+		trap_SendClientCommand( "score" );
+	}
 
 	// don't draw anything if the menu or console is up
 	if ( cg_paused.integer ) {
@@ -348,7 +378,7 @@ qboolean CG_DrawScoreboard( void ) {
 	}
 
 	// don't draw scoreboard during death while warmup up
-	if ( cg.warmup && !cg.showScores && cg.predictedPlayerState.pm_type != PM_INTERMISSION ) {
+	if ( cg.warmup && !cg.showScores && !waiting && cg.predictedPlayerState.pm_type != PM_INTERMISSION ) {
 		return qfalse;
 	}
 
@@ -356,7 +386,7 @@ qboolean CG_DrawScoreboard( void ) {
 		CG_SetScreenPlacement(PLACE_CENTER, PLACE_CENTER);
 	}
 
-	if ( cg.showScores || cg.predictedPlayerState.pm_type == PM_DEAD ||
+	if ( cg.showScores || waiting || cg.predictedPlayerState.pm_type == PM_DEAD ||
 		 cg.predictedPlayerState.pm_type == PM_INTERMISSION ) {
 		fade = 1.0;
 	} else {
@@ -392,6 +422,9 @@ qboolean CG_DrawScoreboard( void ) {
 		}
 		*/
 		CG_DrawCoopScoreboard();
+		if ( waiting ) {
+			CG_VRX_DrawReady();
+		}
 		//CG_DrawBigString( 30, 50, "COOP SCORES", 1.0 );
 		//y = CG_TeamScoreboard( x, y, TEAM_FREE, fade );
 

@@ -55,6 +55,7 @@ extern int bg_pmove_gameskill_integer;
 
 vmCvar_t g_gametype;
 vmCvar_t g_skipcutscenes;
+vmCvar_t g_vrReadyScreen;      // RealRTCW-VR: co-op levels wait for everyone to press fire
 vmCvar_t g_maxspawnpoints;
 vmCvar_t g_maxlives;
 vmCvar_t g_enforcemaxlives;
@@ -208,6 +209,7 @@ cvarTable_t gameCvarTable[] = {
 
 	{ &g_teleporttime, "g_teleporttime", "300000", CVAR_SERVERINFO | CVAR_LATCH, 0, qfalse  },   // 5 minutes by default
 	{ &g_skipcutscenes, "g_skipcutscenes", "0", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_vrReadyScreen, "g_vrReadyScreen", "1", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_maxspawnpoints, "g_maxspawnpoints", "0", CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_LATCH, 0, qfalse },
 	{ &g_maxlives, "g_maxlives", "0", CVAR_ARCHIVE | CVAR_LATCH | CVAR_SERVERINFO, 0, qfalse},
 	{ &g_enforcemaxlives, "g_enforcemaxlives", "1", CVAR_ARCHIVE, 0, qtrue},
@@ -2937,6 +2939,7 @@ void G_RunFrame( int levelTime ) {
 	level.previousTime = level.time;
 	level.time = levelTime;
 	G_VRX_Frame();     // RealRTCW-VR: GORE & EXTRAS settings to every cgame
+	G_VRX_ReadyThink();     // RealRTCW-VR: co-op's ready screen
 
 	// not needed in coop (comes from mp gamestate code)
 #if 0

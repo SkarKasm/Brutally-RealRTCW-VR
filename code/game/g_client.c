@@ -1772,7 +1772,9 @@ void ClientBegin( int clientNum ) {
 
 		AICast_ScriptEvent( AICast_GetCastState( clientNum ), "spawn", "" );
 
-		if ( g_gametype.integer <= GT_SINGLE_PLAYER ) {
+		// (RealRTCW-VR: in co-op, while the level waits on the ready screen, it comes when
+		// everyone has pressed fire: G_VRX_ReadyThink)
+		if ( g_gametype.integer <= GT_SINGLE_PLAYER && !G_VRX_Waiting() ) {
 			AICast_ScriptEvent( AICast_GetCastState( clientNum ), "playerstart", "" );
 		}
 	}
