@@ -1184,7 +1184,7 @@ static const float *R_VRX_Trailer( const mdsHeader_t *header, const refEntity_t 
 R_VRX_BodyWounds
 
 RealRTCW-VR: bullet holes on a body, the way Ghoul 2 does its skin gore: the cgame draws the
-body again with the shader "vr_bodywound" (cg_vrextras.c VRX_AddBodyWounds), and instead of
+body again with the shader "vr_bodywound" (or vr_bodywound2..4, other holes) (cg_vrextras.c VRX_AddBodyWounds), and instead of
 the whole surface only the triangles round each hole are kept, as they are deformed this
 frame, with texture coordinates projected onto them from the hole's plane. So the holes sit
 on the skin and move with it. The holes come after the pose in ragdollBones: VRX_WOUND_MAGIC,
@@ -1309,11 +1309,12 @@ static void R_VRX_BodyWounds( mdsHeader_t *header, const refEntity_t *refent, in
 			if ( d > 2.0f || d < -2.0f ) {
 				continue;
 			}
-			// where its corners fall on the texture: the hole at (0.5, 0.3), down the image
+			// where its corners fall on the texture: the hole in the middle (the Soldier of
+			// Fortune 2 holes are splashes round it)
 			for ( k = 0; k < 3; k++ ) {
 				VectorSubtract( xyz[tri[i + k]], p, rel );
 				st[k][0] = 0.5f + flip * DotProduct( rel, across ) / ( 2.0f * size );
-				st[k][1] = 0.3f + DotProduct( rel, down ) / ( 2.0f * size );
+				st[k][1] = 0.5f + DotProduct( rel, down ) / ( 2.0f * size );
 			}
 			out = 0;
 			for ( k = 0; k < 2; k++ ) {
@@ -1525,7 +1526,7 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	if ( tess.shader && !Q_stricmp( tess.shader->name, "vr_bodyblood" ) ) {
 		R_VRX_BodyBlood( header, surface, refent, baseVertex, render_count );
 	}
-	if ( tess.shader && !Q_stricmp( tess.shader->name, "vr_bodywound" ) ) {
+	if ( tess.shader && !Q_stricmpn( tess.shader->name, "vr_bodywound", 12 ) ) {
 		R_VRX_BodyWounds( header, refent, baseVertex, render_count, oldIndexes );
 		return;
 	}

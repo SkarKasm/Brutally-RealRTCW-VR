@@ -103,14 +103,62 @@ vr_bodyblood
 }
 
 // bullet holes on a body (cg_vrextras.c VRX_AddBodyWounds): the body's own triangles round each
-// hole drawn again, the texture laid over them (tr_animation.c R_VRX_BodyWounds)
+// hole drawn again, the texture laid over them (tr_animation.c R_VRX_BodyWounds). The holes are
+// Soldier of Fortune 2's own (Raven Software, models/characters/gore/gil_bullet_hole*), four of
+// them, one shader each.
 vr_bodywound
 {
 	nopicmip
 	polygonOffset
 	{
-		clampmap models/vr_gore/bullethole.tga
+		clampmap models/vr_gore/sof2_wound1.tga
 		blendFunc blend
+		rgbGen lightingDiffuse
+	}
+}
+
+vr_bodywound2
+{
+	nopicmip
+	polygonOffset
+	{
+		clampmap models/vr_gore/sof2_wound2.tga
+		blendFunc blend
+		rgbGen lightingDiffuse
+	}
+}
+
+vr_bodywound3
+{
+	nopicmip
+	polygonOffset
+	{
+		clampmap models/vr_gore/sof2_wound3.tga
+		blendFunc blend
+		rgbGen lightingDiffuse
+	}
+}
+
+vr_bodywound4
+{
+	nopicmip
+	polygonOffset
+	{
+		clampmap models/vr_gore/sof2_wound4.tga
+		blendFunc blend
+		rgbGen lightingDiffuse
+	}
+}
+
+// the guts out of an opened belly (models/vr_gore/guts.md3, sof2_guts.py): Soldier of Fortune 2's
+// own (Raven Software, models/characters/gore/guts.md3, rib_cage.png), as its rib_cage shader
+vr_sof2organs
+{
+	cull disable
+	nopicmip
+	{
+		map models/vr_gore/sof2_organs.tga
+		blendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
 		rgbGen lightingDiffuse
 	}
 }

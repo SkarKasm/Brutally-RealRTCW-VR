@@ -588,12 +588,48 @@ static qboolean VRX_MeshLimb( vrSkel_t *sk, const refEntity_t *body, const float
 }
 
 // every frame: the limbs that came off, falling, bouncing and lying where they land
+/*
+=================
+CG_VRX_ShowModel_f
+
+"vrshowmodel <model> [seconds]": a test aid, the model held up in front of the eye (its x
+turned to face it) and slowly turning, to look at gore pieces close up.
+=================
+*/
+static qhandle_t vrShowModel;
+static int vrShowStart, vrShowEnd;
+
+void CG_VRX_ShowModel_f( void ) {
+	vrShowModel = trap_R_RegisterModel( CG_Argv( 1 ) );
+	vrShowStart = cg.time;
+	vrShowEnd = cg.time + ( trap_Argc() > 2 ? atoi( CG_Argv( 2 ) ) : 10 ) * 1000;
+	CG_Printf( "vrshowmodel %s: %s\n", CG_Argv( 1 ), vrShowModel ? "ok" : "not found" );
+}
+
+static void VRX_AddShowModel( void ) {
+	refEntity_t re;
+	vec3_t angles;
+
+	if ( !vrShowModel || cg.time > vrShowEnd ) {
+		return;
+	}
+	memset( &re, 0, sizeof( re ) );
+	re.hModel = vrShowModel;
+	VectorMA( cg.refdef.vieworg, 20, cg.refdef.viewaxis[0], re.origin );
+	VectorSet( angles, 0, cg.refdefViewAngles[YAW] + 180 + ( cg.time - vrShowStart ) * 0.03f, 0 );
+	AnglesToAxis( angles, re.axis );
+	VectorCopy( re.origin, re.lightingOrigin );
+	VectorCopy( re.origin, re.oldorigin );
+	trap_R_AddRefEntityToScene( &re );
+}
+
 void CG_VRX_AddLimbs( void ) {
 	float dt = cg.frametime * 0.001f;
 	vec3_t mins = { -3, -3, -3 }, maxs = { 3, 3, 3 }, end, dir;
 	trace_t tr;
 	int i, k;
 
+	VRX_AddShowModel();
 	if ( dt > 0.1f ) {
 		dt = 0.1f;
 	}
@@ -1305,45 +1341,60 @@ void CG_VRX_AddCryptGore( centity_t *cent, refEntity_t *body ) {
 VRX_AddBodyWounds
 
 Bullet holes the way Ghoul 2 does skin gore (Soldier of Fortune 2, Jedi Academy): the body
-drawn again with "vr_bodywound", the renderer keeping only its triangles round each hole and
+drawn again with "vr_bodywound" (one draw for each of its textures), the renderer keeping only its triangles round each hole and
 laying the hole's texture over them (tr_animation.c R_VRX_BodyWounds). It needs the pose, so
 that goes first in the buffer, then the holes (model space, 12 floats each).
 =================
 */
 #define VRX_WOUND_MAGIC     0x56525744      // "VRWD", as tr_animation.c
+#define VRX_BODYWOUND_SETS  4               // vr_bodywound, vr_bodywound2..4: the Soldier of Fortune 2 holes
 
 static void VRX_AddBodyWounds( centity_t *cent, refEntity_t *body, vrSkel_t *sk, const float *bones,
 							   float holes[][12], int numHoles ) {
-	static float buf[MAX_CLIENTS][VRX_MAX_BONES * 12 + VRX_CUT_FLOATS + 2 + VRX_MAX_WOUNDS * 12];
-	static qhandle_t shader;
+	static float buf[MAX_CLIENTS][VRX_BODYWOUND_SETS][VRX_MAX_BONES * 12 + VRX_CUT_FLOATS + 2 + VRX_MAX_WOUNDS * 12];
+	static qhandle_t shaders[VRX_BODYWOUND_SETS];
 	union { float f; int i; } magic;
 	refEntity_t ov;
 	float *b;
-	int n = cent->currentState.number, o;
+	int n = cent->currentState.number, o, set, i, count;
 
 	if ( !numHoles || n < 0 || n >= MAX_CLIENTS || sk->n > VRX_MAX_BONES ) {
 		return;
 	}
-	if ( !shader ) {
-		shader = trap_R_RegisterShader( "vr_bodywound" );
+	if ( !shaders[0] ) {
+		for ( set = 0; set < VRX_BODYWOUND_SETS; set++ ) {
+			shaders[set] = trap_R_RegisterShader( set ? va( "vr_bodywound%i", set + 1 ) : "vr_bodywound" );
+		}
 	}
-	b = buf[n];
-	memcpy( b, bones, sizeof( float ) * 12 * sk->n );
-	o = sk->n * 12;
-	if ( VRX_HasCut( bones + o ) ) {     // no holes on a limb that's gone
-		memcpy( b + o, bones + o, sizeof( float ) * VRX_CUT_FLOATS );
-		o += VRX_CUT_FLOATS;
+	// one texture to a draw: the body drawn again for each kind of hole it has
+	for ( set = 0; set < VRX_BODYWOUND_SETS; set++ ) {
+		b = buf[n][set];
+		memcpy( b, bones, sizeof( float ) * 12 * sk->n );
+		o = sk->n * 12;
+		if ( VRX_HasCut( bones + o ) ) {     // no holes on a limb that's gone
+			memcpy( b + o, bones + o, sizeof( float ) * VRX_CUT_FLOATS );
+			o += VRX_CUT_FLOATS;
+		}
+		count = 0;
+		for ( i = 0; i < numHoles; i++ ) {
+			if ( (int)holes[i][11] == set ) {
+				memcpy( b + o + 2 + count * 12, holes[i], sizeof( float ) * 12 );
+				count++;
+			}
+		}
+		if ( !count ) {
+			continue;
+		}
+		magic.i = VRX_WOUND_MAGIC;
+		b[o] = magic.f;
+		b[o + 1] = count;
+		ov = *body;
+		ov.customShader = shaders[set];
+		ov.customSkin = 0;
+		ov.ragdollBones = b;
+		ov.ragdollMagic = RAGDOLL_MAGIC;
+		trap_R_AddRefEntityToScene( &ov );
 	}
-	magic.i = VRX_WOUND_MAGIC;
-	b[o] = magic.f;
-	b[o + 1] = numHoles;
-	memcpy( b + o + 2, holes, sizeof( float ) * 12 * numHoles );
-	ov = *body;
-	ov.customShader = shader;
-	ov.customSkin = 0;
-	ov.ragdollBones = b;
-	ov.ragdollMagic = RAGDOLL_MAGIC;
-	trap_R_AddRefEntityToScene( &ov );
 }
 
 /*
@@ -1445,9 +1496,9 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 					h[3 + k] = DotProduct( n, body->axis[k] );
 					h[6 + k] = DotProduct( down, body->axis[k] );
 				}
-				h[9] = w->size;
+				h[9] = w->size * 1.3f;     // (the Soldier of Fortune 2 holes splash out round them)
 				h[10] = w->flip;
-				h[11] = 0;
+				h[11] = w->shader % VRX_BODYWOUND_SETS;     // which hole
 			}
 			continue;
 		}

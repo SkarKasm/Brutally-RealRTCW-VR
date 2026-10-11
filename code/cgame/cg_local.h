@@ -2789,6 +2789,7 @@ void        CG_VRX_Downed( centity_t *cent, refEntity_t *body );
 void        CG_VRX_HitReact( centity_t *cent, refEntity_t *body );
 void        CG_VRX_AddLimbs( void );
 void        CG_VRX_TestHit_f( void );
+void        CG_VRX_ShowModel_f( void );
 qboolean    CG_VRX_GoreHead( centity_t *cent, refEntity_t *head );
 qboolean    CG_VRX_HeadSwapped( centity_t *cent );
 void        CG_VRX_AddHeadWounds( int entityNum, refEntity_t *head );

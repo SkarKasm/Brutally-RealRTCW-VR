@@ -11,7 +11,8 @@ crypt1.bsp, not separate model files. export_gore.py cuts their surfaces out of 
                     from headhole_tex.py)
   flesh_cap.md3     the torn neck, closing off limb stumps and cut off heads
   ribs.md3          the ribs through the left of the chest (bp2)
-  guts.md3          the guts out of the belly (bp2: the lower half, moved onto the belly)
+  guts.md3          the guts out of the belly: Soldier of Fortune 2's own now (sof2_guts.py,
+                    texture sof2_organs.tga, shader vr_sof2organs; credit Raven Software)
   stump.md3         the torn neck (bp2)
 
 Heads line up with RTCW's own head models (x forward, z up, the neck at z -3.5). The torso
