@@ -2328,8 +2328,20 @@ static void VR_GameControls( void ) {
 	if ( VR_ActionPressed( VRA_NOTEBOOK ) ) {
 		Cbuf_AddText( "notebook\n" );
 	}
-	if ( VR_ActionPressed( VRA_HUD ) ) {
-		Cvar_SetValue( "cg_draw2D", Cvar_VariableIntegerValue( "cg_draw2D" ) ? 0 : 1 );
+	// HUD on/off: held for most of a second, so a grip and A pressed together in a fight
+	// doesn't hide it by accident
+	{
+		static int hudHeldSince;
+		if ( VR_ActionDown( VRA_HUD ) ) {
+			if ( !hudHeldSince ) {
+				hudHeldSince = Sys_Milliseconds();
+			} else if ( hudHeldSince > 0 && Sys_Milliseconds() - hudHeldSince > 800 ) {
+				Cvar_SetValue( "cg_draw2D", Cvar_VariableIntegerValue( "cg_draw2D" ) ? 0 : 1 );
+				hudHeldSince = -1;  // once per hold
+			}
+		} else {
+			hudHeldSince = 0;
+		}
 	}
 	if ( VR_ActionPressed( VRA_USEITEM ) ) {
 		Cbuf_AddText( "+useitem\nwait\n-useitem\n" );
@@ -3103,6 +3115,7 @@ Returns qfalse when the monitor path should draw instead.
 =================
 */
 qboolean CL_VR_RenderFrame( void ) {
+	static qboolean hudShown;
 	static const float menuClear[4] = { 0.02f, 0.02f, 0.025f, 1.0f };
 	static const float uiClear[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 	qboolean uiFullscreen, worldVisible, uiInWorld;
@@ -3127,6 +3140,12 @@ qboolean CL_VR_RenderFrame( void ) {
 
 	uiFullscreen = uivm && VM_Call( uivm, UI_IS_FULLSCREEN );
 	worldVisible = clc.state == CA_ACTIVE && cls.cgameStarted && !uiFullscreen;
+	// the HUD comes back each time the game is started (a hidden HUD saved from last time
+	// looks like a missing one)
+	if ( !hudShown ) {
+		Cvar_Set( "cg_draw2D", "1" );
+		hudShown = qtrue;
+	}
 
 	// cutscenes play flat on the 2D layer, a screen hanging in front of the player, so the
 	// scripted camera doesn't swing the world around the head

@@ -634,6 +634,19 @@ static void CG_DrawPlayerAmmoValue( rectDef_t *rect, int font, float scale, vec4
 		}
 	}
 
+	// RealRTCW-VR: dual wielding in VR, each gun has its own magazine: "left / right"
+	if ( type != 0 && cgVR && cgVR->dualWield && CG_VR_Active() && BG_DualActive( ps ) &&
+		 ps->ammoclip[BG_DUAL_LEFT_WEAPON] == weap ) {
+		int offClip = ps->ammoclip[BG_DUAL_LEFT_CLIP];
+		special = qtrue;
+		if ( CG_VR_DominantHand() == VR_HAND_RIGHT ) {
+			value2 = offClip;
+		} else {
+			value2 = value;
+			value = offClip;
+		}
+	}
+
 	if ( value > -1 ) {
 		if ( shader ) {
 			trap_R_SetColor( color );

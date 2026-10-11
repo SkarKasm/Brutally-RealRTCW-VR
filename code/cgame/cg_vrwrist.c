@@ -136,7 +136,15 @@ void CG_VR_WristHUD( void ) {
 
 	weapon = ps->weapon;
 	if ( weapon > WP_NONE && weapon < WP_NUM_WEAPONS && weapon != WP_KNIFE ) {
-		WH_Number( pos, axis, -0.6f, -1.4f, ps->ammoclip[BG_FindClipForWeapon( weapon )], yellow );
+		int clip = ps->ammoclip[BG_FindClipForWeapon( weapon )];
+
+		if ( cgVR->dualWield && BG_DualActive( ps ) && ps->ammoclip[BG_DUAL_LEFT_WEAPON] == weapon ) {
+			// two guns, two magazines: the left hand's gun's count on the left
+			int offClip = ps->ammoclip[BG_DUAL_LEFT_CLIP];
+			WH_Number( pos, axis, -2.6f, -1.4f, off == VR_HAND_LEFT ? offClip : clip, yellow );
+			clip = off == VR_HAND_LEFT ? clip : offClip;
+		}
+		WH_Number( pos, axis, -0.6f, -1.4f, clip, yellow );
 		WH_Number( pos, axis, 2.4f, -1.4f, ps->ammo[BG_FindAmmoForWeapon( weapon )], yellow );
 	}
 }

@@ -1235,6 +1235,37 @@ G_VR_PlayerThink
 After every pmove of a headset player.
 =================
 */
+// a hand touching an item picks it up as the body touching it would (treasure on a shelf
+// or a mantel the body can't get up to): only what the body would take by touch
+#define VR_HAND_TOUCH       4.0f
+
+static void G_VR_HandTouchItems( gentity_t *ent ) {
+	vec3_t hand;
+	gentity_t *e;
+	trace_t tr;
+	int h, i;
+
+	if ( ent->client->ps.stats[STAT_HEALTH] <= 0 || ent->client->ps.pm_type != PM_NORMAL ) {
+		return;
+	}
+	for ( h = 0; h < 2; h++ ) {
+		if ( !G_VR_HandValid( ent, h ) ) {
+			continue;
+		}
+		G_VR_HandWorld( ent, h, hand );
+		for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
+			e = &g_entities[i];
+			if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item || e->touch != Touch_Item_Auto ) {
+				continue;
+			}
+			if ( G_VR_BoxDist( hand, e->r.absmin, e->r.absmax ) <= VR_HAND_TOUCH ) {
+				memset( &tr, 0, sizeof( tr ) );
+				e->touch( e, ent, &tr );
+			}
+		}
+	}
+}
+
 void G_VR_PlayerThink( gentity_t *ent ) {
 	vrPlayer_t *vrp;
 	int dom, off, now, grip;
@@ -1249,6 +1280,7 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 		return;
 	}
 	vrp = G_VR_Init( ent );
+	G_VR_HandTouchItems( ent );
 
 	dom = G_VR_DomHand( ent );
 	off = !dom;
@@ -1422,8 +1454,9 @@ qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out ) {
 	}
 	cmd = &ent->client->pers.cmd;
 	dom = G_VR_DomHand( ent );
-	if ( ( cmd->vrFlags & VRF_AKIMBO_LEFT ) &&
-		 ( ent->client->ps.weapon == WP_AKIMBO || BG_DualActive( &ent->client->ps ) ) ) {
+	// (a dual pair goes by the shot's own event, not the latest command's flag)
+	if ( g_dualLeftShot ||
+		 ( ( cmd->vrFlags & VRF_AKIMBO_LEFT ) && ent->client->ps.weapon == WP_AKIMBO ) ) {
 		dom = !dom;     // dual pistols / SMGs: the off hand's gun fired
 	}
 	if ( !G_VR_HandValid( ent, dom ) ) {

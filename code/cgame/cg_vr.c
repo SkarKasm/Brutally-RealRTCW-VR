@@ -332,6 +332,7 @@ static const vrGunSize_t vrGunSizes[] = {
 	{ "venom.weap", 1.5f, VR_HAND_BIG },
 	{ "tesla.weap", 1.5f, VR_HAND_BIG },
 	{ "mp34.weap", 1.0f, VR_HAND_BIG },
+	{ "panzerfaust.weap", 1.5f, VR_HAND_BIG },
 };
 
 static const vrGunSize_t *CG_VR_GunSizeRow( const char *file ) {
@@ -463,7 +464,7 @@ static const vrHandPose_t vrHandPoses[] = {
 	{ "sniperrifle.weap", -3, { 0.0f, -12.4f, -8.4f }, -1, { 36.9f, -3.3f, -17.3f } },
 	{ "snooper.weap", -3, { 2.4f, -5.8f, -1.9f }, 0, { 15.2f, -0.4f, -7.1f } },
 	{ "sten.weap", -3, { -1.3f, -11.2f, -9.8f }, 2, { 39.2f, -2.4f, -15.7f } },
-	{ "tesla.weap", -3, { -8.5f, -10.8f, -10.1f }, -1, { 6.5f, -2.7f, -10.1f } },
+	{ "tesla.weap", -3, { -8.5f, -10.8f, -10.1f }, -2, { 0.0f, 0.0f, 0.0f } },  // (its own left arm runs back over the trigger hand: the tracked hand instead)
 	{ "thompson.weap", -1, { 5.7f, -6.1f, -7.4f }, 2, { 19.6f, -0.3f, -7.5f } },
 	{ "tt33.weap", -1, { 15.9f, -9.6f, -11.8f }, -2, { 0.0f, 0.0f, 0.0f } },
 	{ "venom.weap", -3, { 0.2f, -11.7f, -15.0f }, 4, { 16.4f, -5.8f, -17.5f } },
@@ -883,6 +884,38 @@ float CG_VR_HandStretch( int weapon, qboolean trig ) {
 	return 1.0f;
 }
 
+// where the index finger rests on the trigger (hands model space, misc/vr/vr_rifle_hands.py's
+// way of reading it): a trigger hand stretched to its support hand's size grows from there,
+// so its finger stays on the trigger and the palm grows back into the sleeve
+typedef struct {
+	const char  *weap;
+	vec3_t      point;
+} vrTrigger_t;
+
+static const vrTrigger_t vrTriggers[] = {
+	{ "bar.weap", { 14.4f, -6.04f, -12.9f } },
+	{ "fg42.weap", { 19.3f, -6.65f, -12.3f } },
+	{ "fg42scope.weap", { 19.3f, -6.65f, -12.3f } },
+	{ "mp40.weap", { 10.0f, -5.38f, -8.9f } },
+};
+
+// the point a trigger hand is stretched about: its trigger, else its wrist
+static void CG_VR_StretchCentre( int weapon, const vrHandPose_t *hp, vec3_t out ) {
+	const char *file = weapon > WP_NONE ? BG_GetWeaponFilename( weapon ) : NULL;
+	int i;
+
+	if ( file && *file ) {
+		file = COM_SkipPath( (char *)file );
+		for ( i = 0; i < (int)ARRAY_LEN( vrTriggers ); i++ ) {
+			if ( !Q_stricmp( vrTriggers[i].weap, file ) ) {
+				VectorCopy( vrTriggers[i].point, out );
+				return;
+			}
+		}
+	}
+	VectorCopy( hp->trigWrist, out );
+}
+
 void CG_VR_StretchHand( int weapon, int piece, refEntity_t *ent ) {
 	const vrHandPose_t *hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
 	const char *file = weapon > WP_NONE ? BG_GetWeaponFilename( weapon ) : NULL;
@@ -905,7 +938,13 @@ void CG_VR_StretchHand( int weapon, int piece, refEntity_t *ent ) {
 	}
 	h = piece == hp->trigPiece ? dom : !dom;
 	CG_VR_WeaponPose( weapon, origin, axis );
-	BG_VR_ModelPoint( origin, axis, piece == hp->trigPiece ? hp->trigWrist : hp->supWrist, wrist );
+	if ( piece == hp->trigPiece ) {
+		vec3_t centre;
+		CG_VR_StretchCentre( weapon, hp, centre );
+		BG_VR_ModelPoint( origin, axis, centre, wrist );
+	} else {
+		BG_VR_ModelPoint( origin, axis, hp->supWrist, wrist );
+	}
 
 	copy = *ent;
 	for ( i = 0; i < 3; i++ ) {
@@ -2117,15 +2156,19 @@ static void CG_VR_DualOffHand( int single, weaponInfo_t *weapon ) {
 	VectorCopy( parent.origin, ent.lightingOrigin );
 	ent.nonNormalizedAxes = qtrue;
 	ent.renderfx = RF_FIRST_PERSON | RF_MINLIGHT | RF_LIGHTING_ORIGIN | RF_VR_ONLYHANDS | RF_VR_MIRRORED;
-	f = CG_VR_HandStretch( single, qtrue );
+	// (a rifle hand model is made its size already)
+	f = hp->trigPiece == -3 ? 1.0f : CG_VR_HandStretch( single, qtrue );
 	if ( f > 1.02f ) {
 		// as CG_VR_StretchHand: the palm and fingers stretched about the wrist, the sleeve not
 		refEntity_t palm = ent;
 		vec3_t origin, axis[3], wrist;
 		int i;
 
+		vec3_t centre;
+
 		CG_VR_DualFrame( off, single, origin, axis );
-		BG_VR_ModelPoint( origin, axis, hp->trigWrist, wrist );
+		CG_VR_StretchCentre( single, hp, centre );
+		BG_VR_ModelPoint( origin, axis, centre, wrist );
 		for ( i = 0; i < 3; i++ ) {
 			palm.origin[i] = wrist[i] + ( ent.origin[i] - wrist[i] ) * f;
 			VectorScale( ent.axis[i], f, palm.axis[i] );
