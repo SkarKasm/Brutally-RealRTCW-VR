@@ -3876,6 +3876,24 @@ void ClientCommand( int clientNum ) {
 		G_VRX_Decap_f( ent );      // RealRTCW-VR: a knife through a dead body's neck
 	} else if ( Q_stricmp( cmd, "dualwield" ) == 0 ) {
 		G_DualToggle( ent );       // RealRTCW-VR: a pistol / SMG in each hand
+	} else if ( Q_stricmp( cmd, "vrtestents" ) == 0 ) {
+		// RealRTCW-VR test aid: the characters whose name starts so, where they are and how
+		char pre[64];
+		int i, n;
+		gentity_t *e;
+
+		trap_Argv( 1, pre, sizeof( pre ) );
+		n = strlen( pre );
+		G_Printf( "vrtestents %s at %i: player at %s, camera owner %i viewers %i\n", pre, level.time,
+				  vtos( ent->r.currentOrigin ), level.cameraOwner, level.cameraViewers );
+		for ( i = 0, e = g_entities; i < level.num_entities; i++, e++ ) {
+			const char *nm = e->aiName ? e->aiName : e->scriptName;
+			if ( !nm || Q_strncmp( nm, pre, n ) ) {
+				continue;
+			}
+			G_Printf( "  %i %s %s inuse %i health %i svf %x ef %x inactive %i linked %i think %s client %i\n", i, e->classname ? e->classname : "-", nm,
+					  e->inuse, e->health, e->r.svFlags, e->s.eFlags, e->aiInactive, e->r.linked, vtos( e->r.currentOrigin ), e->client != NULL );
+		}
 	} else if ( Q_stricmp( cmd, "vrtestdecap" ) == 0 ) {
 		if ( CheatsOk( ent ) ) {
 			G_VRX_TestDecap( ent );     // RealRTCW-VR test aid

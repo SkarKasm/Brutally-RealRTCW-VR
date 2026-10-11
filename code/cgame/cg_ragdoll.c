@@ -659,6 +659,73 @@ static void RD_KneeHinge( ragdoll_t *rd, int hip, int knee, int ankle, const vec
 	}
 }
 
+/*
+=================
+CG_Ragdoll_Remember
+
+Called with each living skeletal character's body as it is drawn: the ragdoll starts from
+exactly the pose he was last drawn in (an agony writhe, hands up, a hit reaction, or just his
+animation), not from the first frame of his death animation, which stands him back up.
+=================
+*/
+typedef struct {
+	int         time;
+	qhandle_t   model;
+	int         numBones;       // > 0: a pose drawn over the animation (ragdollBones), kept here
+	int         frame, oldframe, torsoFrame, oldTorsoFrame;
+	float       backlerp, torsoBacklerp;
+	vec3_t      origin, axis[3], torsoAxis[3];
+} rdLast_t;
+
+static rdLast_t rdLast[MAX_CLIENTS];
+static float rdLastPose[MAX_CLIENTS][RD_MAX_BONES * 12];
+static const float *rdStartPose;
+
+void CG_Ragdoll_Remember( centity_t *cent, refEntity_t *body ) {
+	int n = cent->currentState.number;
+	rdLast_t *l;
+
+	if ( n < 0 || n >= MAX_CLIENTS || ( cent->currentState.eFlags & EF_DEAD ) || !body->hModel ) {
+		return;
+	}
+	l = &rdLast[n];
+	l->time = cg.time;
+	l->model = body->hModel;
+	l->frame = body->frame;
+	l->oldframe = body->oldframe;
+	l->backlerp = body->backlerp;
+	l->torsoFrame = body->torsoFrame;
+	l->oldTorsoFrame = body->oldTorsoFrame;
+	l->torsoBacklerp = body->torsoBacklerp;
+	VectorCopy( body->origin, l->origin );
+	memcpy( l->axis, body->axis, sizeof( l->axis ) );
+	memcpy( l->torsoAxis, body->torsoAxis, sizeof( l->torsoAxis ) );
+	l->numBones = 0;
+	if ( body->ragdollBones && body->ragdollMagic == RAGDOLL_MAGIC ) {
+		static int parents[RD_MAX_BONES], flags[RD_MAX_BONES];
+		static char names[RD_MAX_BONES * 32];
+		static float scratch[RD_MAX_BONES * 12];
+		static qhandle_t countedModel[8];
+		static int counted[8], next;
+		int k, c;
+
+		for ( c = 0; c < 8 && countedModel[c] != body->hModel; c++ ) {
+		}
+		if ( c < 8 ) {
+			k = counted[c];
+		} else {
+			k = trap_R_GetSkeleton( body, RD_MAX_BONES, parents, flags, names, scratch );     // (just the count, once a model)
+			countedModel[next] = body->hModel;
+			counted[next] = k;
+			next = ( next + 1 ) % 8;
+		}
+		if ( k > 0 ) {
+			memcpy( rdLastPose[n], body->ragdollBones, sizeof( float ) * 12 * k );
+			l->numBones = k;
+		}
+	}
+}
+
 static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 	static int parents[RD_MAX_BONES], flags[RD_MAX_BONES];
 	static char names[RD_MAX_BONES * 32];
@@ -672,6 +739,9 @@ static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 	n = trap_R_GetSkeleton( body, RD_MAX_BONES, parents, flags, names, bones );
 	if ( n <= 0 ) {
 		return qfalse;
+	}
+	if ( rdStartPose ) {
+		memcpy( bones, rdStartPose, sizeof( float ) * 12 * n );     // the pose he was last drawn in
 	}
 
 	memset( rd, 0, sizeof( *rd ) );
@@ -1424,8 +1494,34 @@ void CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body ) {
 		}
 	}
 	if ( !rd ) {
+		int n = cent->currentState.number;
+		refEntity_t start = *body;
+		qboolean ok;
+
+		// from the pose he was in a moment ago, alive
+		rdStartPose = NULL;
+		if ( n >= 0 && n < MAX_CLIENTS && rdLast[n].model == body->hModel && cg.time - rdLast[n].time >= 0 &&
+			 cg.time - rdLast[n].time < 300 && Distance( rdLast[n].origin, body->origin ) < 48.0f ) {
+			rdLast_t *l = &rdLast[n];
+			start.frame = l->frame;
+			start.oldframe = l->oldframe;
+			start.backlerp = l->backlerp;
+			start.torsoFrame = l->torsoFrame;
+			start.oldTorsoFrame = l->oldTorsoFrame;
+			start.torsoBacklerp = l->torsoBacklerp;
+			VectorCopy( l->origin, start.origin );
+			memcpy( start.axis, l->axis, sizeof( start.axis ) );
+			memcpy( start.torsoAxis, l->torsoAxis, sizeof( start.torsoAxis ) );
+			start.ragdollBones = NULL;
+			if ( l->numBones > 0 ) {
+				rdStartPose = rdLastPose[n];
+			}
+			l->time = 0;
+		}
 		rd = RD_Alloc();
-		if ( !RD_Build( rd, cent, body ) ) {
+		ok = RD_Build( rd, cent, &start );
+		rdStartPose = NULL;
+		if ( !ok ) {
 			rd->inUse = qfalse;
 			return;
 		}

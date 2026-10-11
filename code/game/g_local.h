@@ -1062,6 +1062,7 @@ void G_VRX_TestProp( gentity_t *ent );
 int G_VRX_GoreBits( gentity_t *body );
 void G_VRX_ShotRefine( trace_t *tr, const vec3_t start, const vec3_t end, int mask );
 int G_VRX_HitRegion( gentity_t *targ, const vec3_t point );
+void G_VRX_HoldDowned( gentity_t *ent, usercmd_t *ucmd );
 int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
 			   int mod, int take, qboolean headshot );
 void G_VRX_AddGoreBits( gentity_t *body, int bits );

@@ -841,6 +841,7 @@ void ClientThink_real( gentity_t *ent ) {
 	if ( msec > 200 ) {
 		msec = 200;
 	}
+	G_VRX_HoldDowned( ent, ucmd );     // GORE & EXTRAS: the downed stay put
 
 	if ( pmove_msec.integer < 8 ) {
 		trap_Cvar_Set( "pmove_msec", "8" );
