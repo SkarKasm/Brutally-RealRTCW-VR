@@ -906,7 +906,12 @@ void G_VRX_Decap_f( gentity_t *ent ) {
 		neck[i] = atof( arg );
 	}
 	// within reach of the player, and on (near) the body
-	if ( Distance( neck, ent->r.currentOrigin ) > 120 || Distance( neck, body->r.currentOrigin ) > 80 ) {
+	// (the ragdoll can slide or be thrown well away from where the server left the body)
+	if ( Distance( neck, ent->r.currentOrigin ) > 120 || Distance( neck, body->r.currentOrigin ) > 200 ) {
+		if ( trap_Cvar_VariableIntegerValue( "vr_debug" ) == 7 ) {
+			G_Printf( "VR decap: %i too far (%.0f from you, %.0f from the body)\n", n,
+					  Distance( neck, ent->r.currentOrigin ), Distance( neck, body->r.currentOrigin ) );
+		}
 		return;
 	}
 	G_VRX_AddGoreBits( body, VRX_GB_HEAD );

@@ -2792,6 +2792,7 @@ int         CG_VRX_GoreBits( centity_t *cent );
 qboolean    CG_VRX_Headless( centity_t *cent );
 qboolean    CG_VRX_General( centity_t *cent );
 void        CG_VRX_KnifeSwing( void );
+void        CG_VRX_KnifeHit( int body, const vec3_t pos );
 void        CG_VRX_KnifeFrame( void );
 void        CG_VRX_Surrender( centity_t *cent, refEntity_t *body );
 void        CG_VRX_Dismember( centity_t *cent, refEntity_t *body );

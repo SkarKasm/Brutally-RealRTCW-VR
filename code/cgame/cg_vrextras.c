@@ -1342,6 +1342,14 @@ qboolean CG_VRX_General( centity_t *cent ) {
 	return qfalse;
 }
 
+// vr_debug 7: why a head did or didn't come off
+static qboolean cg_vrxDebug( void ) {
+	char dbg[8];
+
+	trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
+	return atoi( dbg ) == 7;
+}
+
 // the blade went from a to b: through a dead body's neck?
 static void VRX_TryDecap( const vec3_t a, const vec3_t b, float radius ) {
 	centity_t *cent;
@@ -1367,10 +1375,32 @@ static void VRX_TryDecap( const vec3_t a, const vec3_t b, float radius ) {
 		t = t < 0 ? 0 : ( t > 1 ? 1 : t );
 		VectorMA( a, t, ab, c );
 		if ( Distance( c, neck ) <= radius ) {
+			if ( cg_vrxDebug() ) {
+				CG_Printf( "VR decap: asking for %i\n", i );
+			}
 			trap_SendClientCommand( va( "vrdecap %i %.0f %.0f %.0f", i, neck[0], neck[1], neck[2] ) );
 			vrxDecapAsked[i] = cg.time;
 			return;
 		}
+	}
+}
+
+// the server says a knife hit body at pos: on the neck (or near enough), the head comes off
+void CG_VRX_KnifeHit( int body, const vec3_t pos ) {
+	centity_t *cent;
+
+	if ( body < 0 || body >= MAX_CLIENTS || !cg.snap || cg.snap->ps.weapon != WP_KNIFE ) {
+		return;
+	}
+	cent = &cg_entities[body];
+	if ( !cent->pe.headRefEnt.hModel ) {
+		return;
+	}
+	if ( cg_vrxDebug() ) {
+		CG_Printf( "VR decap: knife hit %i at %.0f from the neck\n", body, Distance( pos, cent->pe.headRefEnt.origin ) );
+	}
+	if ( Distance( pos, cent->pe.headRefEnt.origin ) <= 14.0f ) {
+		VRX_TryDecap( pos, pos, 14.0f );
 	}
 }
 
@@ -1399,7 +1429,7 @@ void CG_VRX_KnifeFrame( void ) {
 	VectorMA( cgvr.handOrigin[dom], 18.0f, fwd, tip );     // as the server's G_VR_KnifeStab
 	if ( lastTime && cg.time > lastTime && cg.time - lastTime < 200 &&
 		 Distance( tip, lastTip ) / ( ( cg.time - lastTime ) * 0.001f ) > 40.0f ) {
-		VRX_TryDecap( lastTip, tip, 5.0f );
+		VRX_TryDecap( lastTip, tip, 7.0f );
 	}
 	VectorCopy( tip, lastTip );
 	lastTime = cg.time;

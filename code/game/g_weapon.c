@@ -204,6 +204,9 @@ static void G_KnifeHit( gentity_t *ent, trace_t *trp ) {
 	}
 
 	damage = G_GetWeaponDamage(ent->s.weapon, ent);
+	if ( ent->client && !ent->aiCharacter ) {
+		damage *= 5;        // RealRTCW-VR: the player's knife hits five times as hard
+	}
 	
 	if ( ent->client && ent->client->ps.stats[STAT_PLAYER_CLASS] == PC_CVOPS ) {
 		damage = (int)(damage * svParams.cvopsmeleeDmgBonus);
@@ -212,7 +215,7 @@ static void G_KnifeHit( gentity_t *ent, trace_t *trp ) {
 	if ( traceEnt->client ) {
 		if (G_GetEnemyPosition(ent, traceEnt) == POSITION_BEHIND) 
 		{
-			damage = 100;       // enough to drop a 'normal' (100 health) human with one jab
+			damage = 500;       // RealRTCW-VR: 5x; enough to drop a 'normal' (100 health) human with one jab
 			mod = MOD_KNIFE_STEALTH;
 		}
 	}
