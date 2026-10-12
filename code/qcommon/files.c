@@ -1570,6 +1570,8 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 			   !FS_IsExt(filename, ".svg", len) &&		// savegames
 			   !FS_IsExt(filename, ".game", len) &&		// menu files
 			   !FS_IsExt(filename, ".dat", len) &&		// for journal files
+			   !FS_IsExt(filename, ".webm", len) &&		// RealRTCW-VR: Cursed Sands' video cutscenes
+			   !FS_IsExt(filename, ".sub", len) &&		// ... and their subtitles
 			   !FS_IsDemoExt(filename, len))			// demos
 			{
 				*file = 0;
@@ -3943,6 +3945,23 @@ static void FS_AddRealRTCWModAssets( const char *mod ) {
 	}
 	if ( added ) {
 		Com_Printf( "RealRTCW Cursed Sands: %d paks from %s%cEE\n", added, base, PATH_SEP );
+	}
+
+	// its loose files too, for the video cutscenes (video/*.webm), read last of all so
+	// nothing else in that folder (single player configs) can win over co-op's
+	{
+		searchpath_t **tail = &fs_searchpaths;
+		while ( *tail ) {
+			tail = &( *tail )->next;
+		}
+		search = Z_Malloc( sizeof( searchpath_t ) );
+		search->dir = Z_Malloc( sizeof( *search->dir ) );
+		Q_strncpyz( search->dir->path, base, sizeof( search->dir->path ) );
+		Q_strncpyz( search->dir->fullpath, FS_BuildOSPath( base, "EE", "" ), sizeof( search->dir->fullpath ) );
+		Q_strncpyz( search->dir->gamedir, "EE", sizeof( search->dir->gamedir ) );
+		search->dir->allowUnzippedDLLs = qfalse;
+		search->next = NULL;
+		*tail = search;
 	}
 }
 
