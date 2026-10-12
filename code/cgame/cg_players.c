@@ -5016,6 +5016,7 @@ void CG_Player( centity_t *cent ) {
 
 
 	if ( !CG_VRX_Headless( cent ) ) {     // RealRTCW-VR: unless it was cut off
+		CG_VRX_HeadClip( cent->currentState.number, &head, qfalse );    // without a shot off jaw
 		CG_AddRefEntityWithPowerups( &head, cent->currentState.powerups, ci->team, &cent->currentState, cent->fireRiseDir );
 		CG_VRX_AddHeadWounds( cent->currentState.number, &head );   // bullet holes, a shot off jaw
 	}
