@@ -2221,6 +2221,27 @@ void ClientCommand( int clientNum ) {
 		G_VRX_TestDecap( ent );     // RealRTCW-VR test aid
 		return;
 	}
+	if ( Q_stricmp( cmd, "vrtestdamage" ) == 0 && CheatsOk( ent ) ) {
+		// RealRTCW-VR test aid: damage whatever the view is on (a flag, a crate, a window)
+		vec3_t start, fwd, end;
+		trace_t tr;
+		VectorCopy( ent->client->ps.origin, start );
+		start[2] += ent->client->ps.viewheight;
+		AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
+		VectorMA( start, 1024, fwd, end );
+		trap_Trace( &tr, start, NULL, NULL, end, ent->s.number, MASK_SHOT );
+		if ( trap_Argc() > 1 ) {
+			char arg[16];
+			trap_Argv( 1, arg, sizeof( arg ) );
+			tr.entityNum = atoi( arg );     // or that entity
+			VectorCopy( g_entities[tr.entityNum].r.currentOrigin, tr.endpos );
+		}
+		G_Printf( "vrtestdamage: hit %d (%s)\n", tr.entityNum, tr.entityNum < ENTITYNUM_WORLD ? g_entities[tr.entityNum].classname : "world" );
+		if ( tr.entityNum < ENTITYNUM_WORLD && g_entities[tr.entityNum].takedamage ) {
+			G_Damage( &g_entities[tr.entityNum], ent, ent, fwd, tr.endpos, 100, 0, MOD_MP40 );
+		}
+		return;
+	}
 	if ( Q_stricmp( cmd, "vrtestprop" ) == 0 && CheatsOk( ent ) ) {
 		G_VRX_TestProp( ent );     // RealRTCW-VR test aid
 		return;
