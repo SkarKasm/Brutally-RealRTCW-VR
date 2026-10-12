@@ -173,7 +173,8 @@ typedef struct {
 	// RealRTCW-VR: skeletal (MDS) models only. When set, these bones are drawn instead of
 	// the animation's: 12 floats per bone (3x3 matrix rows, translation), model space.
 	// cgame's ragdolls own the memory. Only used when ragdollMagic is RAGDOLL_MAGIC: some
-	// code builds refEntity_t's on the stack without clearing them.
+	// code builds refEntity_t's on the stack without clearing them. On an md3 / mdc model
+	// (a head) it is instead a clip when ragdollMagic is "VRCL" (tr_surface.c R_VRX_ClipMesh).
 	const float *ragdollBones;
 	int ragdollMagic;
 
