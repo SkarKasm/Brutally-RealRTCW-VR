@@ -1452,6 +1452,7 @@ weapon dropped, hands up (cgame raises the arms, VRX_GB_SURRENDER), no more figh
 static qboolean G_VRX_Scareable( gentity_t *e ) {
 	switch ( e->aiCharacter ) {
 	case AICHAR_SOLDIER:
+	case AICHAR_MERCENARY:  // RealRTCW-VR
 	case AICHAR_ELITEGUARD:
 	case AICHAR_BLACKGUARD:
 	case AICHAR_VENOM:

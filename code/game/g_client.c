@@ -1784,6 +1784,9 @@ void ClientBegin( int clientNum ) {
 		trap_SendServerCommand( ent->s.clientNum, "rockandroll\n" );
 	}
 
+	// RealRTCW-VR: a co-op cin_play video is playing: this player watches it too
+	G_CinematicClientBegin( clientNum );
+
 	if ( client->sess.sessionTeam != TEAM_SPECTATOR ) {
 		if ( !( ent->r.svFlags & SVF_CASTAI ) && !( client->pers.localClient ) ) {
 			// done.
@@ -2275,6 +2278,10 @@ void ClientDisconnect( int clientNum ) {
 	if (!ent->client || ent->client->pers.connected == CON_DISCONNECTED) {
 		return;
 	}
+
+	// RealRTCW-VR: co-op cin_play doesn't wait for whoever leaves (the next one in this slot gets it anew)
+	level.cinSent[clientNum] = qfalse;
+	level.cinWaiting[clientNum] = qfalse;
 
 	// stop any following clients
 	for ( i = 0 ; i < level.maxclients ; i++ ) {

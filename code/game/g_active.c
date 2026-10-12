@@ -673,6 +673,9 @@ void ClientEvents( gentity_t *ent, int oldEventSequence ) {
 		case EV_USE_ITEM8:      // ( HI_BOOK1 )
 		case EV_USE_ITEM9:      // ( HI_BOOK2 )
 		case EV_USE_ITEM10:     // ( HI_BOOK3 )
+		case EV_USE_ITEM11:     // RealRTCW-VR: HI_ADRENALINE (HI_BANDAGES is 10)
+		case EV_USE_ITEM12:     // RealRTCW-VR: HI_CROSS
+		case EV_USE_ITEM13:     // RealRTCW-VR: HI_BOOK4
 			UseHoldableItem( ent, event - EV_USE_ITEM0 );
 			break;
 //----(SA)	end
@@ -1054,7 +1057,8 @@ void ClientThink_real( gentity_t *ent ) {
 		}
 	}
 
-	if ( ( ( saveGamePending || !ent->aiCharacter ) && g_reloading.integer && ( g_reloading.integer != RELOAD_FAILED ) ) || client->cameraPortal ) {
+	if ( ( ( saveGamePending || !ent->aiCharacter ) && g_reloading.integer && ( g_reloading.integer != RELOAD_FAILED ) ) || client->cameraPortal
+		 || G_CinematicFrozen( ent ) ) {     // RealRTCW-VR: co-op cin_play
 
 		ucmd->buttons = 0;
 		ucmd->forwardmove = 0;
@@ -1064,7 +1068,7 @@ void ClientThink_real( gentity_t *ent ) {
 		ucmd->wolfkick = 0;
 
 		// freeze player (RELOAD_FAILED still allowed to move/look)
-		if ( client->cameraPortal || ( g_reloading.integer & ( RELOAD_NEXTMAP_WAITING | RELOAD_ENDGAME ) ) ) {
+		if ( client->cameraPortal || ( g_reloading.integer & ( RELOAD_NEXTMAP_WAITING | RELOAD_ENDGAME ) ) || G_CinematicFrozen( ent ) ) {
 			VectorClear( client->ps.velocity );
 			client->ps.pm_type = PM_FREEZE;
 		}

@@ -923,6 +923,56 @@ AICharacterDefaults_t aiDefaults[NUM_CHARACTERS] = {
 		AISTATE_RELAXED
 	},
 
+	//AICHAR_MERCENARY
+	// RealRTCW-VR: RealRTCW's mercenary. Its merc.aidefaults is the same as soldier.aidefaults,
+	// so it is the soldier with the merc model and voice.
+	{
+		"Mercenary",
+		{
+			220,        // running speed
+			90,         // walking speed
+			80,         // crouching speed
+			90,         // Field of View
+			200,        // Yaw Speed
+			0.0,        // leader
+			0.5,        // aim skill
+			0.5,        // aim accuracy
+			0.75,       // attack skill
+			0.5,        // reaction time
+			0.4,        // attack crouch
+			0.0,        // idle crouch
+			0.5,        // aggression
+			0.8,        // tactical
+			0.0,        // camper
+			16000,      // alertness
+			100,        // starting health
+			1.0,        // hearing scale
+			0.9,        // not in pvs hearing scale
+			512,        // relaxed detection radius
+			1.0,        // pain threshold multiplier
+		},
+		{
+			"mercSightPlayer",
+			"mercAttackPlayer",
+			"mercOrders",
+			"mercDeath",
+			"mercSilentDeath",
+			"mercFlameDeath",
+			"mercPain",
+			"mercStay",
+			"mercFollow",
+			"mercOrdersDeny",
+		},
+		AITEAM_NAZI,							// team
+		"merc/default",							// default model/skin
+		{WP_MP40,WP_GRENADE_LAUNCHER},			// starting weapons
+		BBOX_SMALL, {32,48},					// bbox, crouch/stand height
+		AIFL_CATCH_GRENADE | AIFL_STAND_IDLE2,	// flags
+		0, 0, 0,								// special attack routine
+		NULL,									// looping sound
+		AISTATE_RELAXED
+	},
+
 };
 //---------------------------------------------------------------------------
 
@@ -1741,6 +1791,37 @@ SP_ai_civilian
 */
 void SP_ai_civilian( gentity_t *ent ) {
 	AICast_DelayedSpawnCast( ent, AICHAR_CIVILIAN );
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+/*QUAKED ai_mercenary (1 0.25 0) (-16 -16 -24) (16 16 64) TriggerSpawn NoRevive
+RealRTCW-VR: RealRTCW's mercenary (used by the modern Cursed Sands bsps)
+"skin" the .skin file to use for this character (must exist in the player characters directory, otherwise 'merc/default' is used)
+"head" the .skin file to use for his head (must exist in the pc's dir, otherwise 'default' is used)
+"ainame" name of AI
+*/
+
+/*
+============
+SP_ai_mercenary
+============
+*/
+void SP_ai_mercenary( gentity_t *ent ) {
+	AICast_DelayedSpawnCast( ent, AICHAR_MERCENARY );
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+/*QUAKED ai_dog (1 0.25 0) (-16 -16 -24) (16 16 64) TriggerSpawn NoRevive
+RealRTCW-VR: RealRTCW's attack dog. Co-op's client can't draw or animate the dog (it needs
+its own player movement and client code), so it spawns as a zombie (melee) on the nazi side.
+"ainame" name of AI
+*/
+void SP_ai_dog( gentity_t *ent ) {
+	ent->r.svFlags |= SVF_NOFOOTSTEPS;
+	AICast_DelayedSpawnCast( ent, AICHAR_ZOMBIE );
+	if ( ent->aiTeam < 0 ) {
+		ent->aiTeam = AITEAM_NAZI;      // the dog is on the nazis' side, a zombie would fight them
+	}
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

@@ -551,6 +551,12 @@ typedef enum {
 	HI_14,
 //	HI_15,	// ?
 
+	// RealRTCW-VR: RealRTCW's holdables used by the modern Cursed Sands maps (appended, so the ones above keep their numbers)
+	HI_BANDAGES,    // 10	+20 health
+	HI_ADRENALINE,  // 11	+100 health and no fatigue for 10 seconds
+	HI_CROSS,       // 12	burns the undead nearby
+	HI_BOOK4,       // 13	Cursed Sands book (popup menu "hbook4")
+
 	HI_NUM_HOLDABLE
 } holdable_t;
 
@@ -581,6 +587,8 @@ typedef enum
 
 	AICHAR_PARTISAN,
 	AICHAR_CIVILIAN,
+
+	AICHAR_MERCENARY,   // RealRTCW-VR: RealRTCW's mercenary (ai_mercenary, in the modern Cursed Sands bsps); appended
 
 	NUM_CHARACTERS
 } AICharacters_t;
