@@ -209,6 +209,8 @@ static vrWounded_t vrWounded[VRX_MAX_WOUNDED];
 static int vrxDownStyle[MAX_GENTITIES];      // how each one went down (from the gore markers)
 static qboolean VRX_HeadHit( int entityNum, const vec3_t point, const vec3_t dir );
 static void VRX_AddFleshCap( const vec3_t p, const vec3_t dir, float len, float width, const vec3_t light );
+static qboolean VRX_AddSofStump( int which, const vec3_t p, const vec3_t dir, const vec3_t across, float width, float bone, const vec3_t light );
+static qhandle_t VRX_StumpInside( void );
 static vrSkel_t vrSkels[VRX_MAX_SKELS];
 static int vrSkelNext;
 static qhandle_t vrWoundShaders[5];
@@ -530,6 +532,10 @@ typedef struct {
 	float spin;             // degrees a second
 	qboolean resting;
 	int nextDrip;
+	qboolean jaw;           // a shot off jaw (the head drawn with only its jaw), not a limb
+	int cap;                // the stump's cap (VRX_SOF_*), on the end that came off
+	float capWidth, bone;
+	vec3_t capPos, capDir, capAcross;   // where it came off, model space: the joint, down the limb
 } vrLimb_t;
 
 static vrLimb_t vrLimbs[VRX_MAX_LIMBS];
@@ -537,7 +543,7 @@ static int vrLimbNext;
 
 // the limb from bone root of body (drawn with pose bones) flying off, thrown along along
 static qboolean VRX_MeshLimb( vrSkel_t *sk, const refEntity_t *body, const float *bones, int root,
-							  const vec3_t along, const vec3_t shot ) {
+							  const vec3_t along, const vec3_t shot, int cap, float width, float bone ) {
 	vrLimb_t *l;
 	unsigned mask[VRX_CUT_WORDS] = { 0 };
 	int i, k, count = 0;
@@ -561,6 +567,18 @@ static qboolean VRX_MeshLimb( vrSkel_t *sk, const refEntity_t *body, const float
 		return qfalse;
 	}
 	VectorScale( l->center, 1.0f / count, l->center );
+	// its stump: the joint it came off at, facing back up the limb's parent
+	l->cap = cap;
+	l->capWidth = width;
+	l->bone = bone;
+	VectorCopy( bones + root * 12 + 9, l->capPos );
+	if ( sk->parents[root] >= 0 ) {
+		VectorSubtract( bones + root * 12 + 9, bones + sk->parents[root] * 12 + 9, l->capDir );
+	}
+	if ( VectorNormalize( l->capDir ) < 0.01f ) {
+		VectorSet( l->capDir, 0, 0, -1 );
+	}
+	PerpendicularVector( l->capAcross, l->capDir );
 	l->ref = *body;
 	l->ref.ragdollBones = l->pose;
 	l->ref.ragdollMagic = RAGDOLL_MAGIC;
@@ -585,6 +603,51 @@ static qboolean VRX_MeshLimb( vrSkel_t *sk, const refEntity_t *body, const float
 	l->spin = 400 + random() * 500;
 	l->start = cg.time;
 	return qtrue;
+}
+
+/*
+A jaw shot off (Soldier of Fortune 2 blows a character's lower face away the same way it
+does a limb): the head drawn again with only its jaw (tr_surface.c R_VRX_ClipMesh), flying
+off like a limb.
+*/
+#define VRX_CLIP_MAGIC      0x5652434C      // "VRCL", as tr_surface.c
+static const float *VRX_HeadClipData( int which );
+
+static void VRX_JawGib( const refEntity_t *head, const vec3_t shot ) {
+	static const vec3_t jawMiddle = { 3.0f, 0.0f, -0.4f };     // in the head's frame
+	vrLimb_t *l;
+	int k;
+
+	if ( !head->hModel ) {
+		return;
+	}
+	l = &vrLimbs[vrLimbNext];
+	vrLimbNext = ( vrLimbNext + 1 ) % VRX_MAX_LIMBS;
+	memset( l, 0, sizeof( *l ) );
+	l->jaw = qtrue;
+	l->ref = *head;
+	l->ref.ragdollBones = VRX_HeadClipData( 3 );
+	l->ref.ragdollMagic = VRX_CLIP_MAGIC;
+	l->ref.customShader = 0;
+	l->ref.renderfx &= ~( RF_THIRD_PERSON | RF_FIRST_PERSON );
+	VectorCopy( jawMiddle, l->center );
+	for ( k = 0; k < 3; k++ ) {
+		VectorCopy( head->axis[k], l->axis[k] );
+	}
+	VectorCopy( head->origin, l->pos );
+	for ( k = 0; k < 3; k++ ) {
+		VectorMA( l->pos, l->center[k], head->axis[k], l->pos );
+	}
+	VectorScale( shot, 170, l->vel );
+	l->vel[0] += crandom() * 50;
+	l->vel[1] += crandom() * 50;
+	l->vel[2] += 90 + random() * 90;
+	VectorSet( l->spinAxis, crandom(), crandom(), crandom() );
+	if ( VectorNormalize( l->spinAxis ) < 0.1f ) {
+		VectorSet( l->spinAxis, 0, 0, 1 );
+	}
+	l->spin = 500 + random() * 500;
+	l->start = cg.time;
 }
 
 // every frame: the limbs that came off, falling, bouncing and lying where they land
@@ -676,8 +739,59 @@ void CG_VRX_AddLimbs( void ) {
 		}
 		VectorCopy( l->pos, l->ref.lightingOrigin );
 		l->ref.reFlags |= REFLAG_DEAD_LOD;
+		l->ref.renderfx |= RF_LIGHTING_ORIGIN;
 		trap_R_AddRefEntityToScene( &l->ref );
+		// its open end: the inside of it meat (not hollow), and Soldier of Fortune 2's
+		// bloody stump over the cut, the bone sticking out of it
+		if ( VRX_StumpInside() ) {
+			refEntity_t in = l->ref;
+			in.customSkin = 0;
+			in.customShader = VRX_StumpInside();
+			trap_R_AddRefEntityToScene( &in );
+		}
+		if ( !l->jaw ) {
+			vec3_t p, d, a;
+			VectorCopy( l->ref.origin, p );
+			VectorClear( d );
+			VectorClear( a );
+			for ( k = 0; k < 3; k++ ) {
+				VectorMA( p, l->capPos[k], l->axis[k], p );
+				VectorMA( d, -l->capDir[k], l->axis[k], d );     // back where it came from
+				VectorMA( a, l->capAcross[k], l->axis[k], a );
+			}
+			VRX_AddSofStump( l->cap, p, d, a, l->capWidth, l->bone, l->pos );
+			if ( cg.time - l->start < 4000 && cg.time >= l->nextDrip && cg_blood.integer ) {
+				CG_AddBloodTrails( p, d, 40 + rand() % 40, 700, 2, 0.4f );
+				l->nextDrip = cg.time + 150 + rand() % 200;
+			}
+		} else if ( cg.time - l->start < 2500 && cg.time >= l->nextDrip && cg_blood.integer ) {
+			CG_AddBloodTrails( l->pos, l->axis[2], 30 + rand() % 30, 600, 1, 0.5f );
+			l->nextDrip = cg.time + 120 + rand() % 150;
+		}
 	}
+}
+
+// Soldier of Fortune 2's stump for a limb cut off at the shoulder / hip (high) or the elbow /
+// knee, how wide it is (a little wider than the limb, so the cut's edge doesn't show), and how
+// far its bone sticks out
+enum { VRX_SOF_SHOULDER, VRX_SOF_ELBOW, VRX_SOF_HIP, VRX_SOF_KNEE, VRX_SOF_NECK, VRX_SOF_CAPS };
+
+static int VRX_LimbCap( int limb, int high ) {
+	if ( limb & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) {
+		return high ? VRX_SOF_HIP : VRX_SOF_KNEE;
+	}
+	return high ? VRX_SOF_SHOULDER : VRX_SOF_ELBOW;
+}
+
+static float VRX_LimbCapWidth( int limb, int high ) {
+	if ( limb & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) {
+		return high ? 6.8f : 5.2f;
+	}
+	return high ? 5.0f : 4.1f;
+}
+
+static float VRX_LimbBone( int limb ) {
+	return ( limb & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) ? 3.4f : 2.8f;
 }
 
 // the limb flying off (RTCW's own gibs)
@@ -722,7 +836,7 @@ static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t b
 		VectorNormalize( fwd );
 		VectorCopy( bPos[root], c );
 		PerpendicularVector( right, fwd );
-		if ( !VRX_MeshLimb( sk, body, bones, root, fwd, w->dir ) ) {
+		if ( !VRX_MeshLimb( sk, body, bones, root, fwd, w->dir, VRX_LimbCap( w->limb, w->high ), VRX_LimbCapWidth( w->limb, w->high ), VRX_LimbBone( w->limb ) ) ) {
 			VRX_LimbGib( w, cent, bPos[root], fwd );      // (no pose to cut it from)
 		}
 		b = p;
@@ -919,7 +1033,8 @@ chest faces, z up the spine, the origin VRX_CRYPT_NECK below the neck).
 
 typedef struct {
 	qboolean    registered;
-	qhandle_t   headSkinned, ribs, guts, stump, cap, neck, hole, jawWound, insideHead, insideBody;
+	qhandle_t   headSkinned, ribs, guts, stump, cap, neck, hole, insideHead, insideBody;
+	qhandle_t   sofCap[VRX_SOF_CAPS], sofBone, sofJaw, stumpInside;    // Soldier of Fortune 2's stumps
 } vrxCrypt_t;
 
 static vrxCrypt_t *VRX_CryptModels( void ) {
@@ -934,11 +1049,23 @@ static vrxCrypt_t *VRX_CryptModels( void ) {
 		m.guts = trap_R_RegisterModel( "models/vr_gore/guts.md3" );
 		m.stump = trap_R_RegisterModel( "models/vr_gore/stump.md3" );
 		m.neck = trap_R_RegisterModel( "models/vr_gore/neck_flat.md3" );
-		m.jawWound = trap_R_RegisterShader( "vr_jawwound" );
 		m.insideHead = trap_R_RegisterShader( "vr_neckinside_head" );
 		m.insideBody = trap_R_RegisterShader( "vr_neckinside_body" );
+		// Soldier of Fortune 2's bloody stumps (z_vr_stumps.pk3, sof2_stumps.py)
+		m.sofCap[VRX_SOF_SHOULDER] = trap_R_RegisterModel( "models/vr_gore/sof2_cap_shoulder.md3" );
+		m.sofCap[VRX_SOF_ELBOW] = trap_R_RegisterModel( "models/vr_gore/sof2_cap_elbow.md3" );
+		m.sofCap[VRX_SOF_HIP] = trap_R_RegisterModel( "models/vr_gore/sof2_cap_hip.md3" );
+		m.sofCap[VRX_SOF_KNEE] = trap_R_RegisterModel( "models/vr_gore/sof2_cap_knee.md3" );
+		m.sofCap[VRX_SOF_NECK] = trap_R_RegisterModel( "models/vr_gore/sof2_cap_neck.md3" );
+		m.sofBone = trap_R_RegisterModel( "models/vr_gore/sof2_bone.md3" );
+		m.sofJaw = trap_R_RegisterModel( "models/vr_gore/sof2_jawcap.md3" );
+		m.stumpInside = trap_R_RegisterShader( "vr_stumpinside" );
 	}
 	return &m;
+}
+
+static qhandle_t VRX_StumpInside( void ) {
+	return VRX_CryptModels()->stumpInside;
 }
 
 /*
@@ -992,6 +1119,58 @@ static void VRX_AddFleshCap( const vec3_t p, const vec3_t dir, float len, float 
 	trap_R_AddRefEntityToScene( &re );
 }
 
+/*
+Soldier of Fortune 2's bloody stumps (Raven Software): the torn flesh caps its characters
+show where a limb comes off (the "cap_*_off" surfaces of models/characters/average_sleeves,
+texture models/characters/caps/caps), with its bone gib (models/characters/gore/bone_small)
+sticking out of the middle, cut out into md3s by misc/vr/crypt_gore/sof2_stumps.py
+(z_vr_stumps.pk3). A cap is 4.6 across, x out of the stump; the bone 5 long along x. At p,
+facing dir, across the way its y goes; width across, the bone sticking out bone.
+*/
+static qboolean VRX_AddSofStump( int which, const vec3_t p, const vec3_t dir, const vec3_t across, float width, float bone, const vec3_t light ) {
+	vrxCrypt_t *m = VRX_CryptModels();
+	refEntity_t re;
+	vec3_t n, a, b;
+	float sc = width / 4.6f;
+	int k;
+
+	if ( which < 0 || which >= VRX_SOF_CAPS || !m->sofCap[which] ) {
+		return qfalse;
+	}
+	VectorNormalize2( dir, n );
+	VectorMA( across, -DotProduct( across, n ), n, a );
+	if ( VectorNormalize( a ) < 0.01f ) {
+		PerpendicularVector( a, n );
+	}
+	CrossProduct( n, a, b );
+
+	memset( &re, 0, sizeof( re ) );
+	re.hModel = m->sofCap[which];
+	VectorScale( n, sc, re.axis[0] );
+	VectorScale( a, sc, re.axis[1] );
+	VectorScale( b, sc, re.axis[2] );
+	re.nonNormalizedAxes = qtrue;
+	VectorCopy( p, re.origin );
+	VectorCopy( p, re.oldorigin );
+	VectorCopy( light, re.lightingOrigin );
+	re.renderfx = RF_LIGHTING_ORIGIN;
+	trap_R_AddRefEntityToScene( &re );
+
+	if ( bone > 0 && m->sofBone ) {
+		// the bone, from inside the stump out past the meat
+		re.hModel = m->sofBone;
+		for ( k = 0; k < 3; k++ ) {
+			re.axis[0][k] = n[k] * bone * 1.4f / 5.0f;
+			re.axis[1][k] = a[k] * sc;
+			re.axis[2][k] = b[k] * sc;
+		}
+		VectorMA( p, -0.4f * bone, n, re.origin );
+		VectorCopy( re.origin, re.oldorigin );
+		trap_R_AddRefEntityToScene( &re );
+	}
+	return qtrue;
+}
+
 // a flat cut through the neck at p, facing n, the front of the neck towards front
 static void VRX_AddNeckCut( const vec3_t p, const vec3_t n, const vec3_t front, float width, const vec3_t light ) {
 	refEntity_t re;
@@ -1023,10 +1202,12 @@ static void VRX_AddNeckCut( const vec3_t p, const vec3_t n, const vec3_t front, 
 Head wounds
 
 A bullet that meets a head leaves a hole with the blood running from it (down, whichever
-way the head lies), or now and then takes the jaw off (the crypt's skinned jaw over the
-head's own). Kept in the head's own frame, so they work on every head and skin, and on a
-head that was cut off too. The head is taken as an egg about its centre (RTCW's heads all
-have their neck at the origin, the face along x).
+way the head lies), or, low on the face, blows the jaw off the way Soldier of Fortune 2
+does: the jaw's triangles left out of the head (tr_surface.c R_VRX_ClipMesh) and flying off
+on their own (VRX_JawGib), SoF2's torn flesh cap where it was, bleeding. Kept in the head's
+own frame, so they work on every head and skin, and on a head that was cut off too. The
+head is taken as an egg about its centre (RTCW's heads all have their neck at the origin,
+the face along x).
 
 ==============================================================================
 */
@@ -1040,7 +1221,8 @@ typedef struct {
 	qboolean    dead;
 	int         numHoles;
 	vec3_t      hole[VRX_MAX_HOLES], holeN[VRX_MAX_HOLES];  // on the head, in its frame
-	int         jaw;            // 0 none, else which skinned jaw + 1
+	int         jaw;            // the jaw's been shot off
+	int         jawTime, nextSpurt;
 } vrHeadWounds_t;
 
 static vrHeadWounds_t vrHeads[VRX_MAX_HEADS];
@@ -1067,6 +1249,93 @@ static vrHeadWounds_t *VRX_HeadWounds( int entityNum, qboolean create ) {
 	spare->lastSeen = cg.time;
 	spare->dead = ( cg_entities[entityNum].currentState.eFlags & EF_DEAD ) != 0;
 	return spare;
+}
+
+/*
+The clips the renderer cuts heads with (tr_surface.c R_VRX_ClipMesh), in the head's frame:
+the jaw (sof2_stumps.py JAW_*: in front of x 0.5, below the line through the mouth falling
+towards the back, above the neck, and the lower teeth), the neck of a cut off head (below
+z -2.3, where its stump goes), both, and the jaw alone (flying off).
+*/
+#define VRX_JAW_X0          0.5f
+#define VRX_JAW_TOP         1.1f
+#define VRX_JAW_FRONT       4.4f
+#define VRX_JAW_SLOPE       0.35f
+#define VRX_JAW_BOTTOM      -2.1f
+#define VRX_NECK_CUT        -2.3f
+
+static const float *VRX_HeadClipData( int which ) {
+	static float clips[4][2 + 2 * ( 2 + 3 * 4 )];
+	static qboolean built;
+
+	if ( !built ) {
+		static const float jaw[2 + 3 * 4] = {
+			3, 1,
+			1, 0, 0, VRX_JAW_X0,
+			VRX_JAW_SLOPE, 0, -1, VRX_JAW_SLOPE * VRX_JAW_FRONT - VRX_JAW_TOP,
+			0, 0, 1, VRX_JAW_BOTTOM
+		};
+		static const float neck[2 + 4] = { 1, 0, 0, 0, -1, -VRX_NECK_CUT };
+		float *c;
+
+		built = qtrue;
+		c = clips[0]; c[0] = 0; c[1] = 1; memcpy( c + 2, jaw, sizeof( jaw ) );
+		c = clips[1]; c[0] = 0; c[1] = 1; memcpy( c + 2, neck, sizeof( neck ) );
+		c = clips[2]; c[0] = 0; c[1] = 2; memcpy( c + 2, jaw, sizeof( jaw ) ); memcpy( c + 2 + ARRAY_LEN( jaw ), neck, sizeof( neck ) );
+		c = clips[3]; c[0] = 1; c[1] = 1; memcpy( c + 2, jaw, sizeof( jaw ) );
+	}
+	return clips[which];
+}
+
+// the jaw blown off (a bullet along dir): it flies off, blood bursting from where it was
+static void VRX_ShootJaw( vrHeadWounds_t *hw, const refEntity_t *head, const vec3_t dir ) {
+	vec3_t p, d;
+	int k;
+
+	hw->jaw = 1;
+	hw->jawTime = cg.time;
+	hw->nextSpurt = cg.time;
+	if ( !CG_VRX_Gore( VRX_DISMEMBER ) && !CG_VRX_Gore( VRX_WOUNDS ) ) {
+		return;
+	}
+	VRX_JawGib( head, dir );
+	if ( cg_blood.integer ) {
+		VectorCopy( head->origin, p );
+		for ( k = 0; k < 3; k++ ) {
+			static const float at[3] = { 3.2f, 0.0f, -0.2f };
+			VectorMA( p, at[k], head->axis[k], p );
+		}
+		VectorNormalize2( dir, d );
+		CG_AddBloodTrails( p, d, 150, 900, 8, 0.7f );
+		VectorNegate( d, d );
+		CG_AddBloodTrails( p, d, 80, 700, 4, 0.8f );
+	}
+}
+
+/*
+=================
+CG_VRX_HeadClip
+
+A head about to be drawn (the body entityNum's, severed when it was cut off): the pieces shot
+off it left out.
+=================
+*/
+void CG_VRX_HeadClip( int entityNum, refEntity_t *head, qboolean severed ) {
+	vrHeadWounds_t *hw = VRX_HeadWounds( entityNum, qfalse );
+	qboolean jaw = hw && hw->jaw && CG_VRX_Gore( VRX_WOUNDS );
+	qboolean dead = ( cg_entities[entityNum].currentState.eFlags & EF_DEAD ) != 0;
+
+	if ( jaw && hw->dead && !dead && cg_entities[entityNum].currentState.eType == ET_PLAYER ) {
+		jaw = qfalse;       // alive again (CG_VRX_AddHeadWounds starts a new face)
+	}
+	if ( severed && !VRX_CryptModels()->sofCap[VRX_SOF_NECK] ) {
+		severed = qfalse;   // (no stump to close it with)
+	}
+	if ( !jaw && !severed ) {
+		return;
+	}
+	head->ragdollBones = VRX_HeadClipData( severed ? ( jaw ? 2 : 1 ) : 0 );
+	head->ragdollMagic = VRX_CLIP_MAGIC;
 }
 
 // a bullet hit this character at point (where it met the hit box), travelling along dir: did
@@ -1132,12 +1401,13 @@ static qboolean VRX_HeadHit( int entityNum, const vec3_t point, const vec3_t dir
 		char dbg[8];
 		trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
 		if ( atoi( dbg ) == 4 && !hw->jaw ) {
-			hw->jaw = 1;        // (test aid: every head shot takes the jaw)
+			VRX_ShootJaw( hw, head, nd );   // (test aid: every head shot takes the jaw)
 			return qtrue;
 		}
 	}
-	if ( !hw->jaw && ( ( d[2] < vrHeadCentre[2] - 1.5f && n[0] > 0.2f && random() < 0.6f ) || random() < 0.2f ) ) {
-		hw->jaw = 1 + ( rand() & 1 );
+	// the lower face, from the front or the side: the jaw goes (now and then anywhere else)
+	if ( !hw->jaw && ( ( d[2] < vrHeadCentre[2] - 1.2f && n[0] > 0.0f && random() < 0.85f ) || random() < 0.08f ) ) {
+		VRX_ShootJaw( hw, head, nd );
 		return qtrue;
 	}
 	if ( hw->numHoles < VRX_MAX_HOLES ) {
@@ -1175,13 +1445,42 @@ void CG_VRX_AddHeadWounds( int entityNum, refEntity_t *head ) {
 	if ( !CG_VRX_Gore( VRX_WOUNDS ) ) {
 		return;
 	}
-	if ( hw->jaw && m->jawWound ) {
-		// the head again, with the shot-away jaw projected onto the front of its face
-		re = *head;
-		re.customSkin = 0;
-		re.customShader = m->jawWound;
-		re.renderfx |= RF_LIGHTING_ORIGIN;
-		trap_R_AddRefEntityToScene( &re );
+	if ( hw->jaw ) {
+		// the jaw's gone (CG_VRX_HeadClip): Soldier of Fortune 2's torn flesh where it was, in
+		// the head's own frame, and the inside of the head meat where the cut leaves it open
+		if ( m->sofJaw ) {
+			memset( &re, 0, sizeof( re ) );
+			re.hModel = m->sofJaw;
+			VectorCopy( head->origin, re.origin );
+			VectorCopy( head->origin, re.oldorigin );
+			AxisCopy( head->axis, re.axis );
+			re.nonNormalizedAxes = head->nonNormalizedAxes;
+			VectorCopy( head->lightingOrigin, re.lightingOrigin );
+			re.renderfx = RF_LIGHTING_ORIGIN | ( head->renderfx & ( RF_THIRD_PERSON | RF_FIRST_PERSON ) );
+			trap_R_AddRefEntityToScene( &re );
+		}
+		if ( m->stumpInside ) {
+			re = *head;
+			re.customSkin = 0;
+			re.customShader = m->stumpInside;
+			re.renderfx |= RF_LIGHTING_ORIGIN;
+			trap_R_AddRefEntityToScene( &re );
+		}
+		// bleeding from it, hard at first
+		if ( cg_blood.integer && cg.time >= hw->nextSpurt && cg.time < hw->jawTime + 7000 && cg.time >= hw->jawTime ) {
+			static const float at[3] = { 2.8f, 0.0f, -0.3f };
+			float left = 1.0f - ( cg.time - hw->jawTime ) / 7000.0f;
+			VectorCopy( head->origin, p );
+			VectorClear( n );
+			for ( k = 0; k < 3; k++ ) {
+				VectorMA( p, at[k], head->axis[k], p );
+			}
+			VectorScale( head->axis[0], 0.6f, n );
+			VectorMA( n, -0.8f, head->axis[2], n );
+			VectorNormalize( n );
+			CG_AddBloodTrails( p, n, 40 + (int)( 70 * left ) + rand() % 30, 800, 2, 0.5f );
+			hw->nextSpurt = cg.time + 110 + rand() % 120 + (int)( 250 * ( 1.0f - left ) );
+		}
 	}
 	for ( i = 0; i < hw->numHoles && m->hole; i++ ) {
 		VectorCopy( head->origin, p );
@@ -1314,21 +1613,27 @@ void CG_VRX_AddCryptGore( centity_t *cent, refEntity_t *body ) {
 	}
 	if ( bits & VRX_GB_HEAD ) {
 		// the cut through the neck, where the head came off: the body again, only its inside
-		// faces, so the opening fills with meat right up to its edge
+		// faces, so the opening fills with meat right up to its edge, and Soldier of Fortune
+		// 2's bloody stump over it, the spine sticking out
 		int h = VRX_FindBone( sk, "Head" );
 		vec3_t hPos, n;
-		if ( m->insideBody ) {
-			refEntity_t re = *body;
-			re.customSkin = 0;
-			re.customShader = m->insideBody;
-			trap_R_AddRefEntityToScene( &re );
-		} else if ( h >= 0 && m->neck ) {
+		qboolean sof = qfalse;
+		if ( h >= 0 ) {
 			VRX_BoneWorld( bones + h * 12, qfalse, axis, body->origin, bAxis, hPos );
 			VectorSubtract( hPos, neckPos, n );
 			if ( VectorNormalize( n ) < 0.1f ) {
 				VectorCopy( up, n );
 			}
 			VectorMA( hPos, 0.3f, n, hPos );
+			sof = VRX_AddSofStump( VRX_SOF_NECK, hPos, n, frame[1], 4.6f, 2.0f, center );
+		}
+		if ( m->insideBody ) {
+			refEntity_t re = *body;
+			re.customSkin = 0;
+			re.customShader = m->insideBody;
+			trap_R_AddRefEntityToScene( &re );
+		} else if ( sof ) {
+		} else if ( h >= 0 && m->neck ) {
 			VRX_AddNeckCut( hPos, n, frame[0], 4.6f, center );
 		} else {
 			VRX_AddCryptPiece( m->stump, center, frame, center );
@@ -1526,12 +1831,16 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 				VRX_AddGuts( p, n, u );     // (with the crypt's guts, CG_VRX_AddCryptGore spills those)
 			}
 			if ( w->kind == VRW_LIMB ) {
-				// torn flesh closing the stump (thighs are thicker than arms)
-				VRX_AddFleshCap( p, n, 2.4f, ( w->limb & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) ? ( w->high ? 6.0f : 4.6f ) : ( w->high ? 4.4f : 3.6f ), p );
-			} else if ( w->kind == VRW_STUMP && VRX_CryptModels()->neck ) {
-				continue;   // the flat cut is drawn with the crypt gore (CG_VRX_AddCryptGore)
+				// Soldier of Fortune 2's bloody stump closing it (thighs are thicker than arms)
+				if ( !VRX_AddSofStump( VRX_LimbCap( w->limb, w->high ), p, n, u, VRX_LimbCapWidth( w->limb, w->high ), VRX_LimbBone( w->limb ), p ) ) {
+					VRX_AddFleshCap( p, n, 2.4f, ( w->limb & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) ? ( w->high ? 6.0f : 4.6f ) : ( w->high ? 4.4f : 3.6f ), p );
+				}
+			} else if ( w->kind == VRW_STUMP && dead && ( CG_VRX_GoreBits( cent ) & VRX_GB_HEAD ) ) {
+				continue;   // the neck's stump is drawn with the crypt gore (CG_VRX_AddCryptGore)
 			} else if ( w->kind == VRW_STUMP ) {
-				VRX_AddFleshCap( p, n, 2.2f, 4.6f, p );
+				if ( !VRX_AddSofStump( VRX_SOF_NECK, p, n, u, 4.6f, 2.0f, p ) ) {
+					VRX_AddFleshCap( p, n, 2.2f, 4.6f, p );
+				}
 			}
 		}
 		for ( k = 0; k < 4; k++ ) {
@@ -1731,6 +2040,7 @@ static void VRX_DrawHead( centity_t *cent ) {
 	if ( ci && ci->infoValid && ci->headModel ) {
 		head.hModel = ci->headModel;
 		head.customSkin = ci->headSkin;
+		CG_VRX_HeadClip( body, &head, qtrue );     // the neck below its stump, and a shot off jaw, left out
 		trap_R_AddRefEntityToScene( &head );
 		// the torn neck under it, and whatever the head took before it came off
 		{
@@ -1738,6 +2048,14 @@ static void VRX_DrawHead( centity_t *cent ) {
 			VectorMA( head.origin, 0.6f, head.axis[0], p );
 			VectorMA( p, -2.4f, head.axis[2], p );
 			VectorNegate( head.axis[2], down );
+			// Soldier of Fortune 2's bloody stump where the neck was cut (the head's own skin
+			// closes it off below, so it goes over the cut the clip makes), the spine in it
+			{
+				vec3_t at;
+				VectorMA( head.origin, 0.25f, head.axis[0], at );
+				VectorMA( at, VRX_NECK_CUT, head.axis[2], at );
+				VRX_AddSofStump( VRX_SOF_NECK, at, down, head.axis[1], 4.0f, 1.8f, head.lightingOrigin );
+			}
 			if ( VRX_CryptModels()->insideHead ) {
 				// the head again, only its inside faces: the cut fills the open neck exactly
 				refEntity_t re = head;
@@ -2630,6 +2948,15 @@ void CG_VRX_Dismember( centity_t *cent, refEntity_t *body ) {
 	VRX_WriteCut( pose + sk->n * 12, 0, mask );     // the renderer leaves those triangles out
 	body->ragdollBones = pose;
 	body->ragdollMagic = RAGDOLL_MAGIC;
+	// the inside of the body meat where it's open (Soldier of Fortune 2's stump goes over the
+	// cut, CG_VRX_AddWounds): the body again, only the faces turned away from the eye. (A
+	// headless body already has its inside drawn, CG_VRX_AddCryptGore.)
+	if ( VRX_StumpInside() && !( ( cent->currentState.eFlags & EF_DEAD ) && ( CG_VRX_GoreBits( cent ) & VRX_GB_HEAD ) && VRX_CryptModels()->insideBody ) ) {
+		refEntity_t in = *body;
+		in.customSkin = 0;
+		in.customShader = VRX_StumpInside();
+		trap_R_AddRefEntityToScene( &in );
+	}
 }
 
 /*
