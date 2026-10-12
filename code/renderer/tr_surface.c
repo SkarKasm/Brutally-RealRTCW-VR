@@ -767,6 +767,78 @@ static void LerpMeshVertexes(md3Surface_t *surf, float backlerp)
 
 /*
 =============
+R_VRX_ClipMesh
+
+RealRTCW-VR: a head with a piece shot off (cg_vrextras.c, the jaw, or the neck of a cut off
+head), after the way Ghoul 2 turns a surface off in Soldier of Fortune 2: for an md3 / mdc
+model, ragdollBones may point to a clip when ragdollMagic is VRX_CLIP_MAGIC: 0 to drop the
+triangles in the clipped regions or 1 to keep only those (the piece flying off), the number
+of regions, then each region: its number of planes, its flags (1: surfaces named *teethbot*
+are all in it), and the planes (normal, distance, model space), a vertex being in the region
+when it is in front of every plane. A triangle is in when two of its corners are.
+=============
+*/
+#define VRX_CLIP_MAGIC      0x5652434C      // "VRCL", as cg_vrextras.c
+#define VRX_CLIP_REGIONS    4
+#define VRX_CLIP_PLANES     6
+
+static void R_VRX_ClipMesh( const char *surfName, int firstVert, int numVerts, int firstIndex ) {
+	static byte in[SHADER_MAX_VERTEXES];
+	const refEntity_t *e = &backEnd.currentEntity->e;
+	const float *c;
+	int mode, regions, r, i, k, out;
+
+	if ( !e->ragdollBones || e->ragdollMagic != VRX_CLIP_MAGIC || numVerts > SHADER_MAX_VERTEXES ) {
+		return;
+	}
+	c = e->ragdollBones;
+	mode = (int)c[0];
+	regions = (int)c[1];
+	c += 2;
+	memset( in, 0, numVerts );
+	for ( r = 0; r < regions && r < VRX_CLIP_REGIONS; r++ ) {
+		int planes = (int)c[0], flags = (int)c[1];
+		const float *pl = c + 2;
+
+		if ( planes < 0 || planes > VRX_CLIP_PLANES ) {
+			return;
+		}
+		c += 2 + planes * 4;
+		if ( ( flags & 1 ) && strstr( surfName, "teethbot" ) ) {
+			memset( in, 1, numVerts );
+			continue;
+		}
+		for ( i = 0; i < numVerts; i++ ) {
+			const float *v = tess.xyz[firstVert + i];
+			for ( k = 0; k < planes; k++ ) {
+				if ( v[0] * pl[k * 4] + v[1] * pl[k * 4 + 1] + v[2] * pl[k * 4 + 2] <= pl[k * 4 + 3] ) {
+					break;
+				}
+			}
+			if ( k == planes ) {
+				in[i] = 1;
+			}
+		}
+	}
+	out = firstIndex;
+	for ( i = firstIndex; i + 2 < tess.numIndexes; i += 3 ) {
+		int a = tess.indexes[i] - firstVert, b = tess.indexes[i + 1] - firstVert, d = tess.indexes[i + 2] - firstVert;
+		if ( a < 0 || b < 0 || d < 0 || a >= numVerts || b >= numVerts || d >= numVerts ) {
+			continue;
+		}
+		if ( ( in[a] + in[b] + in[d] >= 2 ) != ( mode == 1 ) ) {
+			continue;
+		}
+		tess.indexes[out] = tess.indexes[i];
+		tess.indexes[out + 1] = tess.indexes[i + 1];
+		tess.indexes[out + 2] = tess.indexes[i + 2];
+		out += 3;
+	}
+	tess.numIndexes = out;
+}
+
+/*
+=============
 RB_SurfaceMesh
 =============
 */
@@ -816,6 +888,7 @@ static void RB_SurfaceMesh( md3Surface_t *surface ) {
 		tess.texCoords[Doug + j][0][1] = texCoords[j * 2 + 1];
 		// FIXME: fill in lightmapST for completeness?
 	}
+	R_VRX_ClipMesh( surface->name, Doug, surface->numVerts, Bob );     // RealRTCW-VR: a head with its jaw shot off
 
 	tess.numVertexes += surface->numVerts;
 
@@ -1034,6 +1107,7 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 		tess.texCoords[Doug + j][0][1] = texCoords[j * 2 + 1];
 		// FIXME: fill in lightmapST for completeness?
 	}
+	R_VRX_ClipMesh( surface->name, Doug, surface->numVerts, Bob );     // RealRTCW-VR: a head with its jaw shot off
 
 	tess.numVertexes += surface->numVerts;
 }
