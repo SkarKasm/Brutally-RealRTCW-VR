@@ -372,6 +372,82 @@ def vr_host_menu(maps):
 """).encode()
 
 
+# co-op's in game pages, opened by its "ingame" menu: without them the Esc menu opens
+# ingame_quick, finds nothing and closes again
+COOP_INGAME_MENUS = ("ui/ingame_quick.menu", "ui/ingame_join.menu", "ui/ingame_callvote.menu",
+                     "ui_mp/ingame_leave.menu", "ui/ingame_serverinfo.menu", "ui_mp/wm_quickmessage.menu",
+                     "ui_mp/wm_quickmessageAlt.menu", "ui/wm_quickbuy.menu", "ui/wm_quickbuyAlt.menu")
+
+
+def ingame_copy(menu, name, back):
+    """A main menu page made to return to the Esc menu: renamed, BACK and Esc reopen "ingame"."""
+    menu = menu.decode(errors="replace")
+    menu = re.sub(r'(menuDef\s*\{\s*name\s+)"?%s"?' % back[0], r'\1"%s"' % name, menu, count=1)
+    menu = menu.replace("close %s; open %s" % back, "close %s; open ingame" % name)
+    return menu.encode()
+
+
+def ingame_button(name, text, x, y, w, action):
+    return """
+itemDef {
+	name %s
+	text "%s"
+	type 1
+	textfont UI_FONT_NORMAL
+	rect %d %d %d 20
+	textstyle 6
+	textalign ITEM_ALIGN_LEFT
+	textalignx 0
+	textaligny 14
+	textscale .23
+	forecolor .8 .8 .8 1
+	backcolor .4 .4 .4 .6
+	visible 1
+	action { %s }
+	mouseEnter { setitemcolor %s backcolor .15 .1 .1 .7 }
+	mouseExit { setitemcolor %s backcolor .4 .4 .4 .6  }
+	}
+""" % (name, text, x, y, w, action, name, name)
+
+
+def vr_ingame_menus(paks):
+    """The Esc menu (co-op's "ingame") with VR OPTIONS and EXTRAS & GORE under its buttons."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    out = {}
+    with open(os.path.join(here, "ui", "vr_options.menu"), "rb") as f:
+        out["ui/vr_options_ingame.menu"] = ingame_copy(f.read(), "vr_options_ingame", ("vr_options", "main"))
+    out["ui/vr_extras_ingame.menu"] = ingame_copy(vr_host_extras_menu(), "vr_extras_ingame",
+                                                  ("vr_host_extras", "vr_host"))
+
+    txt, menu = paks.read("ui/ingame.txt"), paks.read("ui/ingame.menu")
+    if not txt or not menu:
+        print("warning: co-op's in game menu not found, no VR buttons on the Esc menu")
+        return out
+    txt = txt.decode(errors="replace")
+    if "vr_options_ingame" not in txt:
+        txt = re.sub(r'\}\s*$', '\tloadMenu { "ui/vr_options_ingame.menu" }\t// RealRTCW-VR\n'
+                     '\tloadMenu { "ui/vr_extras_ingame.menu" }\t// RealRTCW-VR\n}\n', txt.rstrip(), count=1)
+    out["ui/ingame.txt"] = txt.encode()
+
+    menu = menu.decode(errors="replace")
+    row = re.search(r'name\s+serverlist[^}]*?rect\s+\S+\s+(\d+)', menu)
+    end = re.search(r'\}\s*\}\s*$', menu)
+    if "vr_options_ingame" in menu:
+        pass
+    elif row and end:
+        y = int(row.group(1)) + 24
+        close = "close control_menu ; close options_menu ; close system_menu ; " if "close control_menu" in menu else ""
+        items = (ingame_button("vroptions", "VR OPTIONS", 41, y, 80,
+                               close + "close ingame_quick ; close ingame ; open vr_options_ingame") +
+                 ingame_button("vrextras", "EXTRAS & GORE", 510, y, 100,
+                               close + "close ingame_quick ; close ingame ; open vr_extras_ingame"))
+        menu = menu[:end.start()] + items + "\n" + menu[end.start():]
+        out["ui/ingame.menu"] = menu.encode()
+    else:
+        print("warning: couldn't place the VR buttons on the Esc menu")
+    return out
+
+
 def vr_menus(paks):
     here = os.path.dirname(os.path.abspath(__file__))
     out = {}
@@ -393,7 +469,11 @@ def vr_menus(paks):
     if "vr_host_extras.menu" not in menus:
         menus = re.sub(r'(loadMenu\s*\{\s*"ui/vr_host\.menu"\s*\}[^\n]*)',
                        r'\1\n\tloadMenu { "ui/vr_host_extras.menu" }\t// RealRTCW-VR', menus, count=1)
+    for line in COOP_INGAME_MENUS:     # RealRTCW's menu list drops co-op's in game pages
+        if line not in menus:
+            menus = re.sub(r'\}\s*$', '\tloadMenu { "%s" }\t// RealRTCW-VR: co-op in game\n}\n' % line, menus.rstrip(), count=1)
     out["ui/menus.txt"] = menus.encode()
+    out.update(vr_ingame_menus(paks))
 
     main = main.decode(errors="replace")
     m = re.search(r'itemDef\s*\{\s*name\s+"?fadeBox"?', main)

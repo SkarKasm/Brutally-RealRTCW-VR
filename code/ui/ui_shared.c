@@ -4838,6 +4838,12 @@ menuDef_t *Menus_ActivateByName( const char *p ) {
 	int i;
 	menuDef_t *m = NULL;
 	menuDef_t *focus = Menu_GetFocused();
+	for ( i = 0; i < menuCount && Q_stricmp( Menus[i].window.name, p ); i++ ) {
+	}
+	if ( i == menuCount ) {     // RealRTCW-VR: opening a menu that isn't loaded must not take the focus from the open one
+		Com_Printf( "^3Menus_ActivateByName: no menu named %s\n", p );
+		return NULL;
+	}
 	for ( i = 0; i < menuCount; i++ ) {
 		if ( Q_stricmp( Menus[i].window.name, p ) == 0 ) {
 			m = &Menus[i];

@@ -53,7 +53,10 @@ the Free Software Foundation, either version 3 of the License, or
 #define RD_GRAB_SPEED       900.0f      // a held point follows the hand this fast (no snapping)
 #define RD_DAMP             0.985f      // velocity kept per step: limbs settle instead of swinging on and on
 #define RD_DAMP_HELD        0.93f       // carried: the body hangs from the hand instead of whirling round it
-#define RD_MAX_SPEED        650.0f      // no point moves faster (shots, blasts and links can't fling it away)
+#define RD_MAX_SPEED        650.0f
+#define RD_CAPSULES         10          // rdCapsules
+#define RD_PEN_EASE         0.02f       // a part that died inside another is eased out by this much per pass
+#define RD_PRESOLVE         24          // passes over the joints before the first step      // no point moves faster (shots, blasts and links can't fling it away)
 
 typedef enum {
 	P_PELVIS, P_CHEST, P_NECK, P_HEAD, P_HEADEND,
@@ -135,6 +138,7 @@ typedef struct {
 	rdLink_t    links[RD_MAX_LINKS];
 	qboolean    segValid[S_COUNT];
 	vec3_t      torso0[3];          // torso frame at death
+	float       selfPen[RD_CAPSULES][RD_CAPSULES];  // how far parts overlapped at death (RD_SelfCollide)
 
 	vec3_t      anchorOffset;       // pelvis relative to the server's body origin
 	vec3_t      lastOrigin;         // the server's body origin at the last step
@@ -158,6 +162,7 @@ typedef struct {
 static ragdoll_t rdPool[RD_MAX_RAGDOLLS];
 static ragdoll_t *RD_Find( int entityNum );
 static void RD_ApplyPending( ragdoll_t *rd );
+static void RD_SolveLinks( ragdoll_t *rd );
 static vmCvar_t vr_ragdolls;
 static vmCvar_t vr_ragdollGravity;
 
@@ -433,6 +438,7 @@ static const rdCapsule_t rdCapsules[] = {
 	{ P_RKNEE, P_RANKLE, 3.5f },        // 9
 };
 #define RD_NUM_CAPSULES ( (int)ARRAY_LEN( rdCapsules ) )
+typedef char rdCapsulesFit[RD_NUM_CAPSULES == RD_CAPSULES ? 1 : -1];
 
 static void RD_Lerp( const vec3_t a, const vec3_t b, float t, vec3_t out ) {
 	out[0] = a[0] + t * ( b[0] - a[0] );
@@ -516,6 +522,19 @@ static void RD_SelfCollide( ragdoll_t *rd ) {
 			}
 			d = RD_SegmentDist( rd->p[ci->a], rd->p[ci->b], rd->p[cj->a], rd->p[cj->b], &s, &t );
 			pen = ci->r + cj->r - d;
+			// parts that were already inside each other at death (an arm through the chest in
+			// the death animation) are not shot apart, which sent bodies spinning off like
+			// helicopters: only overlap beyond that is pushed out, and that allowance shrinks
+			if ( rd->selfPen[i][j] > 0 ) {
+				if ( pen < rd->selfPen[i][j] ) {
+					rd->selfPen[i][j] = pen > 0 ? pen : 0;
+				}
+				pen -= rd->selfPen[i][j];
+				rd->selfPen[i][j] -= RD_PEN_EASE;
+				if ( rd->selfPen[i][j] < 0 ) {
+					rd->selfPen[i][j] = 0;
+				}
+			}
 			if ( pen <= 0 ) {
 				continue;
 			}
@@ -904,6 +923,29 @@ static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 	RD_TorsoFrame( rd->p0, f0 );
 	memcpy( rd->torso0, f0, sizeof( f0 ) );
 
+	// the death pose often breaks the joint limits a little (a leg kicked back, the head
+	// turned far round): settle that before the first step, so the correction isn't turned
+	// into speed. And what overlaps now may stay overlapping (RD_SelfCollide).
+	for ( k = 0; k < P_COUNT; k++ ) {
+		VectorCopy( rd->p0[k], rd->p[k] );
+	}
+	for ( i = 0; i < RD_PRESOLVE; i++ ) {
+		RD_SolveLinks( rd );
+		RD_Joints( rd );
+	}
+	memset( rd->selfPen, 0, sizeof( rd->selfPen ) );
+	for ( i = 0; i < RD_NUM_CAPSULES; i++ ) {
+		int j;
+		for ( j = i + 1; j < RD_NUM_CAPSULES; j++ ) {
+			const rdCapsule_t *ci = &rdCapsules[i], *cj = &rdCapsules[j];
+			float st, tt;
+			if ( rd->hasPoint[ci->a] && rd->hasPoint[ci->b] && rd->hasPoint[cj->a] && rd->hasPoint[cj->b] ) {
+				rd->selfPen[i][j] = ci->r + cj->r -
+									RD_SegmentDist( rd->p[ci->a], rd->p[ci->b], rd->p[cj->a], rd->p[cj->b], &st, &tt );
+			}
+		}
+	}
+
 	// starting motion: the body's own velocity, plus a fall away from whoever killed it
 	VectorCopy( cent->currentState.pos.trDelta, vel );
 	VectorClear( push );
@@ -927,7 +969,6 @@ static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 		upper = ( rd->p0[k][2] - rd->p0[P_PELVIS][2] ) / 40.0f;
 		upper = upper < 0 ? 0.3f : ( upper > 1 ? 1.3f : 0.3f + upper );
 		VectorMA( vel, upper, push, v );
-		VectorCopy( rd->p0[k], rd->p[k] );
 		VectorMA( rd->p[k], -RD_STEP, v, rd->old[k] );
 	}
 
@@ -994,10 +1035,40 @@ static qboolean RD_GrabPoint( ragdoll_t *rd, centity_t *cent, vec3_t out ) {
 	return qtrue;
 }
 
+static void RD_SolveLinks( ragdoll_t *rd ) {
+	vec3_t v;
+	int i;
+
+	for ( i = 0; i < rd->numLinks; i++ ) {
+		rdLink_t *l = &rd->links[i];
+		float len, want, wa, wb;
+
+		VectorSubtract( rd->p[l->b], rd->p[l->a], v );
+		len = VectorLength( v );
+		if ( len < 1e-4f ) {
+			continue;
+		}
+		want = len < l->min ? l->min : ( len > l->max ? l->max : len );
+		if ( want == len ) {
+			continue;
+		}
+		wa = rd->pinned == l->a ? 0 : 0.5f;
+		wb = rd->pinned == l->b ? 0 : 0.5f;
+		if ( !wa && !wb ) {
+			continue;
+		}
+		wa /= wa + wb;
+		wb = 1 - wa;
+		VectorScale( v, ( len - want ) / len, v );
+		VectorMA( rd->p[l->a], wa, v, rd->p[l->a] );
+		VectorMA( rd->p[l->b], -wb, v, rd->p[l->b] );
+	}
+}
+
 static void RD_Step( ragdoll_t *rd, centity_t *cent, const vec3_t grabPoint, qboolean grabbed ) {
 	vec3_t start[P_COUNT], v, target, err;
 	float moved = 0, d;
-	int k, it, i;
+	int k, it;
 	qboolean originMoved;
 
 	for ( k = 0; k < P_COUNT; k++ ) {
@@ -1034,30 +1105,7 @@ static void RD_Step( ragdoll_t *rd, centity_t *cent, const vec3_t grabPoint, qbo
 		if ( it == 0 ) {
 			RD_Tone( rd );
 		}
-		for ( i = 0; i < rd->numLinks; i++ ) {
-			rdLink_t *l = &rd->links[i];
-			float len, want, wa, wb;
-
-			VectorSubtract( rd->p[l->b], rd->p[l->a], v );
-			len = VectorLength( v );
-			if ( len < 1e-4f ) {
-				continue;
-			}
-			want = len < l->min ? l->min : ( len > l->max ? l->max : len );
-			if ( want == len ) {
-				continue;
-			}
-			wa = rd->pinned == l->a ? 0 : 0.5f;
-			wb = rd->pinned == l->b ? 0 : 0.5f;
-			if ( !wa && !wb ) {
-				continue;
-			}
-			wa /= wa + wb;
-			wb = 1 - wa;
-			VectorScale( v, ( len - want ) / len, v );
-			VectorMA( rd->p[l->a], wa, v, rd->p[l->a] );
-			VectorMA( rd->p[l->b], -wb, v, rd->p[l->b] );
-		}
+		RD_SolveLinks( rd );
 
 		{
 			vec3_t f[3], forward;
