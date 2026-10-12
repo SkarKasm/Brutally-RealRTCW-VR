@@ -1400,6 +1400,9 @@ static qboolean VRX_HeadHit( int entityNum, const vec3_t point, const vec3_t dir
 	{
 		char dbg[8];
 		trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
+		if ( atoi( dbg ) == 4 ) {
+			CG_Printf( "VR head hit: %d at %.1f %.1f %.1f, jaw %s\n", entityNum, d[0], d[1], d[2], hw->jaw ? "already gone" : "shot off" );
+		}
 		if ( atoi( dbg ) == 4 && !hw->jaw ) {
 			VRX_ShootJaw( hw, head, nd );   // (test aid: every head shot takes the jaw)
 			return qtrue;
@@ -1898,6 +1901,18 @@ void CG_VRX_TestHit_f( void ) {
 		}
 	}
 	if ( best < 0 ) {
+		return;
+	}
+	if ( !Q_stricmp( part, "head" ) ) {     // vrtesthit head: a shot to the face from where we stand
+		refEntity_t *hd = &cg_entities[best].pe.headRefEnt;
+		if ( !hd->hModel ) {
+			return;
+		}
+		VectorCopy( hd->origin, p );
+		VectorSubtract( p, cg.refdef.vieworg, dir );
+		VectorNormalize( dir );
+		CG_VRX_Wound( best, p, dir );
+		CG_Printf( "hit %d in the head\n", best );
 		return;
 	}
 	a = !Q_stricmp( part, "larm" ) ? VRB_LUA : !Q_stricmp( part, "rarm" ) ? VRB_RUA :

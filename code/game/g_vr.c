@@ -905,7 +905,7 @@ static gentity_t *G_VR_FindItem( gentity_t *ent, const vec3_t hand ) {
 
 	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
 		e = &g_entities[i];
-		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item ) {
+		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item || ( e->r.svFlags & SVF_NOCLIENT ) ) {
 			continue;
 		}
 		d = G_VR_ReachDist( ent, hand, e->r.absmin, e->r.absmax );
@@ -920,11 +920,43 @@ static gentity_t *G_VR_FindItem( gentity_t *ent, const vec3_t hand ) {
 // out of reach (gold up on a mantel, deep on a shelf): reach the hand out towards it, the
 // eyes through the hand pointing at it, and a grip pulls it in, if nothing solid is between
 #define VR_PULL_RANGE       160.0f
+// a clear line from the hand to an item; or from up to 80 units above the hand, as if the
+// player stood on a chair (the treasure on a mantel or a high shelf over a ledge)
+static qboolean G_VR_PullClear( gentity_t *ent, const vec3_t hand, const vec3_t mid, gentity_t *e ) {
+	vec3_t from, to;
+	trace_t tr;
+	int k, h;
+
+	for ( k = 0; k <= 80; k += 40 ) {
+		VectorCopy( hand, from );
+		from[2] += k;
+		if ( k ) {
+			trap_Trace( &tr, hand, NULL, NULL, from, ent->s.number, MASK_SOLID );
+			if ( tr.fraction < 1.0f || tr.startsolid ) {
+				return qfalse;
+			}
+		}
+		// to the item's middle, or a little above it (one sitting in a niche has its middle
+		// down in the floor of it)
+		for ( h = 0; h <= 12; h += 12 ) {
+			VectorCopy( mid, to );
+			to[2] += h;
+			trap_Trace( &tr, from, NULL, NULL, to, ent->s.number, MASK_SOLID );
+			if ( !tr.startsolid && ( tr.fraction >= 1.0f || tr.entityNum == e->s.number ) ) {
+				return qtrue;
+			}
+			if ( trap_Cvar_VariableIntegerValue( "vr_debug" ) == 6 ) {
+				G_Printf( "VR pull: from %s to %s hit %d at %.2f\n", vtos( from ), vtos( to ), tr.entityNum, tr.fraction );
+			}
+		}
+	}
+	return qfalse;
+}
+
 static gentity_t *G_VR_PullItem( gentity_t *ent, const vec3_t hand ) {
 	gentity_t *e, *best = NULL;
 	vec3_t eye, dir, mid, v;
 	float along, off, score, bestScore = 1e9f;
-	trace_t tr;
 	int i, k;
 
 	G_VR_Eye( ent, eye );
@@ -932,9 +964,12 @@ static gentity_t *G_VR_PullItem( gentity_t *ent, const vec3_t hand ) {
 	if ( VectorNormalize( dir ) < 4.0f ) {
 		return NULL;    // the hand isn't reaching out
 	}
+	if ( trap_Cvar_VariableIntegerValue( "vr_debug" ) == 6 ) {
+		G_Printf( "VR pull: eye %s hand %s\n", vtos( eye ), vtos( hand ) );
+	}
 	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
 		e = &g_entities[i];
-		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item ) {
+		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item || ( e->r.svFlags & SVF_NOCLIENT ) ) {
 			continue;
 		}
 		for ( k = 0; k < 3; k++ ) {
@@ -942,19 +977,29 @@ static gentity_t *G_VR_PullItem( gentity_t *ent, const vec3_t hand ) {
 		}
 		VectorSubtract( mid, hand, v );
 		along = DotProduct( v, dir );
+		if ( trap_Cvar_VariableIntegerValue( "vr_debug" ) == 6 && Distance( mid, hand ) < 250 ) {
+			vec3_t pv;
+			VectorMA( v, -along, dir, pv );
+			G_Printf( "VR pull: near %s at %s along %.0f off %.0f\n", e->classname, vtos( mid ), along, VectorLength( pv ) );
+		}
 		if ( along < 0 || along > VR_PULL_RANGE ) {
 			continue;
 		}
 		VectorMA( v, -along, dir, v );
 		off = VectorLength( v );
-		if ( off > 8.0f + along * 0.15f ) {
+		if ( off > 12.0f + along * 0.25f ) {
 			continue;
 		}
-		trap_Trace( &tr, hand, NULL, NULL, mid, ent->s.number, MASK_SOLID );
-		if ( tr.fraction < 1.0f && tr.entityNum != e->s.number ) {
+		if ( !G_VR_PullClear( ent, hand, mid, e ) ) {
+			if ( trap_Cvar_VariableIntegerValue( "vr_debug" ) == 6 ) {
+				G_Printf( "VR pull: %s blocked (along %.0f off %.0f)\n", e->classname, along, off );
+			}
 			continue;
 		}
-		score = off / ( 8.0f + along * 0.15f ) + along * 0.002f;
+		if ( trap_Cvar_VariableIntegerValue( "vr_debug" ) == 6 ) {
+			G_Printf( "VR pull: %s in reach (along %.0f off %.0f)\n", e->classname, along, off );
+		}
+		score = off / ( 12.0f + along * 0.25f ) + along * 0.002f;
 		if ( score < bestScore ) {
 			best = e;
 			bestScore = score;
