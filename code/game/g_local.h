@@ -835,6 +835,15 @@ typedef struct {
 	qboolean cameraInterrupted;             // a skip was already passed on to the script
 	int cameraUpdateTime[MAX_CLIENTS];      // last "setCameraOrigin" from each viewer
 	byte cameraBroadcast[MAX_GENTITIES];    // characters sent to everyone while a camera runs (G_CheckCameras)
+
+	// RealRTCW-VR: co-op cin_play (a video every client plays, G_CinematicStart)
+	int cinStartTime;                       // 0 when no video is playing
+	char cinFile[MAX_QPATH];
+	int cinMode;
+	qboolean cinSent[MAX_CLIENTS];          // this client was told to play it
+	qboolean cinWaiting[MAX_CLIENTS];       // ... and hasn't answered "cin_done" yet
+	int cinOwner;                           // the cast whose cin_play started it (AICast_ScriptAction_CinPlay)
+	int cinOwnerEvent, cinOwnerHead, cinOwnerStackTime;
 } level_locals_t;
 
 //extern    qboolean	reloading;				// loading up a savegame
@@ -874,6 +883,19 @@ void G_RunItem( gentity_t *ent );
 void RespawnItem( gentity_t *ent );
 
 void UseHoldableItem( gentity_t *ent, int item );
+void G_CrossBurnArea( gentity_t *ent, float radius );        // RealRTCW-VR: holdable_cross
+gentity_t *G_DropSpecifiedItem( gentity_t *ent, gitem_t *item, int lifetimeMs, int dropChance );   // RealRTCW-VR: dropitem
+const char *G_ModernItemAlias( const char *classname );     // RealRTCW-VR: modern RealRTCW item -> co-op item
+
+// RealRTCW-VR: co-op cin_play (g_main.c)
+#define CIN_MAX_TIME    ( g_cinMaxTime.integer * 1000 )   // the video's length isn't known on the server
+extern vmCvar_t g_cinMaxTime;
+void G_CinematicStart( const char *file, int mode );
+qboolean G_CinematicUpdate( void );         // qtrue while a video is still playing for someone
+void G_CinematicStop( void );
+void G_CinematicClientBegin( int clientNum );
+void G_CinematicClientDone( int clientNum, const char *file );
+qboolean G_CinematicFrozen( gentity_t *ent );
 void PrecacheItem( gitem_t *it );
 gentity_t *Drop_Item( gentity_t *ent, gitem_t *item, float angle, qboolean novelocity );
 gentity_t *LaunchItem( gitem_t *item, vec3_t origin, vec3_t velocity, int ownerNum );

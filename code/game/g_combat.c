@@ -940,6 +940,11 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		return;
 	}
 
+	// RealRTCW-VR: no one gets hurt while a co-op cin_play video plays
+	if ( G_CinematicFrozen( targ ) ) {
+		return;
+	}
+
 //----(SA)	added
 		if ( g_gametype.integer <= GT_SINGLE_PLAYER && !targ->aiCharacter && targ->client && targ->client->cameraPortal ) {
 		// get out of damage in sp if in cutscene.
@@ -1278,6 +1283,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 							break;
 						}
 					case AICHAR_SOLDIER:
+					case AICHAR_MERCENARY:  // RealRTCW-VR
 					case AICHAR_AMERICAN:
 					case AICHAR_ELITEGUARD:
 					case AICHAR_PARTISAN:
@@ -1305,6 +1311,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			if ( ( mod == MOD_SNOOPERSCOPE || mod == MOD_GARAND ) && !( attacker->aiCharacter ) ) {
 				switch ( targ->aiCharacter ) {
 				case AICHAR_SOLDIER:
+				case AICHAR_MERCENARY:  // RealRTCW-VR
 				case AICHAR_AMERICAN:
 				case AICHAR_ELITEGUARD:
 				case AICHAR_BLACKGUARD:

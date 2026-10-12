@@ -172,6 +172,7 @@ vmCvar_t sv_hostname;       // So it's more accesible
 vmCvar_t g_votesPerUser;    // How many votes can user call each game
 vmCvar_t g_bannedMSG;       // Used to point banned users to desired forum..
 vmCvar_t g_shove;           // Enable - Disable shove
+vmCvar_t g_cinMaxTime;      // RealRTCW-VR: longest wait for a co-op cin_play video, seconds
 vmCvar_t g_vrTraining;      // RealRTCW-VR: 1 all weapons, ammo, no harm; 2 and enemies ignore you
 vmCvar_t g_flatGrab;        // RealRTCW-VR: players without a headset pick up bodies (hold use)
 vmCvar_t g_vrGrabAssist;    // RealRTCW-VR: how far hands reach for things: 0 off, 1 normal, 2 strong
@@ -332,6 +333,18 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_shoveAmount, "g_shoveAmount", "0.8", CVAR_ARCHIVE, 0, qtrue}, // Don't give to much...
 	{ &g_throwKnives, "g_throwKnives", "5", CVAR_ARCHIVE, 0, qtrue },     // RealRTCW-VR: on, as in the remaster
 
+	// RealRTCW-VR: cvars the modern RealRTCW (Cursed Sands) map scripts test with #if, registered with
+	// RealRTCW SP's defaults so co-op takes the same branches (an unknown cvar would read as 0)
+	{ &g_cinMaxTime, "g_cinMaxTime", "300", CVAR_ARCHIVE, 0, qfalse },   // RealRTCW-VR: co-op cin_play waits at most this long (s)
+	{ NULL, "g_newinventory", "0", CVAR_SERVERINFO | CVAR_LATCH | CVAR_ARCHIVE, 0, qfalse },
+	{ NULL, "g_vanilla_guns", "0", CVAR_ARCHIVE | CVAR_LATCH, 0, qfalse },  // 0: RealRTCW's modern guns
+	{ NULL, "g_realism", "0", CVAR_ARCHIVE | CVAR_LATCH, 0, qfalse },
+	{ NULL, "g_ee_earlyWeapons", "1", CVAR_ARCHIVE, 0, qfalse },  // the AI's early mp40s (otherwise lugers)
+	{ NULL, "g_ee_skinEliteGuard", "0", CVAR_ARCHIVE, 0, qfalse },
+	{ NULL, "g_ee_skinMercenary", "0", CVAR_ARCHIVE, 0, qfalse },
+	{ NULL, "g_ee_skinZombie", "0", CVAR_ARCHIVE, 0, qfalse },
+	{ NULL, "g_ee_progress", "0", CVAR_ARCHIVE, 0, qfalse },
+
 	{ &g_showMOTD, "g_showMOTD", "0",CVAR_ARCHIVE, 0, qfalse },
 	{ &g_motd1, "g_motd1", "", 0, 0, qfalse},
 	{ &g_motd2, "g_motd2", "", 0, 0, qfalse},
@@ -463,6 +476,7 @@ void QDECL G_Error( const char *fmt, ... ) {
 qboolean G_canStealthStab( int aiChar ) {
 	switch ( aiChar ) {
 	case AICHAR_SOLDIER:
+	case AICHAR_MERCENARY:  // RealRTCW-VR
 	case AICHAR_AMERICAN:
 	case AICHAR_ELITEGUARD:
 	case AICHAR_BLACKGUARD:
@@ -1177,6 +1191,7 @@ void G_SpawnScriptCamera( void ) {
 	g_camEnt->r.svFlags |= SVF_NOCLIENT;        // only broadcast when in use
 
 	level.cameraOwner = -1;
+	level.cinOwner = -1;              // RealRTCW-VR: no co-op cin_play yet
 	level.cameraViewers = 0;
 	level.cameraInterrupted = qfalse;
 
@@ -2919,6 +2934,98 @@ void G_RunThink( gentity_t *ent ) {
 }
 
 /*
+=================
+RealRTCW-VR: co-op cin_play
+
+A cin_play in the AI scripts makes every client play a video ("cin_play <file> <mode>"
+server command); each answers "cin_done [file]" when it ends or is skipped. The script
+waits until every human player has answered, none are left, or g_cinMaxTime seconds
+(default 300) passed.
+Meanwhile the players can't move, attack or be hurt.
+=================
+*/
+static qboolean G_CinematicHuman( int clientNum ) {
+	return level.clients[clientNum].pers.connected == CON_CONNECTED &&
+		   !( g_entities[clientNum].r.svFlags & ( SVF_CASTAI | SVF_BOT ) );
+}
+
+static void G_CinematicSend( int clientNum ) {
+	trap_SendServerCommand( clientNum, va( "cin_play %s %i", level.cinFile, level.cinMode ) );
+	level.cinSent[clientNum] = qtrue;
+	level.cinWaiting[clientNum] = qtrue;
+}
+
+void G_CinematicStart( const char *file, int mode ) {
+	int i;
+
+	Q_strncpyz( level.cinFile, file, sizeof( level.cinFile ) );
+	level.cinMode = mode;
+	level.cinStartTime = level.time ? level.time : 1;
+	memset( level.cinSent, 0, sizeof( level.cinSent ) );
+	memset( level.cinWaiting, 0, sizeof( level.cinWaiting ) );
+
+	// every human in the game now; whoever is still loading gets it in ClientBegin
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( G_CinematicHuman( i ) ) {
+			G_CinematicSend( i );
+		}
+	}
+	G_DPrintf( "cin_play %s %i\n", level.cinFile, level.cinMode );
+
+	G_CinematicUpdate();    // no one to show it to: done at once
+}
+
+qboolean G_CinematicUpdate( void ) {
+	int i, waiting = 0;
+
+	if ( !level.cinStartTime ) {
+		return qfalse;
+	}
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( level.cinWaiting[i] && G_CinematicHuman( i ) ) {
+			waiting++;
+		}
+	}
+
+	if ( waiting && level.time - level.cinStartTime < CIN_MAX_TIME ) {
+		return qtrue;
+	}
+
+	if ( waiting ) {
+		G_Printf( "cin_play %s: %i player(s) didn't finish it in %i seconds, going on\n", level.cinFile, waiting, CIN_MAX_TIME / 1000 );
+		trap_SendServerCommand( -1, "cin_stop" );
+	}
+	level.cinStartTime = 0;
+	memset( level.cinWaiting, 0, sizeof( level.cinWaiting ) );
+	return qfalse;
+}
+
+void G_CinematicStop( void ) {
+	trap_SendServerCommand( -1, "cin_stop" );
+	level.cinStartTime = 0;
+	memset( level.cinWaiting, 0, sizeof( level.cinWaiting ) );
+}
+
+void G_CinematicClientBegin( int clientNum ) {
+	if ( level.cinStartTime && !level.cinSent[clientNum] && G_CinematicHuman( clientNum ) ) {
+		G_CinematicSend( clientNum );
+	}
+}
+
+void G_CinematicClientDone( int clientNum, const char *file ) {
+	// an answer for another video (one that was stopped or timed out) doesn't count
+	if ( !level.cinStartTime || ( file && file[0] && Q_stricmp( file, level.cinFile ) ) ) {
+		return;
+	}
+	level.cinWaiting[clientNum] = qfalse;
+}
+
+qboolean G_CinematicFrozen( gentity_t *ent ) {
+	return level.cinStartTime && ent->client && !( ent->r.svFlags & SVF_CASTAI );
+}
+
+/*
 ================
 G_RunFrame
 
@@ -2940,6 +3047,7 @@ void G_RunFrame( int levelTime ) {
 	level.time = levelTime;
 	G_VRX_Frame();     // RealRTCW-VR: GORE & EXTRAS settings to every cgame
 	G_VRX_ReadyThink();     // RealRTCW-VR: co-op's ready screen
+	G_CinematicUpdate();    // RealRTCW-VR: co-op cin_play (ends it when everyone is done, even if its script was replaced)
 
 	// not needed in coop (comes from mp gamestate code)
 #if 0

@@ -2708,10 +2708,11 @@ server holds the players still and waits until each one sends "cin_done", when h
 ends or he skips it with Esc.
 */
 static qboolean CL_levelCinOwed = qfalse;   // the server is waiting for our cin_done
+static char CL_levelCinName[MAX_QPATH];     // ... about this video
 
 static void CL_LevelCin_Done( void ) {
 	if ( CL_levelCinOwed && clc.state == CA_ACTIVE ) {
-		CL_AddReliableCommand( "cin_done", qfalse );
+		CL_AddReliableCommand( va( "cin_done %s", CL_levelCinName ), qfalse );
 	}
 	CL_levelCinOwed = qfalse;
 }
@@ -2729,6 +2730,7 @@ void CL_LevelCin_Play( const char *name, int mode /*optional*/ ) {
 		CL_levelCinHandle = -1;
 	}
 	CL_levelCinOwed = qtrue;
+	Q_strncpyz( CL_levelCinName, name, sizeof( CL_levelCinName ) );
 
 	// Kill all current sounds (including level music)
 	S_SetCinematicMute( qtrue );

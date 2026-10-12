@@ -415,8 +415,14 @@ void AICast_Die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 		G_UseTargets( self, self );
 		// really dead now, so call the script
 		if ( attacker ) {
+			if ( meansOfDeath == MOD_KNIFE_STEALTH ) {   // RealRTCW-VR: as RealRTCW, "stealthkill" before "death"
+				AICast_ScriptEvent( cs, "stealthkill", attacker->aiName ? attacker->aiName : "" );
+			}
 			AICast_ScriptEvent( cs, "death", attacker->aiName ? attacker->aiName : "" );
 		} else {
+			if ( meansOfDeath == MOD_KNIFE_STEALTH ) {   // RealRTCW-VR
+				AICast_ScriptEvent( cs, "stealthkill", "" );
+			}
 			AICast_ScriptEvent( cs, "death", "" );
 		}
 		// call the deathfunc for this cast, so we can play associated sounds, or do any character-specific things
@@ -430,6 +436,9 @@ void AICast_Die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 
 			if ( !cs->died ) {
 				G_UseTargets( self, self );                 // testing
+				if ( meansOfDeath == MOD_KNIFE_STEALTH ) {   // RealRTCW-VR
+					AICast_ScriptEvent( cs, "stealthkill", "" );
+				}
 				AICast_ScriptEvent( cs, "death", "" );
 				cs->died = qtrue;
 			}

@@ -68,9 +68,9 @@ typedef enum {
 
 // the crypt's torn soldier pieces (z_vr_assets.pk3, cut from crypt1.bsp), and who can wear them:
 // men in uniform or plain clothes, not women, monsters or the special ones
-// (co-op: vanilla RTCW's characters, no Russians, mercenaries or trench soldiers)
+// (co-op: vanilla RTCW's characters plus RealRTCW's mercenary, no Russians or trench soldiers)
 #define VRX_HUMAN_MALE( c ) ( ( c ) == AICHAR_SOLDIER || ( c ) == AICHAR_AMERICAN || ( c ) == AICHAR_VENOM || \
-							  ( c ) == AICHAR_BLACKGUARD || ( c ) == AICHAR_PARTISAN )
+							  ( c ) == AICHAR_BLACKGUARD || ( c ) == AICHAR_PARTISAN || ( c ) == AICHAR_MERCENARY )
 
 // the body's own skeleton, for hits only where the body really is (cgame CG_GetTag
 // "vrcaps:N" gives points 4N..4N+3, in or.origin then or.axis[0..2], world space)

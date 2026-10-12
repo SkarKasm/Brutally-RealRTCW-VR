@@ -792,6 +792,7 @@ Returns the body if it was a takedown.
 static qboolean G_VR_TakedownChar( int aiChar ) {
 	switch ( aiChar ) {
 	case AICHAR_SOLDIER:
+	case AICHAR_MERCENARY:  // RealRTCW-VR
 	case AICHAR_ELITEGUARD:
 	case AICHAR_BLACKGUARD:
 	case AICHAR_FROGMAN:

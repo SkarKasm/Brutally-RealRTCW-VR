@@ -3472,6 +3472,112 @@ model="models/powerups/keys/key.md3"
 */
 
 
+	// RealRTCW-VR: RealRTCW holdables for the modern Cursed Sands maps (appended so older items keep their numbers)
+
+/*QUAKED holdable_bandages(.3 .3 1) (-8 -8 -8) (8 8 8) SUSPENDED SPIN - RESPAWN
+RealRTCW-VR: from RealRTCW
+-------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
+model="models/powerups/holdable/bandages.md3"
+*/
+	{
+		"holdable_bandages",
+		"sound/pickup/holdable/get_bandages.wav",
+		{
+			"models/powerups/holdable/bandages.md3",
+			0, 0, 0
+			,   0
+		},
+		"icons/bandages",              // icon
+		NULL,                           // ammo icon
+		"Bandages used",             // pickup
+		1,
+		IT_HOLDABLE,
+		HI_BANDAGES,
+		0,
+		0,
+		"",                              // precache
+		"sound/pickup/holdable/use_bandages.wav", // sounds
+		{0,0,0,0}
+	},
+
+/*QUAKED holdable_adrenaline(.3 .3 1) (-8 -8 -8) (8 8 8) SUSPENDED SPIN - RESPAWN
+RealRTCW-VR: from RealRTCW
+-------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
+model="models/powerups/holdable/adrenaline.md3"
+*/
+	{
+		"holdable_adrenaline",
+		"sound/pickup/holdable/get_adrenaline.wav",
+		{
+			"models/powerups/holdable/adrenaline.md3",
+			0, 0, 0
+			,   0
+		},
+		"icons/adrenaline",              // icon
+		NULL,                           // ammo icon
+		"Adrenaline used",             // pickup
+		1,
+		IT_HOLDABLE,
+		HI_ADRENALINE,
+		0,
+		0,
+		"",                              // precache
+		"sound/pickup/holdable/use_adrenaline.wav", // sounds
+		{0,0,0,0}
+	},
+
+/*QUAKED holdable_cross(.3 .3 1) (-8 -8 -8) (8 8 8) SUSPENDED SPIN - RESPAWN
+RealRTCW-VR: from RealRTCW
+-------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
+model="models/powerups/holdable/cross.md3"
+*/
+	{
+		"holdable_cross",
+		"sound/pickup/holdable/get_stamina.wav",
+		{
+			"models/powerups/holdable/cross.md3",
+			0, 0, 0
+			,   0
+		},
+		"icons/holycross",              // icon
+		NULL,                           // ammo icon
+		"Cross used",             // pickup
+		1,
+		IT_HOLDABLE,
+		HI_CROSS,
+		0,
+		0,
+		"",                              // precache
+		"sound/pickup/holdable/use_cross.wav", // sounds
+		{0,0,0,0}
+	},
+
+/*QUAKED holdable_book4(.3 .3 1) (-8 -8 -8) (8 8 8) SUSPENDED SPIN - RESPAWN
+RealRTCW-VR: from RealRTCW
+-------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
+model="models/powerups/holdable/book4.md3"
+*/
+	{
+		"holdable_book4",
+		"sound/pickup/holdable/get_book4.wav",
+		{
+			"models/powerups/holdable/book4.md3",
+			0, 0, 0
+			,   0
+		},
+		"icons/icon_book4",              // icon
+		NULL,                           // ammo icon
+		"Book4",             // pickup
+		1,
+		IT_HOLDABLE,
+		HI_BOOK4,
+		0,
+		0,
+		"",                              // precache
+		"sound/pickup/holdable/use_book.wav", // sounds
+		{0,0,0,0}
+	},
+
 
 	// end of list marker
 	{NULL}

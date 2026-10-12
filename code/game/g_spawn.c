@@ -319,6 +319,8 @@ void SP_ai_protosoldier( gentity_t *ent );
 void SP_ai_frogman( gentity_t *ent );
 void SP_ai_partisan( gentity_t *ent );
 void SP_ai_civilian( gentity_t *ent );
+void SP_ai_mercenary( gentity_t *ent );     // RealRTCW-VR
+void SP_ai_dog( gentity_t *ent );           // RealRTCW-VR: spawns as a zombie
 // done.
 
 // Rafael particles
@@ -587,6 +589,8 @@ spawn_t spawns[] = {
 	{"ai_blackguard", SP_ai_blackguard},
 	{"ai_partisan", SP_ai_partisan},
 	{"ai_civilian", SP_ai_civilian},
+	{"ai_mercenary", SP_ai_mercenary},     // RealRTCW-VR: RealRTCW's mercenary (modern Cursed Sands bsps)
+	{"ai_dog", SP_ai_dog},                 // RealRTCW-VR: RealRTCW's dog, as a zombie on the nazi side
 
 
 	{"ai_marker", SP_ai_marker},
@@ -681,6 +685,51 @@ spawn_t spawns[] = {
 
 /*
 ===============
+G_ModernItemAlias
+
+RealRTCW-VR: the modern RealRTCW (Cursed Sands) maps and scripts use some entity types and
+weapons co-op does not have: these spawn as, and scripts give, the closest co-op type.
+Returns the co-op name, or the name itself when it needs no swap.
+===============
+*/
+typedef struct {
+	const char *modern;
+	const char *coop;
+} modernAlias_t;
+
+static const modernAlias_t modernAliases[] = {
+	// weapons (co-op has vanilla RTCW's weapons only)
+	{ "weapon_mp34",     "weapon_mp40" },        // 9mm SMG
+	{ "weapon_mp44",     "weapon_fg42" },        // 7.92 assault rifle
+	{ "weapon_g43",      "weapon_mauserRifle" }, // 7.92 rifle
+	{ "weapon_m1garand", "weapon_mauserRifle" }, // rifle
+	{ "weapon_mg42m",    "weapon_venom" },       // portable machine gun (the scripts give it to ai_venom)
+	{ "weapon_m97",      "weapon_thompson" },    // trench shotgun -> close range .45
+	// ammo for those
+	{ "ammo_44ammo",     "ammo_792mm" },
+	{ "ammo_44ammo_l",   "ammo_792mm_large" },
+	{ "ammo_m97ammo",    "ammo_45cal" },
+	// characters that need client code co-op does not have (ai_dog has its own SP_ai_dog)
+	{ "ai_priest",       "ai_blackguard" },      // occult priest (tesla magic) -> tough elite
+	{ NULL, NULL }
+};
+
+const char *G_ModernItemAlias( const char *classname ) {
+	const modernAlias_t *a;
+
+	if ( !classname ) {
+		return classname;
+	}
+	for ( a = modernAliases; a->modern; a++ ) {
+		if ( !Q_stricmp( classname, a->modern ) ) {
+			return a->coop;
+		}
+	}
+	return classname;
+}
+
+/*
+===============
 G_CallSpawn
 
 Finds the spawn function for the entity and calls it,
@@ -694,6 +743,15 @@ qboolean G_CallSpawn( gentity_t *ent ) {
 	if ( !ent->classname ) {
 		G_Printf( "G_CallSpawn: NULL classname\n" );
 		return qfalse;
+	}
+
+	// RealRTCW-VR: modern RealRTCW types co-op lacks spawn as the closest co-op type
+	{
+		const char *coop = G_ModernItemAlias( ent->classname );
+		if ( coop != ent->classname ) {
+			G_DPrintf( "G_CallSpawn: %s spawns as %s\n", ent->classname, coop );
+			ent->classname = (char *)coop;
+		}
 	}
 
 	// check item spawn functions

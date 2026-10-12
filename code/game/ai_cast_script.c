@@ -138,6 +138,14 @@ qboolean AICast_ScriptAction_AnimCondition( cast_state_t *cs, char *params );
 qboolean AICast_ScriptAction_PushAway( cast_state_t *cs, char *params );
 qboolean AICast_ScriptAction_CatchFire( cast_state_t *cs, char *params );
 
+// RealRTCW-VR: actions the modern RealRTCW (Cursed Sands) map scripts use
+qboolean AICast_ScriptAction_DropItem( cast_state_t *cs, char *params );
+qboolean AICast_ScriptAction_GiveWeaponFull( cast_state_t *cs, char *params );
+qboolean AICast_ScriptAction_ChangeAiSkin( cast_state_t *cs, char *params );
+qboolean AICast_ScriptAction_ChangeAiHead( cast_state_t *cs, char *params );
+qboolean AICast_ScriptAction_CinPlay( cast_state_t *cs, char *params );
+qboolean AICast_ScriptAction_CinStop( cast_state_t *cs, char *params );
+
 // these are the actions that each event can call
 cast_script_stack_action_t scriptActions[] =
 {
@@ -233,6 +241,14 @@ cast_script_stack_action_t scriptActions[] =
 	{"pushaway",     AICast_ScriptAction_PushAway},
 	{"catchfire",        AICast_ScriptAction_CatchFire},
 
+	// RealRTCW-VR: from the modern RealRTCW (Cursed Sands) map scripts
+	{"dropitem",         AICast_ScriptAction_DropItem},
+	{"giveweaponfull",   AICast_ScriptAction_GiveWeaponFull},
+	{"changeaiskin",     AICast_ScriptAction_ChangeAiSkin},
+	{"changeaihead",     AICast_ScriptAction_ChangeAiHead},
+	{"cin_play",         AICast_ScriptAction_CinPlay},
+	{"cin_stop",         AICast_ScriptAction_CinStop},
+
 	{NULL,              0}
 };
 
@@ -268,6 +284,7 @@ cast_script_event_define_t scriptEvents[] =
 	{"inspectfriendlycombatstart", 0},
 	{"painenemy",        AICast_EventMatch_StringEqual},
 	{"forced_mg42_unmount",  0},
+	{"stealthkill",      AICast_EventMatch_StringEqual}, // RealRTCW-VR: killed by a stealth (knife from behind) attack, sent before "death"
 
 	{NULL,              0}
 };
@@ -391,8 +408,9 @@ void AICast_ScriptLoad( void ) {
 		return;
 	}
 
-	level.scriptAI = trap_Alloc( len );
+	level.scriptAI = trap_Alloc( len + 1 );     // RealRTCW-VR: + the end of string the parser needs (as SP)
 	trap_FS_Read( level.scriptAI, len, f );
+	level.scriptAI[len] = 0;
 
 	trap_FS_FCloseFile( f );
 
@@ -406,7 +424,7 @@ AICast_ScriptParse
   Parses the script for the given character
 ==============
 */
-#define MAX_SCRIPT_EVENTS   64
+#define MAX_SCRIPT_EVENTS   128      // RealRTCW-VR: was 64, the modern ee7 player block has 70 events (SP uses 128)
 cast_script_event_t cast_temp_events[MAX_SCRIPT_EVENTS];
 void AICast_ScriptParse( cast_state_t *cs ) {
 	gentity_t   *ent;
@@ -417,7 +435,7 @@ void AICast_ScriptParse( cast_state_t *cs ) {
 	int eventNum;
 	int numEventItems;
 	cast_script_event_t *curEvent;
-	char params[MAX_QPATH];
+	char params[MAX_INFO_STRING];       // RealRTCW-VR: was MAX_QPATH, long params got cut (SP uses MAX_INFO_STRING)
 	cast_script_stack_action_t  *action;
 	int i;
 	int bracketLevel;
@@ -468,11 +486,45 @@ void AICast_ScriptParse( cast_state_t *cs ) {
 				G_Error( "AICast_ScriptParse(), Error (line %d): '{' found, NAME expected.\n", COM_GetCurrentParseLine() );
 			}
 		} else if ( wantName )   {
-			if ( !Q_strcasecmp( ent->aiName, token ) ) {
+			// RealRTCW-VR: several AI names can share one script block ("name1 name2 name3 { ... }"),
+			// as in the modern RealRTCW scripts (SP does the same). Read the names up to the '{'.
+			qboolean match = qfalse;
+
+			while ( 1 ) {
+				if ( !Q_strcasecmp( ent->aiName, token ) ) {
+					match = qtrue;
+				}
+				token = COM_Parse( &pScript );
+				if ( !token[0] ) {
+					G_Error( "AICast_ScriptParse(), Error (line %d): '{' expected, end of script found.\n", COM_GetCurrentParseLine() );
+				}
+				if ( token[0] == '{' ) {
+					break;
+				}
+				if ( token[0] == '}' ) {
+					G_Error( "AICast_ScriptParse(), Error (line %d): '}' found, but not expected.\n", COM_GetCurrentParseLine() );
+				}
+			}
+
+			if ( match ) {
 				inScript = qtrue;
 				numEventItems = 0;
+				wantName = qfalse;
+			} else {
+				// not ours: skip the whole block (its '{' is already read)
+				bracketLevel = 1;
+				while ( bracketLevel > 0 ) {
+					token = COM_Parse( &pScript );
+					if ( !token[0] ) {
+						G_Error( "AICast_ScriptParse(), Error (line %d): '}' expected, end of script found.\n", COM_GetCurrentParseLine() );
+					} else if ( token[0] == '{' ) {
+						bracketLevel++;
+					} else if ( token[0] == '}' ) {
+						bracketLevel--;
+					}
+				}
+				wantName = qtrue;
 			}
-			wantName = qfalse;
 		} else if ( inScript )   {
 			if ( !Q_strcasecmp( token, "attributes" ) ) {
 				// read in all the attributes
@@ -564,9 +616,18 @@ void AICast_ScriptParse( cast_state_t *cs ) {
 						}
 
 						if ( !Q_stricmp( action->actionString, "giveweapon" ) ) { // register weapon for client pre-loading
-							gitem_t *weap = BG_FindItem2( token );    // (SA) FIXME: rats, need to fix this for weapon names with spaces: 'mauser rifle'
+							gitem_t *weap = BG_FindItem2( G_ModernItemAlias( token ) );    // RealRTCW-VR: alias. (SA) FIXME: rats, need to fix this for weapon names with spaces: 'mauser rifle'
 //							if(weap)
 							RegisterItem( weap );   // don't be nice, just do it.  if it can't find it, you'll bomb out to the error menu
+						}
+
+						// RealRTCW-VR: dropitem: check the item now and register it for client pre-loading
+						if ( !Q_stricmp( action->actionString, "dropitem" ) ) {
+							gitem_t *drop = BG_FindItem2( token );
+							if ( !drop ) {
+								G_Error( "AICast_ScriptParse(), Error (line %d): dropitem: unknown item '%s'\n", COM_GetCurrentParseLine(), token );
+							}
+							RegisterItem( drop );
 						}
 
 						// need to get this for callvote nextmap
@@ -575,6 +636,16 @@ void AICast_ScriptParse( cast_state_t *cs ) {
 							trap_Cvar_Set( "nextmap", level.nextMap );
 						}
 //----(SA)	end
+					}
+
+					// RealRTCW-VR: giveweaponfull picks one of its weapons at random: check them all now
+					// (with the modern weapons co-op lacks swapped for co-op ones) and pre-load them
+					if ( !Q_stricmp( action->actionString, "giveweaponfull" ) ) {
+						gitem_t *weap = BG_FindItem2( G_ModernItemAlias( token ) );
+						if ( !weap || weap->giType != IT_WEAPON ) {
+							G_Error( "AICast_ScriptParse(), Error (line %d): giveweaponfull: unknown weapon '%s'\n", COM_GetCurrentParseLine(), token );
+						}
+						RegisterItem( weap );
 					}
 
 					if ( strrchr( token,' ' ) ) { // need to wrap this param in quotes since it has more than one word

@@ -189,6 +189,108 @@ void UseHoldableItem( gentity_t *ent, int item ) {
 	case HI_BOOK3:
 		G_AddEvent( ent, EV_POPUP_BOOK, ( item - HI_BOOK1 ) + 1 );
 		break;
+
+	// RealRTCW-VR: RealRTCW's holdables (as SP, without the achievements and challenge modes)
+	case HI_BOOK4:
+		G_AddEvent( ent, EV_POPUP_BOOK, 4 );    // menu "hbook4"
+		break;
+
+	case HI_BANDAGES:
+		ent->health += 20;
+		if ( ent->health > ent->client->ps.stats[STAT_MAX_HEALTH] ) {
+			ent->health = ent->client->ps.stats[STAT_MAX_HEALTH];
+		}
+		break;
+
+	case HI_ADRENALINE:     // health and stamina
+		ent->client->ps.powerups[PW_NOFATIGUE] = 10000;
+		ent->health += 100;
+		if ( ent->health > ent->client->ps.stats[STAT_MAX_HEALTH] ) {
+			ent->health = ent->client->ps.stats[STAT_MAX_HEALTH] * 1.25;
+		}
+		break;
+
+	case HI_CROSS:          // sets the undead within 512 units on fire, they die 1.5 seconds later
+		G_CrossBurnArea( ent, 512.0f );
+		break;
+	}
+}
+
+/*
+==============
+RealRTCW-VR: RealRTCW's holy cross (holdable_cross)
+==============
+*/
+static void CrossThink( gentity_t *timer ) {
+	gentity_t *targ = timer->enemy;
+	gentity_t *owner = timer->parent;
+
+	if ( targ && targ->inuse && targ->health > 0 ) {
+		if ( !owner || !owner->inuse ) {
+			owner = &g_entities[ENTITYNUM_WORLD];
+		}
+		G_Damage( targ, owner, owner, vec3_origin, targ->r.currentOrigin, 9999, DAMAGE_NO_PROTECTION, MOD_FLAMETHROWER );
+	}
+
+	G_FreeEntity( timer );
+}
+
+static void CrossBurn( gentity_t *owner, gentity_t *targ ) {
+	gentity_t *timer;
+
+	if ( targ->flameQuotaTime && targ->flameQuota > 0 ) {
+		targ->flameQuota -= (int)( ( ( (float)( level.time - targ->flameQuotaTime ) ) / 1000.0f ) / 2.0f );
+		if ( targ->flameQuota < 0 ) {
+			targ->flameQuota = 0;
+		}
+	}
+
+	targ->flameQuota += 999;
+	targ->flameQuotaTime = level.time;
+
+	if ( targ->s.onFireEnd < level.time ) {
+		targ->s.onFireStart = level.time;
+	}
+	targ->s.onFireEnd = level.time + 4000;
+	targ->flameBurnEnt = owner ? owner->s.number : ENTITYNUM_WORLD;
+	targ->client->ps.onFireStart = level.time;
+
+	// kill it a little later, without touching its own think
+	timer = G_Spawn();
+	timer->classname = "cross_kill_timer";
+	timer->r.svFlags = SVF_NOCLIENT;
+	timer->enemy = targ;
+	timer->parent = owner;
+	timer->think = CrossThink;
+	timer->nextthink = level.time + 1500;
+}
+
+void G_CrossBurnArea( gentity_t *ent, float radius ) {
+	int touch[MAX_GENTITIES];
+	int num, i;
+	vec3_t mins, maxs, delta;
+	gentity_t *targ;
+
+	VectorSet( mins, ent->r.currentOrigin[0] - radius, ent->r.currentOrigin[1] - radius, ent->r.currentOrigin[2] - radius );
+	VectorSet( maxs, ent->r.currentOrigin[0] + radius, ent->r.currentOrigin[1] + radius, ent->r.currentOrigin[2] + radius );
+
+	num = trap_EntitiesInBox( mins, maxs, touch, MAX_GENTITIES );
+
+	for ( i = 0; i < num; i++ ) {
+		targ = &g_entities[touch[i]];
+
+		if ( !targ->inuse || targ->health <= 0 || !targ->client ) {
+			continue;
+		}
+		// the undead (co-op has no ai_priest, it spawns as another character)
+		if ( targ->aiCharacter != AICHAR_ZOMBIE && targ->aiCharacter != AICHAR_WARZOMBIE ) {
+			continue;
+		}
+		VectorSubtract( targ->r.currentOrigin, ent->r.currentOrigin, delta );
+		if ( VectorLength( delta ) > radius ) {
+			continue;
+		}
+		CrossBurn( ent, targ );
 	}
 }
 
@@ -866,6 +968,34 @@ gentity_t *Drop_Item( gentity_t *ent, gitem_t *item, float angle, qboolean novel
 	return LaunchItem( item, ent->s.pos.trBase, velocity, ent->s.number );
 }
 
+/*
+================
+G_DropSpecifiedItem
+
+RealRTCW-VR: from RealRTCW (AI script action "dropitem").
+Drops the item from ent with a dropChance percent chance. lifetimeMs > 0 removes it
+after that long, 0 keeps it until it is picked up.
+================
+*/
+gentity_t *G_DropSpecifiedItem( gentity_t *ent, gitem_t *item, int lifetimeMs, int dropChance ) {
+	gentity_t *drop;
+
+	if ( !ent || !ent->client || !item || rand() % 100 >= dropChance ) {
+		return NULL;
+	}
+
+	drop = Drop_Item( ent, item, 0, qfalse );
+	if ( drop ) {
+		if ( lifetimeMs > 0 ) {
+			drop->nextthink = level.time + lifetimeMs;
+		} else {
+			drop->nextthink = 0;
+		}
+	}
+
+	return drop;
+}
+
 
 /*
 ================
@@ -932,6 +1062,8 @@ void FinishSpawningItem( gentity_t *ent ) {
 	} else if ( ent->item->giType == IT_HOLDABLE )      {
 		if ( ent->item->giTag >= HI_BOOK1 && ent->item->giTag <= HI_BOOK3 ) {
 			G_FindConfigstringIndex( va( "hbook%d", ent->item->giTag - HI_BOOK1 ), CS_CLIPBOARDS, MAX_CLIPBOARD_CONFIGSTRINGS, qtrue );
+		} else if ( ent->item->giTag == HI_BOOK4 ) {     // RealRTCW-VR
+			G_FindConfigstringIndex( "hbook4", CS_CLIPBOARDS, MAX_CLIPBOARD_CONFIGSTRINGS, qtrue );
 		}
 //		ent->touch = Touch_Item;	// no auto-pickup, only activate
 	}

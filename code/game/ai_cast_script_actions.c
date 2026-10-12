@@ -629,14 +629,20 @@ qboolean AICast_ScriptAction_Trigger( cast_state_t *cs, char *params ) {
 		G_Error( "AI Scripting: trigger must have a name and an identifier\n" );
 	}
 
-	ent = AICast_FindEntityForName( token );
-	if ( !ent ) {
-		ent = G_Find( &g_entities[MAX_CLIENTS], FOFS( scriptName ), token );
+	if ( !Q_stricmp( token, "self*" ) ) {
+		// RealRTCW-VR: "self*" is the AI running this script (as SP), so a block shared by several
+		// AI names can trigger its own events
+		ent = &g_entities[cs->entityNum];
+	} else {
+		ent = AICast_FindEntityForName( token );
 		if ( !ent ) {
-			if ( trap_Cvar_VariableIntegerValue( "developer" ) ) {
-				G_Printf( "AI Scripting: trigger can't find AI cast with \"ainame\" = \"%s\"\n", params );
+			ent = G_Find( &g_entities[MAX_CLIENTS], FOFS( scriptName ), token );
+			if ( !ent ) {
+				if ( trap_Cvar_VariableIntegerValue( "developer" ) ) {
+					G_Printf( "AI Scripting: trigger can't find AI cast with \"ainame\" = \"%s\"\n", params );
+				}
+				return qtrue;
 			}
-			return qtrue;
 		}
 	}
 
@@ -1267,6 +1273,9 @@ qboolean AICast_ScriptAction_SelectWeapon( cast_state_t *cs, char *params ) {
 	}
 #endif
 
+	// RealRTCW-VR: RealRTCW weapons co-op lacks are its closest co-op weapon
+	params = (char *)G_ModernItemAlias( params );
+
 	weapon = WP_NONE;
 
 	for ( i = 1; bg_itemlist[i].classname; i++ )
@@ -1410,6 +1419,9 @@ qboolean AICast_ScriptAction_GiveWeapon( cast_state_t *cs, char *params ) {
 			return qtrue;
 	}
 
+	// RealRTCW-VR: RealRTCW weapons co-op lacks are its closest co-op weapon
+	params = (char *)G_ModernItemAlias( params );
+
 	weapon = WP_NONE;
 
 	for ( i = 1; bg_itemlist[i].classname; i++ )
@@ -1490,6 +1502,9 @@ qboolean AICast_ScriptAction_TakeWeapon( cast_state_t *cs, char *params ) {
 		return qtrue;
 	}
 #endif
+
+	// RealRTCW-VR: RealRTCW weapons co-op lacks are its closest co-op weapon
+	params = (char *)G_ModernItemAlias( params );
 
 	weapon = WP_NONE;
 
@@ -3607,5 +3622,278 @@ qboolean AICast_ScriptAction_CatchFire( cast_state_t *cs, char *params ) {
 	// add to playerState for client-side effect
 	ent->client->ps.onFireStart = level.time;
 	//
+	return qtrue;
+}
+
+
+/*
+=================
+AICast_ScriptAction_DropItem
+
+  RealRTCW-VR: from RealRTCW.
+  syntax: dropitem <classname or pickup name> [lifetimeMs] [dropChance]
+
+  The AI drops the item (stealthkill blocks use it for loot). lifetimeMs 0 (the default)
+  keeps it until it is picked up, dropChance is a percentage (default 100).
+=================
+*/
+qboolean AICast_ScriptAction_DropItem( cast_state_t *cs, char *params ) {
+	gentity_t *ent;
+	gitem_t *item;
+	char *pString, *token;
+	int lifetimeMs = 0;
+	int dropChance = 100;
+
+	ent = &g_entities[cs->entityNum];
+	if ( !ent->inuse || !ent->client ) {
+		return qtrue;
+	}
+
+	pString = params;
+	token = COM_ParseExt( &pString, qfalse );
+	if ( !token[0] ) {
+		G_Error( "AI Scripting: dropitem requires an item name\n" );
+	}
+
+	item = BG_FindItem2( G_ModernItemAlias( token ) );
+	if ( !item ) {
+		G_Error( "AI Scripting: dropitem %s, unknown item\n", token );
+	}
+
+	token = COM_ParseExt( &pString, qfalse );
+	if ( token[0] ) {
+		lifetimeMs = atoi( token );
+		if ( lifetimeMs < 0 ) {
+			lifetimeMs = 0;
+		}
+		token = COM_ParseExt( &pString, qfalse );
+		if ( token[0] ) {
+			dropChance = atoi( token );
+			if ( dropChance < 0 ) {
+				dropChance = 0;
+			} else if ( dropChance > 100 ) {
+				dropChance = 100;
+			}
+		}
+	}
+
+	G_DropSpecifiedItem( ent, item, lifetimeMs, dropChance );
+	return qtrue;
+}
+
+/*
+=================
+AICast_ScriptAction_GiveWeaponFull
+
+  RealRTCW-VR: from RealRTCW.
+  syntax: giveweaponfull <weapon> [<weapon> ...]
+
+  Takes all weapons away, then gives one of the listed weapons (picked at random) with
+  full ammo and a full clip, and selects it. RealRTCW's weapons co-op lacks become the
+  closest co-op weapon (G_ModernItemAlias).
+=================
+*/
+qboolean AICast_ScriptAction_GiveWeaponFull( cast_state_t *cs, char *params ) {
+	gentity_t *ent = &g_entities[cs->entityNum];
+	char names[16][MAX_QPATH];
+	char *pString, *token;
+	int tCount = 0;
+	int weapon = WP_NONE;
+	gitem_t *item;
+
+	if ( !params || !params[0] ) {
+		G_Error( "AI Scripting: giveweaponfull requires a weapon name\n" );
+	}
+
+	// same rule as giveweapon: players who already have points keep what they carry over
+	if ( g_gametype.integer <= GT_COOP && g_gametype.integer != GT_COOP_BATTLE ) {
+		if ( !( ent->r.svFlags & SVF_CASTAI ) && ent->client->ps.persistant[PERS_SCORE] != 0 ) {
+			return qtrue;
+		}
+	}
+
+	pString = params;
+	while ( tCount < 16 ) {
+		token = COM_ParseExt( &pString, qfalse );
+		if ( !token[0] ) {
+			break;
+		}
+		Q_strncpyz( names[tCount], token, sizeof( names[tCount] ) );
+		tCount++;
+	}
+	if ( !tCount ) {
+		G_Error( "AI Scripting: giveweaponfull requires a weapon name\n" );
+	}
+
+	token = names[ tCount > 1 ? rand() % tCount : 0 ];
+	item = BG_FindItem2( G_ModernItemAlias( token ) );
+	if ( item && item->giType == IT_WEAPON ) {
+		weapon = item->giTag;
+	}
+	if ( weapon == WP_NONE ) {
+		G_Error( "AI Scripting: giveweaponfull %s, unknown weapon\n", token );
+	}
+
+	// clear out all weapons
+	memset( ent->client->ps.weapons, 0, sizeof( ent->client->ps.weapons ) );
+	memset( ent->client->ps.ammo, 0, sizeof( ent->client->ps.ammo ) );
+	memset( ent->client->ps.ammoclip, 0, sizeof( ent->client->ps.ammoclip ) );
+	cs->weaponNum = WP_NONE;
+
+	COM_BitSet( ent->client->ps.weapons, weapon );
+
+	// some weapons always go together (and they share a clip, so this is okay)
+	if ( weapon == WP_GARAND ) {
+		COM_BitSet( ent->client->ps.weapons, WP_SNOOPERSCOPE );
+	}
+	if ( weapon == WP_SNOOPERSCOPE ) {
+		COM_BitSet( ent->client->ps.weapons, WP_GARAND );
+	}
+	if ( weapon == WP_FG42 && !ent->aiCharacter ) {
+		COM_BitSet( ent->client->ps.weapons, WP_FG42SCOPE );
+	}
+	if ( weapon == WP_SNIPERRIFLE ) {
+		COM_BitSet( ent->client->ps.weapons, WP_MAUSER );
+	}
+
+	// full ammo and a full clip
+	ent->client->ps.ammo[BG_FindAmmoForWeapon( weapon )] = 999;
+	Fill_Clip( &ent->client->ps, weapon );
+
+	// and select it
+	if ( cs->bs ) {
+		cs->weaponNum = weapon;
+	}
+	cs->castScriptStatus.scriptFlags |= SFL_NOCHANGEWEAPON;
+	ent->client->ps.weapon = weapon;
+	ent->client->ps.weaponstate = WEAPON_READY;
+	if ( !ent->aiCharacter ) {  // only do this for players
+		ent->client->ps.weaponTime = 750;  // (SA) HACK: FIXME: TODO: delay to catch initial weapon reload
+	}
+
+	// conditional flags
+	if ( ent->aiCharacter == AICHAR_ZOMBIE ) {
+		if ( COM_BitCheck( ent->client->ps.weapons, WP_MONSTER_ATTACK1 ) ) {
+			cs->aiFlags |= AIFL_NO_FLAME_DAMAGE;
+			SET_FLAMING_ZOMBIE( ent->s, 1 );
+		}
+	}
+
+	return qtrue;
+}
+
+/*
+=================
+AICast_ScriptAction_ChangeAiSkin
+
+  RealRTCW-VR: from RealRTCW.
+  syntax: changeaiskin <model/skin>
+=================
+*/
+qboolean AICast_ScriptAction_ChangeAiSkin( cast_state_t *cs, char *params ) {
+	gentity_t *ent = &g_entities[cs->entityNum];
+	char userinfo[MAX_INFO_STRING];
+
+	if ( !params || !params[0] ) {
+		G_Error( "AI Scripting: changeaiskin requires a skin for %s\n", ent->aiName );
+	}
+	if ( !( ent->r.svFlags & SVF_CASTAI ) ) {
+		return qtrue;   // co-op players keep their co-op skin
+	}
+
+	trap_GetUserinfo( ent->s.number, userinfo, sizeof( userinfo ) );
+	Info_SetValueForKey( userinfo, "model", params );
+	trap_SetUserinfo( ent->s.number, userinfo );
+	ClientUserinfoChanged( ent->s.number );
+
+	return qtrue;
+}
+
+/*
+=================
+AICast_ScriptAction_ChangeAiHead
+
+  RealRTCW-VR: from RealRTCW.
+  syntax: changeaihead <head skin>
+=================
+*/
+qboolean AICast_ScriptAction_ChangeAiHead( cast_state_t *cs, char *params ) {
+	gentity_t *ent = &g_entities[cs->entityNum];
+	char userinfo[MAX_INFO_STRING];
+
+	if ( !params || !params[0] ) {
+		G_Error( "AI Scripting: changeaihead requires a head for %s\n", ent->aiName );
+	}
+	if ( !( ent->r.svFlags & SVF_CASTAI ) ) {
+		return qtrue;   // co-op players keep their co-op head
+	}
+
+	trap_GetUserinfo( ent->s.number, userinfo, sizeof( userinfo ) );
+	Info_SetValueForKey( userinfo, "head", params );
+	trap_SetUserinfo( ent->s.number, userinfo );
+	ClientUserinfoChanged( ent->s.number );
+
+	return qtrue;
+}
+
+/*
+=================
+AICast_ScriptAction_CinPlay
+
+  RealRTCW-VR: co-op version of RealRTCW's cin_play.
+  syntax: cin_play <videofile> [mode]
+
+  Sends "cin_play <videofile> <mode>" to every client (a player who joins while it plays
+  gets it when they enter), then holds the script until every human player has answered
+  "cin_done", none are left, or 5 minutes have passed. Players can't move, attack or be
+  hurt meanwhile.
+=================
+*/
+qboolean AICast_ScriptAction_CinPlay( cast_state_t *cs, char *params ) {
+	char *pString, *token;
+	char file[MAX_QPATH];
+
+	// is this the video this very action started?
+	if ( level.cinOwner == cs->entityNum &&
+		 level.cinOwnerEvent == cs->castScriptStatus.castScriptEventIndex &&
+		 level.cinOwnerHead == cs->castScriptStatus.castScriptStackHead &&
+		 level.cinOwnerStackTime == cs->castScriptStatus.castScriptStackChangeTime ) {
+		return !G_CinematicUpdate();    // still playing for someone?
+	}
+
+	if ( !params || !params[0] ) {
+		G_Error( "AI Scripting: syntax: cin_play <videofile> [mode]\n" );
+	}
+
+	// on co-op's ready screen the level hasn't begun: play it once everyone is in
+	if ( G_VRX_Waiting() ) {
+		return qfalse;
+	}
+
+	pString = params;
+	token = COM_ParseExt( &pString, qfalse );
+	Q_strncpyz( file, token, sizeof( file ) );
+	token = COM_ParseExt( &pString, qfalse );
+
+	level.cinOwner = cs->entityNum;
+	level.cinOwnerEvent = cs->castScriptStatus.castScriptEventIndex;
+	level.cinOwnerHead = cs->castScriptStatus.castScriptStackHead;
+	level.cinOwnerStackTime = cs->castScriptStatus.castScriptStackChangeTime;
+
+	G_CinematicStart( file, token[0] ? atoi( token ) : 0 );
+
+	return !G_CinematicUpdate();
+}
+
+/*
+=================
+AICast_ScriptAction_CinStop
+
+  RealRTCW-VR: stops a co-op cin_play for everyone.
+  syntax: cin_stop
+=================
+*/
+qboolean AICast_ScriptAction_CinStop( cast_state_t *cs, char *params ) {
+	G_CinematicStop();
 	return qtrue;
 }

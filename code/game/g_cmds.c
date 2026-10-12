@@ -3749,6 +3749,15 @@ void ClientCommand( int clientNum ) {
 		return;
 	}
 
+	// RealRTCW-VR: this client's co-op cin_play video ended ("cin_done [file]")
+	if ( Q_stricmp( cmd, "cin_done" ) == 0 ) {
+		char file[MAX_QPATH];
+
+		trap_Argv( 1, file, sizeof( file ) );
+		G_CinematicClientDone( clientNum, file );
+		return;
+	}
+
 	// RF, client damage commands
 	if ( Q_stricmp( cmd, "cld" ) == 0 ) {
 		Cmd_ClientDamage_f( ent );
