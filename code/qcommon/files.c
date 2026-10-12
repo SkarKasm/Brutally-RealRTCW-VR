@@ -3893,6 +3893,61 @@ static void FS_AddRealRTCWAssets( void ) {
 
 /*
 ================
+FS_AddRealRTCWModAssets
+
+RealRTCW-VR: Cursed Sands co-op on RealRTCW's own Cursed Sands: the PS2 daylight maps, their
+models, and the remaster's characters and animations, from RealRTCW's EE folder beside
+co-op. Read after co-op's EE paks (so the new maps win over its vanilla ones) and before
+coop_EE, whose map scripts are made for them. fs_eeModern 0 keeps co-op's own Cursed Sands.
+================
+*/
+static void FS_AddRealRTCWModAssets( const char *mod ) {
+	static const char *paks[] = {
+		"ee_maps_ps2.pk3", "ee_maps_RealRTCW_ps2.pk3", "ee_models_ps2.pk3", "ee_RealRTCW_ps2.pk3",
+		"ee_characters_RealRTCW.pk3", "ee_assets_RealRTCW.pk3"
+	};
+	cvar_t *use = Cvar_Get( "fs_eeModern", "1", CVAR_INIT | CVAR_ARCHIVE );
+	char base[MAX_OSPATH], *slash, *pakfile;
+	searchpath_t *search;
+	pack_t *pak;
+	int i, added = 0;
+
+	if ( Q_stricmp( mod, "EE" ) || !use->integer || !fs_basepath->string[0] ) {
+		return;
+	}
+	Q_strncpyz( base, fs_basepath->string, sizeof( base ) );
+	while ( strlen( base ) && ( base[strlen( base ) - 1] == '/' || base[strlen( base ) - 1] == '\\' ) ) {
+		base[strlen( base ) - 1] = 0;
+	}
+	slash = strrchr( base, '/' );
+	if ( !slash || ( strrchr( base, '\\' ) && strrchr( base, '\\' ) > slash ) ) {
+		slash = strrchr( base, '\\' );
+	}
+	if ( !slash ) {
+		return;
+	}
+	*slash = 0;
+
+	for ( i = 0; i < (int)ARRAY_LEN( paks ); i++ ) {
+		pakfile = FS_BuildOSPath( base, "EE", paks[i] );
+		if ( ( pak = FS_LoadZipFile( pakfile, paks[i] ) ) == 0 ) {
+			continue;
+		}
+		Q_strncpyz( pak->pakPathname, base, sizeof( pak->pakPathname ) );
+		Q_strncpyz( pak->pakGamename, mod, sizeof( pak->pakGamename ) );
+		search = Z_Malloc( sizeof( searchpath_t ) );
+		search->pack = pak;
+		search->next = fs_searchpaths;
+		fs_searchpaths = search;
+		added++;
+	}
+	if ( added ) {
+		Com_Printf( "RealRTCW Cursed Sands: %d paks from %s%cEE\n", added, base, PATH_SEP );
+	}
+}
+
+/*
+================
 FS_VR_AddCoopModDirectory
 
 RealRTCW-VR: co-op's own VR paks for a mod (its main menu's VR buttons), in the homepath's
@@ -4026,6 +4081,7 @@ static void FS_Startup( const char *gameName )
 		if ( fs_basepath->string[0] ) {
 			FS_AddGameDirectory( fs_basepath->string, fs_gamedirvar->string, qtrue );
 		}
+		FS_AddRealRTCWModAssets( fs_gamedirvar->string );
 		if ( fs_homepath->string[0] && Q_stricmp( fs_homepath->string,fs_basepath->string ) ) {
 			FS_AddGameDirectory( fs_homepath->string, fs_gamedirvar->string, qtrue );
 			FS_VR_AddCoopModDirectory( fs_gamedirvar->string );

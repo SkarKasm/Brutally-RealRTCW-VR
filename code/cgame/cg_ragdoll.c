@@ -1372,6 +1372,10 @@ static void RD_Unsettle( ragdoll_t *rd ) {
 	RD_Wake( rd );
 }
 
+// a shot moves the whole body a little and the part it hit more. Pushing only the points by
+// the hit (an arm, the head) at full speed set bodies spinning like helicopters.
+#define RD_HIT_BODY         0.35f       // share of the push the whole body gets
+
 static void RD_PushPoints( ragdoll_t *rd, const vec3_t point, const vec3_t vel ) {
 	float w;
 	int k;
@@ -1381,9 +1385,8 @@ static void RD_PushPoints( ragdoll_t *rd, const vec3_t point, const vec3_t vel )
 			continue;
 		}
 		w = 1.0f - Distance( rd->p[k], point ) / RD_HIT_RADIUS;
-		if ( w > 0 ) {
-			VectorMA( rd->old[k], -RD_STEP * w, vel, rd->old[k] );     // verlet: velocity is p - old
-		}
+		w = RD_HIT_BODY + ( w > 0 ? w * ( 1.0f - RD_HIT_BODY ) : 0 );
+		VectorMA( rd->old[k], -RD_STEP * w, vel, rd->old[k] );     // verlet: velocity is p - old
 	}
 	RD_Wake( rd );
 }
@@ -1402,7 +1405,8 @@ static void RD_Blast( ragdoll_t *rd, const vec3_t origin, float radius, float st
 		}
 		VectorSubtract( rd->p[k], origin, dir );
 		dist = VectorNormalize( dir );
-		w = 1.0f - dist / radius;
+		// mostly by how far the body is, a little by how far the part is: thrown, not spun
+		w = 1.0f - ( 0.7f * Distance( rd->p[P_PELVIS], origin ) + 0.3f * dist ) / radius;
 		if ( w <= 0 ) {
 			continue;
 		}
@@ -1427,6 +1431,7 @@ static rdPending_t *RD_PendingSlot( void ) {
 
 // a new ragdoll gets whatever hit it just before it became one
 static void RD_ApplyPending( ragdoll_t *rd ) {
+	rdPending_t *last = NULL;
 	int i;
 
 	for ( i = 0; i < RD_MAX_PENDING; i++ ) {
@@ -1435,17 +1440,28 @@ static void RD_ApplyPending( ragdoll_t *rd ) {
 			continue;
 		}
 		if ( pd->entityNum == rd->entityNum ) {
-			// the shot that killed: thrown by it (shot reactions)
-			vec3_t v;
-			VectorScale( pd->vel, CG_VRX_Knock( qtrue ), v );
-			if ( CG_VRX_Knock( qtrue ) > 1.0f ) {
-				v[2] += 30.0f * CG_VRX_Knock( qtrue );
+			// only the shot that killed: a whole burst added up flung the body round
+			if ( !last || pd->time >= last->time ) {
+				last = pd;
 			}
-			RD_PushPoints( rd, pd->point, v );
-			pd->time = 0;
 		} else if ( pd->entityNum < 0 ) {
 			RD_Blast( rd, pd->point, pd->radius, pd->strength );
 		}
+	}
+	for ( i = 0; i < RD_MAX_PENDING; i++ ) {
+		if ( rdPending[i].entityNum == rd->entityNum && &rdPending[i] != last ) {
+			rdPending[i].time = 0;
+		}
+	}
+	if ( last ) {
+		// thrown by it (shot reactions)
+		vec3_t v;
+		VectorScale( last->vel, CG_VRX_Knock( qtrue ), v );
+		if ( CG_VRX_Knock( qtrue ) > 1.0f ) {
+			v[2] += 30.0f * CG_VRX_Knock( qtrue );
+		}
+		RD_PushPoints( rd, last->point, v );
+		last->time = 0;
 	}
 }
 
