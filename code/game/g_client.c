@@ -1208,6 +1208,31 @@ qboolean G_CheckForExistingModelInfo( gclient_t *cl, char *modelName, animModelI
 }
 
 /*
+==================
+G_AnimModelAvailable
+
+RealRTCW-VR: qtrue if the model's animations are already loaded or its wolfanim.cfg exists
+==================
+*/
+static qboolean G_AnimModelAvailable( const char *modelName ) {
+	int i, len;
+	fileHandle_t f;
+
+	for ( i = 0; i < MAX_ANIMSCRIPT_MODELS; i++ ) {
+		animModelInfo_t *trav = level.animScriptData.modelInfo[i];
+		if ( trav && trav->modelname[0] && !Q_stricmp( trav->modelname, modelName ) ) {
+			return qtrue;
+		}
+	}
+	len = trap_FS_FOpenFile( va( "models/players/%s/wolfanim.cfg", modelName ), &f, FS_READ );
+	if ( len < 0 ) {
+		return qfalse;
+	}
+	trap_FS_FCloseFile( f );
+	return len > 0;
+}
+
+/*
 ==============
 G_GetModelInfo
 ==============
@@ -1470,6 +1495,15 @@ void ClientUserinfoChanged( int clientNum ) {
 		modelname[ strstr( modelname, "/" ) - modelname ] = 0;
 	} else if ( strstr( modelname, "\\" ) ) {
 		modelname[ strstr( modelname, "\\" ) - modelname ] = 0;
+	}
+
+	// RealRTCW-VR: an AI whose model isn't installed (the modern RealRTCW ones, e.g. merc, come
+	// from RealRTCW's paks) looks like a soldier instead of ending the level with G_Error
+	if ( ( ent->r.svFlags & SVF_CASTAI ) && !G_AnimModelAvailable( modelname ) ) {
+		G_Printf( S_COLOR_YELLOW "WARNING: model %s (%s) isn't installed, it uses infantryss\n",
+				  modelname, ent->aiName ? ent->aiName : "" );
+		Q_strncpyz( model, "infantryss/default", sizeof( model ) );
+		Q_strncpyz( modelname, "infantryss", sizeof( modelname ) );
 	}
 
 	if ( !G_CheckForExistingModelInfo( client, modelname, &client->modelInfo ) ) {
