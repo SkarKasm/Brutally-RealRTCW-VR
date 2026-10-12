@@ -172,6 +172,7 @@ vmCvar_t sv_hostname;       // So it's more accesible
 vmCvar_t g_votesPerUser;    // How many votes can user call each game
 vmCvar_t g_bannedMSG;       // Used to point banned users to desired forum..
 vmCvar_t g_shove;           // Enable - Disable shove
+vmCvar_t g_cinMaxTime;      // RealRTCW-VR: longest wait for a co-op cin_play video, seconds
 vmCvar_t g_vrTraining;      // RealRTCW-VR: 1 all weapons, ammo, no harm; 2 and enemies ignore you
 vmCvar_t g_flatGrab;        // RealRTCW-VR: players without a headset pick up bodies (hold use)
 vmCvar_t g_vrGrabAssist;    // RealRTCW-VR: how far hands reach for things: 0 off, 1 normal, 2 strong
@@ -334,6 +335,7 @@ cvarTable_t gameCvarTable[] = {
 
 	// RealRTCW-VR: cvars the modern RealRTCW (Cursed Sands) map scripts test with #if, registered with
 	// RealRTCW SP's defaults so co-op takes the same branches (an unknown cvar would read as 0)
+	{ &g_cinMaxTime, "g_cinMaxTime", "300", CVAR_ARCHIVE, 0, qfalse },   // RealRTCW-VR: co-op cin_play waits at most this long (s)
 	{ NULL, "g_newinventory", "0", CVAR_SERVERINFO | CVAR_LATCH | CVAR_ARCHIVE, 0, qfalse },
 	{ NULL, "g_vanilla_guns", "0", CVAR_ARCHIVE | CVAR_LATCH, 0, qfalse },  // 0: RealRTCW's modern guns
 	{ NULL, "g_realism", "0", CVAR_ARCHIVE | CVAR_LATCH, 0, qfalse },
@@ -2932,19 +2934,13 @@ void G_RunThink( gentity_t *ent ) {
 }
 
 /*
-================
-G_RunFrame
-
-Advances the non-player objects in the world
-================
-*/
-/*
 =================
 RealRTCW-VR: co-op cin_play
 
 A cin_play in the AI scripts makes every client play a video ("cin_play <file> <mode>"
 server command); each answers "cin_done [file]" when it ends or is skipped. The script
-waits until every human player has answered, none are left, or CIN_MAX_TIME passed.
+waits until every human player has answered, none are left, or g_cinMaxTime seconds
+(default 300) passed.
 Meanwhile the players can't move, attack or be hurt.
 =================
 */
@@ -3029,6 +3025,13 @@ qboolean G_CinematicFrozen( gentity_t *ent ) {
 	return level.cinStartTime && ent->client && !( ent->r.svFlags & SVF_CASTAI );
 }
 
+/*
+================
+G_RunFrame
+
+Advances the non-player objects in the world
+================
+*/
 void G_RunFrame( int levelTime ) {
 	int i;
 	gentity_t   *ent;

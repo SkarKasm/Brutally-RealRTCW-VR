@@ -887,7 +887,8 @@ gentity_t *G_DropSpecifiedItem( gentity_t *ent, gitem_t *item, int lifetimeMs, i
 const char *G_ModernItemAlias( const char *classname );     // RealRTCW-VR: modern RealRTCW item -> co-op item
 
 // RealRTCW-VR: co-op cin_play (g_main.c)
-#define CIN_MAX_TIME    ( 5 * 60 * 1000 )   // the video's length isn't known on the server
+#define CIN_MAX_TIME    ( g_cinMaxTime.integer * 1000 )   // the video's length isn't known on the server
+extern vmCvar_t g_cinMaxTime;
 void G_CinematicStart( const char *file, int mode );
 qboolean G_CinematicUpdate( void );         // qtrue while a video is still playing for someone
 void G_CinematicStop( void );
