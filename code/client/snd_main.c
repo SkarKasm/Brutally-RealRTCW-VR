@@ -26,6 +26,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "snd_local.h"
 #include "snd_public.h"
 
+// RealRTCW-VR: level cinematics (cl_cin.c) mute the game and restart its music after
+static char s_bgIntro[MAX_QPATH];
+static char s_bgLoop[MAX_QPATH];
+static qboolean s_cinematicMute = qfalse;
+
 cvar_t *s_volume;
 cvar_t *s_muted;
 cvar_t *s_musicVolume;
@@ -88,6 +93,9 @@ S_StartSound
 */
 void S_StartSound( vec3_t origin, int entnum, int entchannel, sfxHandle_t sfx )
 {
+	if ( s_cinematicMute ) {
+		return;
+	}
 	if( si.StartSound ) {
 		si.StartSound( origin, entnum, entchannel, sfx );
 	}
@@ -100,6 +108,9 @@ S_StartSoundEx
 */
 void S_StartSoundEx( vec3_t origin, int entnum, int entchannel, sfxHandle_t sfx, int flags )
 {
+	if ( s_cinematicMute ) {
+		return;
+	}
 	if( si.StartSoundEx ) {
 		si.StartSoundEx( origin, entnum, entchannel, sfx, flags );
 	}
@@ -124,6 +135,8 @@ S_StartBackgroundTrack
 */
 void S_StartBackgroundTrack( const char *intro, const char *loop )
 {
+	Q_strncpyz( s_bgIntro, intro ? intro : "", sizeof( s_bgIntro ) );
+	Q_strncpyz( s_bgLoop, loop ? loop : "", sizeof( s_bgLoop ) );
 	if( si.StartBackgroundTrack ) {
 		si.StartBackgroundTrack( intro, loop );
 	}
@@ -246,6 +259,9 @@ S_AddLoopingSound
 void S_AddLoopingSound( int entityNum, const vec3_t origin,
 		const vec3_t velocity, const int range, sfxHandle_t sfx, int volume )
 {
+	if ( s_cinematicMute ) {
+		return;
+	}
 	if( si.AddLoopingSound ) {
 		si.AddLoopingSound( entityNum, origin, velocity, range, sfx, volume );
 	}
@@ -542,6 +558,20 @@ void S_StopMusic_f( void )
 
 
 //=============================================================================
+
+void S_RestartBackgroundTrack( void ) {
+	if ( s_bgIntro[0] || s_bgLoop[0] ) {
+		S_StartBackgroundTrack( s_bgIntro, s_bgLoop );
+	}
+}
+
+void S_SetCinematicMute( qboolean mute ) {
+	s_cinematicMute = mute;
+	if ( mute ) {
+		S_StopBackgroundTrack();
+		S_StopAllSounds();
+	}
+}
 
 /*
 =================

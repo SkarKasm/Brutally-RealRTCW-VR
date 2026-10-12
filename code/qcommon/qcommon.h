@@ -775,6 +775,8 @@ void    FS_WriteFile( const char *qpath, const void *buffer, int size );
 // writes a complete file, creating any subdirectories needed
 
 long FS_filelength(fileHandle_t f);
+long FS_filelengthInPak( fileHandle_t f );      // RealRTCW-VR
+qboolean FS_isFileHandleInPak( fileHandle_t f );
 // doesn't work for files that are opened from a pack file
 
 int     FS_FTell( fileHandle_t f );

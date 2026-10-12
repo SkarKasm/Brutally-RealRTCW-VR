@@ -60,6 +60,11 @@ If you have questions concerning this license or the applicable additional terms
 #define LIMBOCHAT_WIDTH		140     // NERVE - SMF
 #define LIMBOCHAT_HEIGHT	7       // NERVE - SMF
 
+// cl_scrn
+#define TEXT_ALIGN_LEFT     0       // left alignment
+#define TEXT_ALIGN_CENTER   1       // center alignment
+#define TEXT_ALIGN_RIGHT    2       // right alignment
+
 // snapshots are a view of the server at a given time
 typedef struct {
 	qboolean valid;                 // cleared if delta parsing was invalid
@@ -403,6 +408,7 @@ typedef struct {
 	// rendering info
 	glconfig_t glconfig;
 	qhandle_t charSetShader;
+	qhandle_t subtitleCharSetShader;    // RealRTCW-VR: level cinematic subtitles
 	qhandle_t whiteShader;
 	qhandle_t consoleShader;
 	qhandle_t consoleShader2;   //----(SA)	added
@@ -423,6 +429,7 @@ extern refexport_t re;          // interface to refresh shared library
 //
 // cvars
 //
+extern cvar_t  *cl_drawCineSubtitles;     // RealRTCW-VR
 extern cvar_t  *cl_nodelta;
 extern cvar_t  *cl_debugMove;
 extern cvar_t  *cl_noprint;
@@ -733,6 +740,14 @@ void    SCR_UpdateScreen( void );
 void	SCR_DebugGraph (float value);
 
 int     SCR_GetBigStringWidth( const char *str );   // returns in virtual 640x480 coordinates
+void    SCR_DrawStringExt2( int x, int y, float size, const char *string, float *setColor, qboolean forceColor, qboolean noColorEscape, int font );
+void    SCR_Text_AutoWrapped_Paint( float x, float y, float scale, const char *text, float maxLineWidth, vec4_t color, int alignType, int font );
+// RealRTCW-VR: level cinematics (cl_cin.c), started by the server's cin_play
+void CL_LevelCin_Play( const char *name, int mode );
+void CL_LevelCin_Stop( void );
+qboolean SCR_LevelCinematicActive( void );
+void SCR_RunLevelCinematic( void );
+void SCR_DrawLevelCinematic( void );
 
 void    SCR_AdjustFrom640( float *x, float *y, float *w, float *h );
 void    SCR_FillRect( float x, float y, float width, float height,

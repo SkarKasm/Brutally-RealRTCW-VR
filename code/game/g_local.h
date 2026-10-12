@@ -834,6 +834,7 @@ typedef struct {
 	int cameraViewers;                      // clients watching it this frame
 	qboolean cameraInterrupted;             // a skip was already passed on to the script
 	int cameraUpdateTime[MAX_CLIENTS];      // last "setCameraOrigin" from each viewer
+	byte cameraBroadcast[MAX_GENTITIES];    // characters sent to everyone while a camera runs (G_CheckCameras)
 } level_locals_t;
 
 //extern    qboolean	reloading;				// loading up a savegame

@@ -2899,7 +2899,7 @@ void CL_VR_ProcessInput( void ) {
 
 	// cutscenes and videos: any face button or trigger skips them (the engine treats
 	// Escape as "skip" while they play)
-	if ( ( cl.cameraMode || clc.state == CA_CINEMATIC ) &&
+	if ( ( cl.cameraMode || SCR_LevelCinematicActive() || clc.state == CA_CINEMATIC ) &&
 		 !( Key_GetCatcher() & ( KEYCATCH_UI | KEYCATCH_CONSOLE ) ) ) {
 		int h;
 		qboolean skip = qfalse;

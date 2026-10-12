@@ -68,6 +68,7 @@ cvar_t  *cl_nodelta;
 cvar_t  *cl_debugMove;
 
 cvar_t  *cl_noprint;
+cvar_t  *cl_drawCineSubtitles;      // RealRTCW-VR
 #ifdef UPDATE_SERVER_NAME
 cvar_t  *cl_motd;
 #endif
@@ -3276,6 +3277,8 @@ void CL_Frame( int msec ) {
 	// decide on the serverTime to render
 	CL_SetCGameTime();
 
+	SCR_RunLevelCinematic();    // RealRTCW-VR
+
 	// update the screen
 	SCR_UpdateScreen();
 
@@ -3509,6 +3512,7 @@ void CL_InitRenderer( void ) {
 
 	// load character sets
 	cls.charSetShader = re.RegisterShader( "gfx/2d/hudchars" );
+	cls.subtitleCharSetShader = re.RegisterShader( "gfx/2d/subchars" );
 	cls.whiteShader = re.RegisterShader( "white" );
 	cls.consoleShader = re.RegisterShader( "console" );
 	cls.consoleShader2 = re.RegisterShader( "console2" );
@@ -4055,6 +4059,7 @@ void CL_Init( void ) {
 	// register our variables
 	//
 	cl_noprint = Cvar_Get( "cl_noprint", "0", 0 );
+	cl_drawCineSubtitles = Cvar_Get( "cl_drawCineSubtitles", "0", CVAR_ARCHIVE );
 #ifdef UPDATE_SERVER_NAME
 	cl_motd = Cvar_Get( "cl_motd", "1", 0 );
 #endif

@@ -319,6 +319,18 @@ rescan:
 	cmd = Cmd_Argv( 0 );
 	argc = Cmd_Argc();
 
+	// RealRTCW-VR: a video from the map script, for everyone (cl_cin.c)
+	if ( !strcmp( cmd, "cin_play" ) ) {
+		if ( Cmd_Argv( 1 )[0] ) {
+			CL_LevelCin_Play( Cmd_Argv( 1 ), atoi( Cmd_Argv( 2 ) ) );
+		}
+		return qfalse;
+	}
+	if ( !strcmp( cmd, "cin_stop" ) ) {
+		CL_LevelCin_Stop();
+		return qfalse;
+	}
+
 	if ( !strcmp( cmd, "disconnect" ) ) {
 		// NERVE - SMF - allow server to indicate why they were disconnected
 		if ( argc >= 2 ) {

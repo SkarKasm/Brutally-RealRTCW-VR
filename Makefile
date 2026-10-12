@@ -712,6 +712,9 @@ ifdef MINGW
   CLIENT_LIBS = -lgdi32 -lole32
   RENDERER_LIBS = -lgdi32 -lole32
 
+  # RealRTCW-VR: level cinematics (cl_cin.c) decode webm with ffmpeg, whose dlls ship with RealRTCW
+  CLIENT_LIBS += -lavformat.dll -lavcodec.dll -lavutil.dll -lswscale.dll -lswresample.dll
+
   ifeq ($(USE_FREETYPE),1)
     ifneq ($(USE_INTERNAL_FREETYPE),1)
       FREETYPE_CFLAGS = -Ifreetype2

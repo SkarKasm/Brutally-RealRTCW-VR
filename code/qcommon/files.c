@@ -516,6 +516,30 @@ long FS_filelength(fileHandle_t f)
 }
 
 /*
+================
+FS_filelengthInPak / FS_isFileHandleInPak (RealRTCW-VR: level cinematics stream from paks)
+================
+*/
+long FS_filelengthInPak( fileHandle_t f ) {
+	unz_file_info info;
+
+	if ( f <= 0 || f >= MAX_FILE_HANDLES || !fsh[f].zipFile || !fsh[f].handleFiles.file.z ) {
+		return -1;
+	}
+	if ( unzGetCurrentFileInfo( fsh[f].handleFiles.file.z, &info, NULL, 0, NULL, 0, NULL, 0 ) != UNZ_OK ) {
+		return -1;
+	}
+	return info.uncompressed_size;
+}
+
+qboolean FS_isFileHandleInPak( fileHandle_t f ) {
+	if ( f <= 0 || f >= MAX_FILE_HANDLES ) {
+		return qfalse;
+	}
+	return fsh[f].zipFile;
+}
+
+/*
 ====================
 FS_ReplaceSeparators
 

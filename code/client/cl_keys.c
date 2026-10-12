@@ -2244,6 +2244,13 @@ void CL_KeyDownEvent( int key, unsigned time )
 	if( keys[key].repeats == 1 )
 		anykeydown++;
 
+	// RealRTCW-VR: Esc skips a level cinematic (the others still watching carry on)
+	if ( SCR_LevelCinematicActive() && key == K_ESCAPE ) {
+		CL_LevelCin_Stop();
+		Key_ClearStates();
+		return;
+	}
+
 	if( keys[K_ALT].down && key == K_ENTER )
 	{
 		// don't repeat fullscreen toggle when keys are held down

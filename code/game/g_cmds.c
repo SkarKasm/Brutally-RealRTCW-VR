@@ -2519,6 +2519,23 @@ void G_CheckCameras( void ) {
 	if ( level.cameraOwner >= 0 && !level.cameraViewers && level.time - level.cameraStartTime > CAMERA_TIMEOUT ) {
 		level.cameraOwner = -1;
 	}
+
+	// RealRTCW-VR: the server sends each player the characters near him, and the camera's
+	// view only as far as the camera told it where it is (late, every 50 msec): characters
+	// the cutscene flies to were missing. While a camera runs every character goes to
+	// everyone.
+	for ( i = 0; i < level.num_entities; i++ ) {
+		ent = &g_entities[i];
+		if ( level.cameraViewers > 0 && ent->inuse && ( ent->r.svFlags & SVF_CASTAI ) ) {
+			if ( !( ent->r.svFlags & SVF_BROADCAST ) ) {
+				ent->r.svFlags |= SVF_BROADCAST;
+				level.cameraBroadcast[i] = 1;
+			}
+		} else if ( level.cameraBroadcast[i] ) {
+			level.cameraBroadcast[i] = 0;
+			ent->r.svFlags &= ~SVF_BROADCAST;
+		}
+	}
 }
 
 /*
@@ -2535,6 +2552,7 @@ void Cmd_StartCamera_f( gentity_t *ent ) {
 	g_camEnt->r.svFlags |= SVF_PORTAL;
 	g_camEnt->r.svFlags &= ~SVF_NOCLIENT;
 	ent->client->cameraPortal = g_camEnt;
+	VectorClear( ent->client->cameraOrigin );      // the last cutscene's, until the camera says
 	ent->client->ps.eFlags |= EF_VIEWING_CAMERA;
 	ent->s.eFlags |= EF_VIEWING_CAMERA;
 	level.cameraUpdateTime[ent->s.number] = level.time;

@@ -786,7 +786,12 @@ void ClientThink_real( gentity_t *ent ) {
 	if ( client->cameraPortal ) {
 		G_SetOrigin( client->cameraPortal, client->ps.origin );
 		trap_LinkEntity( client->cameraPortal );
-		VectorCopy( client->cameraOrigin, client->cameraPortal->s.origin2 );
+		// RealRTCW-VR: the portal is shared by all the viewers: only a fresh origin from the
+		// camera moves it (a player who has just joined the camera hasn't sent one yet)
+		if ( !VectorCompare( client->cameraOrigin, vec3_origin ) &&
+			 level.time - level.cameraUpdateTime[ent - g_entities] < 250 ) {
+			VectorCopy( client->cameraOrigin, client->cameraPortal->s.origin2 );
+		}
 	}
 
 	// mark the time, so the connection sprite can be removed
