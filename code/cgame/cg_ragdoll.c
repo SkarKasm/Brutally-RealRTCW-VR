@@ -34,7 +34,7 @@ the Free Software Foundation, either version 3 of the License, or
 #define BONEFLAG_TAG        1       // qfiles.h: this bone is actually a tag
 #endif
 
-#define RD_MAX_RAGDOLLS     32
+#define RD_MAX_RAGDOLLS     96
 #define RD_MAX_BONES        128
 #define RD_MAX_LINKS        96
 #define RD_STEP_MS          16          // fixed step, the same on every machine
@@ -1275,7 +1275,15 @@ static ragdoll_t *RD_Alloc( void ) {
 			oldest = &rdPool[i];
 		}
 	}
-	return oldest;      // the body seen longest ago goes back to its death animation
+	// the body seen longest ago goes back to its death animation, but never one still in
+	// view: bodies are drawn one after another, so "the oldest" this frame can be one about
+	// to be drawn, which would then take another's, and so on every frame (bodies standing
+	// up and falling again, playing their death animations over and over)
+	if ( cg.time - oldest->lastSeen < 250 ) {
+		return NULL;
+	}
+	oldest->inUse = qfalse;
+	return oldest;
 }
 
 /*
@@ -1410,6 +1418,11 @@ void CG_Ragdoll_Hit( int entityNum, const vec3_t point, const vec3_t dir, float 
 	}
 	VectorNormalize2( dir, vel );
 	VectorScale( vel, speed, vel );
+	// a shot down into a body on the floor can't push it through the floor: the solver would
+	// throw the points back out, and a burst from above sent bodies cartwheeling into the air
+	if ( vel[2] < 0 ) {
+		vel[2] *= 0.3f;
+	}
 
 	rd = RD_Find( entityNum );
 	if ( rd ) {
@@ -1519,6 +1532,9 @@ void CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body ) {
 			l->time = 0;
 		}
 		rd = RD_Alloc();
+		if ( !rd ) {
+			return;
+		}
 		ok = RD_Build( rd, cent, &start );
 		rdStartPose = NULL;
 		if ( !ok ) {
