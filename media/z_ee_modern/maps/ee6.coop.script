@@ -1,0 +1,867 @@
+//
+//Brush Scripting
+//Map: ee6
+//Last edited by: Scan (2003), William Faure (2026)
+//
+// Raster change - ainame peaon -
+// angle 135
+//
+
+game_manager
+{
+	// COOP: added by the co-op authors (script_multiplayer "game_manager" in maps/ee6.ents).
+	// Starts the level once for everyone and checks the objectives before the exit (objectives are shared).
+	spawn
+	{
+		accum 0 bitreset 1 // objective 1
+		accum 0 bitreset 2 // objective 2
+
+		// COOP: RealRTCW's achievement flag moved from accum 0 to accum 1 (accum 0 holds the objective bits)
+		accum 1 set 0 // achievement1
+
+		trigger player coopstart // prevents late players affecting the game
+	}
+
+	trigger checkexit
+	{
+		accum 0 abort_if_not_bitset 1 // objective 1
+		accum 0 abort_if_not_bitset 2 // objective 2
+
+		trigger player exitlevel
+	}
+	
+	trigger objective1
+	{
+		accum 0 bitset 1
+	}
+	
+	trigger objective2
+	{
+		accum 0 bitset 2
+	}
+
+	// RealRTCW (SP achievements; harmless in co-op)
+
+	trigger achievement1
+	{
+		accum 1 abort_if_equal 1
+		
+		trigger player achievement1 // Reach the last room without having triggered any of the traps across the level in the Tombs
+	}
+
+		trigger achievement1_fail
+		{
+			accum 1 set 1
+		}
+}
+
+/////////////////////////////////////////////
+// SECTION 1 - Drop Zone
+/////////////////////////////////////////////
+
+lift
+{
+	spawn
+	{
+	}
+
+	trigger down
+	{
+		playsound sound/scenaric/ee/elevator_fall.wav
+		gotomarker lift_start 5000 wait
+		gotomarker lift_start2 110 accel wait
+		gotomarker lift_speedup 100 accel wait
+		alertentity effect_rumble
+		trigger player dropdown_reset
+		gotomarker lift_end 500 accel wait
+		alertentity dust_on_crash
+		alertentity rope
+	}
+}
+
+// SPIKES
+
+spike_trap
+{
+	spawn
+	{
+	}
+
+	trigger reset
+	{
+		trigger spike_1s reset
+		trigger spike_1n reset
+		
+	}
+
+	trigger on
+	{
+//		#if fs_ee_ps2_maps >= 1 alertentity spikekill #endif
+		
+		trigger spike_1s out
+		trigger spike_1n out
+		
+		
+		wait 1500
+		trigger spike_trap stop
+	}
+
+	trigger off
+	{
+		trigger spike_1s reset
+		trigger spike_1n reset
+		
+	}
+
+	trigger stop
+	{
+//		#if fs_ee_ps2_maps >= 1 alertentity spikekill #endif
+
+		trigger spike_1s reset2
+		trigger spike_1n reset2
+		
+	}
+}
+
+spike_1s
+{
+	spawn
+	{
+	}
+
+	trigger reset
+	{
+		gotomarker 1s_in 400 wait
+	}
+
+	trigger reset2
+	{
+		
+		playsound sound\movers\doors\door6_loopo.wav looping
+		gotomarker 1s_in 5 wait
+		stopsound
+		playsound sound\movers\doors\door5_endc.wav
+	}
+
+	trigger out
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 1s_out 1000 wait
+	}
+}
+
+spike_1n
+{
+	spawn
+	{
+	}
+
+	trigger reset
+	{
+		gotomarker 1n_in 400 wait
+	}
+
+	trigger reset2
+	{
+		
+		playsound sound\movers\doors\door6_loopo.wav looping
+		gotomarker 1n_in 5 wait
+		stopsound
+		playsound sound\movers\doors\door5_endc.wav
+	}
+
+	trigger out
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 1n_out 1000 wait
+	}
+}
+
+spike_2s
+{
+	spawn
+	{
+	}
+
+	trigger reset
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 2s_in 400 wait
+	}
+
+	trigger reset2
+	{
+		playsound sound\movers\doors\door5_close.wav looping
+		gotomarker 2s_in 200 wait
+		stopsound
+		playsound sound\movers\doors\door5_locked.wav
+	}
+
+	trigger out
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 2s_out 400 wait
+	}
+}
+
+spike_2n
+{
+	spawn
+	{
+	}
+
+	trigger reset
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 2n_in 400 wait
+	}
+
+	trigger reset2
+	{
+		playsound sound\movers\doors\door5_close.wav looping
+		gotomarker 2n_in 200 wait
+		stopsound
+		playsound sound\movers\doors\door5_locked.wav
+	}
+
+	trigger out
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 2n_out 400 wait
+	}
+}
+
+spike_3s
+{
+	spawn
+	{
+	}
+
+	trigger reset
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 3s_in 400 wait
+	}
+
+	trigger reset2
+	{
+		playsound sound\movers\doors\door5_close.wav looping
+		gotomarker 3s_in 200 wait
+		stopsound
+		playsound sound\movers\doors\door5_locked.wav
+	}
+
+	trigger out
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 3s_out 400 wait
+	}
+}
+
+spike_3n
+{
+	spawn
+	{
+	}
+
+	trigger reset
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 3n_in 400 wait
+	}
+
+	trigger reset2
+	{
+		playsound sound\movers\doors\door5_close.wav looping
+		gotomarker 3n_in 200 wait
+		stopsound
+		playsound sound\movers\doors\door5_locked.wav
+	}
+
+	trigger out
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 3n_out 400 wait
+	}
+}
+
+spike_4s
+{
+	spawn
+	{
+	}
+
+	trigger reset
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 4s_in 400 wait
+	}
+
+	trigger reset2
+	{
+		playsound sound\movers\doors\door5_close.wav looping
+		gotomarker 4s_in 200 wait
+		stopsound
+		playsound sound\movers\doors\door5_locked.wav
+	}
+
+	trigger out
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 4s_out 400 wait
+	}
+}
+
+spike_4n
+{
+	spawn
+	{
+	}
+
+	trigger reset
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 4n_in 400 wait
+	}
+
+	trigger reset2
+	{
+		playsound sound\movers\doors\door5_close.wav looping
+		gotomarker 4n_in 200 wait
+		stopsound
+		playsound sound\movers\doors\door5_locked.wav
+	}
+
+	trigger out
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 4n_out 400 wait
+	}
+}
+
+/////////////////////////////////////////////
+// Secret2Door1
+/////////////////////////////////////////////
+
+secret2door1
+{
+	spawn
+	{
+		wait 100
+		gotomarker sdoor1_spot1 1000
+	}
+
+	trigger open
+	{
+		alertentity locked_d1
+		playsound sound/movers/doors/door2_open.wav looping
+		gotomarker sdoor1_spot2 20 wait
+		playsound sound/movers/doors/door2_locked.wav
+		stopsound
+
+	}
+
+}
+
+/////////////////////////////////////////////
+// Secret2Door2
+/////////////////////////////////////////////
+
+secret2door2
+{
+	spawn
+	{
+		wait 100
+		gotomarker sdoor2_spot1 1000
+	}
+
+	trigger open
+	{
+		alertentity locked_d2
+		playsound sound/movers/doors/door2_open.wav looping
+		gotomarker sdoor2_spot2 20 wait
+		playsound sound/movers/doors/door2_locked.wav
+		stopsound
+
+	}
+
+}
+
+/////////////////////////////////////////////
+// SECTION 3 - Gate Hallway
+/////////////////////////////////////////////
+
+portcullis1
+{
+	spawn
+	{
+		accum 0 bitreset 0
+	}
+
+	trigger toggle
+	{
+		wait 5
+		trigger portcullis1 up
+		wait 5
+		trigger portcullis1 down
+	}
+
+	trigger up
+	{
+		accum 0 abort_if_bitset 0
+		accum 0 bitset 0
+
+		resetscript
+
+		// reset sound
+		stopsound
+		playsound sound/movers/doors/door6_loopo.wav looping
+
+		// move to up location target
+		gotomarker port1spot1 10 wait
+		stopsound
+	}
+
+	trigger down
+	{
+		// don't if already down
+		accum 0 abort_if_not_bitset 0
+
+		// set it to down
+		accum 0 bitreset 0
+
+		//
+		resetscript
+
+		stopsound
+		playsound sound/scenaric/church/doorcrash.wav
+		gotomarker port1spot2 200 wait
+		//gotomarker port1spot2 200 accel wait
+		//gotomarker port1spot3 60 deccel wait
+		//gotomarker port1spot2 80 accel wait
+	}
+}
+
+/////////////////////////////////////////////
+// SECTION 4 - Upper Level Connections
+/////////////////////////////////////////////
+
+// trap heading to gate switch
+
+spike2_1s
+{
+	spawn
+	{
+	}
+
+	trigger reset
+	{
+		playsound sound\movers\doors\door2_close.wav looping
+		gotomarker 1s2_in 100 wait
+		stopsound
+	}
+
+	trigger go
+	{
+		wait 100
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 1s2_out 400 wait
+	//	trigger spike2_1s out
+		wait 4000
+		trigger spike2_1s reset
+	}
+
+	trigger reset2
+	{
+		gotomarker 1s2_in 200 wait
+	}
+
+	trigger out
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 1s2_out 400 wait
+	}
+}
+
+spike2_1n
+{
+	spawn
+	{
+	}
+
+	trigger go
+	{
+		wait 100
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 1n2_out 400 wait
+	//	trigger spike2_1n out
+		wait 4000
+		trigger spike2_1n reset
+	}
+
+	trigger reset
+	{
+		playsound sound\movers\doors\door2_close.wav looping
+		gotomarker 1n2_in 100 wait
+		stopsound
+	}
+
+	trigger reset2
+	{
+		gotomarker 1n2_in 200 wait
+	}
+
+	trigger out
+	{
+		playsound sound/scenaric/crypt2/spikes.wav
+		gotomarker 1n2_out 400 wait
+	}
+}
+
+secretdoor
+{
+	spawn
+	{
+		gotomarker secretdoor_start
+	}
+
+	trigger open
+	{
+		playsound sound\movers\doors\door2_open.wav
+		wait 500
+		gotomarker secretdoor_lerp 10 wait
+		playsound sound\movers\doors\door2_loop.wav looping
+		gotomarker secretdoor_slide 20 wait
+		stopsound
+		playsound sound\movers\doors\door2_locked.wav
+	}
+}
+
+/////////////////////////////////////////////
+// Section 6 - Big Room
+/////////////////////////////////////////////
+
+
+/////////////////////////////////////////////
+// Cinematic
+/////////////////////////////////////////////
+
+cine_counter
+{
+	spawn
+	{
+		accum 0 set 0 // interrupt check (not used anymore)
+		accum 1 set 0 // clean1 called
+		accum 2 set 0 // clean2 called
+	}
+
+	trigger cine_setup
+	{
+		// scene has two elite guards waiting down by the exit port cullis
+		// helga and the scientist are by the carsaphogus
+		alertentity cine_leet1
+		alertentity cine_leet2
+		alertentity cine_helga1
+		alertentity peon
+
+		trigger fake_port reset
+
+		wait 100
+
+		// zoom in on nazi
+		trigger player cam1
+
+		trigger cine_counter cine_dialogue
+	}
+
+	trigger cine_dialogue
+	{
+		accum 1 abort_if_not_equal 0
+
+		wait 6000
+
+		// this is the cophasgus :O
+		trigger peon talk1
+		wait 2250
+
+		// focus on helga as she talks,
+		trigger player cam2
+		trigger cine_helga1 talk1
+		wait 2000
+
+		// focus back on scientist
+		trigger player cam2a
+		wait 500
+
+		// show him again, but..
+		trigger peon talk2
+		wait 1000
+
+		// helga again
+		trigger player cam2b
+		trigger cine_helga1 talk2
+		wait 1500
+
+		// helga looks towards sophagus
+		trigger cine_helga1 face_death
+		wait 400
+
+		// scientist looks towards sophagus
+		wait 800
+
+		trigger cine_helga1 walk_to_death
+
+		trigger player cam3
+		wait 1000
+		trigger lid open
+		wait 3000
+
+		// heir himler will be very pleased
+		trigger cine_helga1 talk3
+		wait 1000
+
+		wait 2000
+
+		// new camera, no you musn't
+		trigger player cam3a
+		wait 500
+		trigger peon talk3
+	//	wait 1000
+		wait 2000
+
+		trigger cine_counter cine_dialogue2
+	}
+
+	trigger cine_dialogue2
+	{
+		accum 1 abort_if_not_equal 0
+
+		trigger peon face_helga
+
+		trigger player cam4
+		wait 100
+		trigger cine_helga1 face_death
+		wait 500
+		trigger cine_helga1 anim8
+		wait 500
+		trigger peon face_death
+
+		wait 1000
+
+		alertentity cine_rumble
+		wait 1300
+
+		trigger peon face_away
+		trigger peon run_away
+		trigger cine_leet1 alert
+
+		// added new offset here
+		wait 2000
+
+		trigger cine_leet2 alert
+		wait 700
+		trigger cine_leet1 alert2
+		wait 120
+		trigger cine_leet2 alert2
+
+		// wait 6400 total
+		// rem'd 220
+
+		// wait 2600
+		wait 1800
+		trigger player cam5
+
+		wait 2000
+		alertentity nazi_scream3
+		wait 2450
+		trigger fake_port down
+
+		wait 2000 // new no disappear
+
+		trigger player lift_crash
+		trigger cine_counter clean1
+
+
+		// add if end added again
+		//	trigger cine_counter cine_end
+	}
+
+	trigger cine_end
+	{
+		accum 2 abort_if_not_equal 0
+		wait 100
+
+		alertentity cine_helga1a
+		alertentity cine_leet1a
+		alertentity cine_leet2a
+
+		wait 100
+		trigger player cam6
+		wait 1500
+		alertentity nazi_scream3
+
+		trigger cine_helga1a turn
+		wait 500
+
+		trigger cine_leet1a turn
+		wait 250
+
+		trigger cine_leet2a turn
+		trigger fake_port down //gate crashes down
+		wait 750
+
+		trigger player cam7
+		wait 1000
+
+		trigger cine_helga1a anim8
+		wait 3000
+
+		trigger player lift_crash
+
+		wait 2500
+
+		// cleanup second section
+		trigger cine_counter clean2
+	}
+
+	trigger clean1
+	{
+		accum 1 abort_if_not_equal 0
+		accum 1 set 1
+
+		wait 1500
+		alertentity cine_cleanup
+		alertentity object_dissapear
+		wait 2000
+	}
+
+	trigger clean2
+	{
+		accum 2 abort_if_not_equal 0
+		accum 2 set 1
+
+	// add if end added again
+	//	alertentity cine_cleanup2
+	//	alertentity object_dissapear
+	//	wait 2000
+	}
+
+	trigger cine_cleanup_interrupted
+	{
+
+		trigger fake_port down
+		trigger player lift_crash
+		wait 2000
+		trigger cine_counter clean1
+
+
+	// add if end added again
+
+	//	trigger cine_counter clean2
+		trigger lid open
+
+		accum 1 set 1
+		accum 2 set 1
+
+	}
+}
+
+lid
+{
+	spawn
+	{
+		accum 0 set 0 // has opened
+	}
+
+	trigger reset
+	{
+		gotomarker lid_spot1 300 wait
+	}
+
+	trigger open
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		gotomarker lid_spot1 10 wait
+		playsound sound\scenaric\ee\ee6_lid_mover.wav
+		wait 10
+		gotomarker lid_spot2 10 wait
+		wait 800
+		gotomarker lid_spot3 40 accel wait
+		gotomarker lid_spot4 200 accel wait
+		gotomarker lid_spot5 350 accel wait
+
+//		gotomarker lid_spot4 60 accel wait
+//		gotomarker lid_spot5 120 accel wait
+	}
+}
+
+fake_port
+{
+	spawn
+	{
+		gotomarker fake_port_3 3000 wait
+	}
+
+	trigger reset
+	{
+		gotomarker fake_port_3 3000 wait
+	}
+
+	trigger down
+	{
+		stopsound
+		playsound sound\movers\doors\door6_loopc.wav looping
+		gotomarker fake_port_1 200 accel wait
+		playsound sound\movers\doors\door6_endc.wav
+		gotomarker fake_port_2 160 deccel wait
+		gotomarker fake_port_1 80 accel wait
+		stopsound
+	}
+}
+
+stoned
+{
+	spawn
+	{
+
+	}
+
+	trigger reset
+	{
+		gotomarker stoned_open 300
+	}
+
+
+	trigger nrv_shake1
+	{
+		playsound ee6_rumble1
+	}
+
+	trigger nrv_shake2
+	{
+		playsound ee6_rumble2
+	}
+
+	trigger nrv_shake3
+	{
+		playsound ee6_rumble3
+	}
+
+	trigger close
+	{
+		playsound sound\scenaric\ee\lockdown.wav //looping
+		gotomarker stoned_close 400 wait
+		stopsound
+		alertentity stonedoor_relay
+		playsound sound\movers\doors\door3_locked.wav
+	}
+
+	trigger open
+	{
+		playsound sound\scenaric\ee\lockdown.wav //looping
+		gotomarker stoned_open 50 wait
+		stopsound
+	}
+}

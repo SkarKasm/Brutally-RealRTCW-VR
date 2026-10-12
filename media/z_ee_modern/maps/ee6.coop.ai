@@ -1,0 +1,4997 @@
+//AI Scripting
+//Map: ee6
+//Last edited by: Scan (2003), William Faure (2026)
+
+player
+{
+	// COOP: level start, run once from game_manager's spawn (maps/ee6.coop.script). It holds what
+	// RealRTCW runs for its single player in "spawn", "playerstart" and "trigger playgame".
+	trigger coopstart
+	{
+		globalaccum 0 set 0 // popout
+		globalaccum 1 set 1 // last guys
+		globalaccum 2 set 0 // objectives
+		globalaccum 3 set 0 // secret1
+		globalaccum 4 set 0 // zombie kill count for area 6
+		globalaccum 5 set 0 // cinematic interrupt
+		globalaccum 6 set 0 // allow first nazi's to spawn
+		globalaccum 7 set 0 // door press state
+
+		cvar g_episode 1
+		objectivesneeded 2
+		
+		numsecrets 3
+		
+		//
+
+		abort_if_loadgame
+		// COOP: no briefing screen, the level music starts at once
+		// (SP: l_briefing_1 / l_theme in spawn, then "mu_fade 0 1500" + "mu_queue sound/music/c_chant" in playerstart)
+		mu_start sound/music/c_chant
+		
+		#if cg_drawSubtitles <= 0 cin_play ee6.webm #endif
+		#if cg_drawSubtitles >= 1 cin_play ee6_sub.webm #endif
+		
+		//
+		
+		trigger stoned reset
+		//trigger cine_counter cine_setup	//CGC
+		trigger player lift_crash			//CGC
+		trigger cine_counter clean1			//CGC
+	}
+
+	// COOP: every player, on each (re)spawn: RealRTCW's "applyloadout ee6"
+	// (loadouts/loadouts_campaign.loadout) written with co-op actions ("setclip ... full" -> max clip)
+	spawn
+	{
+		giveweapon weapon_knife
+		
+		giveweapon weapon_colt
+		setclip weapon_colt 8
+		#if g_vanilla_guns <= 0 setammo ammo_45cal 31 #endif
+		#if g_vanilla_guns >= 1 setammo ammo_45cal 32 #endif
+		
+		#if g_newInventory <= 0
+		giveweapon weapon_luger
+		setclip weapon_luger 8
+		giveweapon weapon_mauserrifle
+		setclip weapon_mauserrifle 10
+		setammo ammo_792mm 8
+		#endif
+		
+		giveweapon weapon_mp40
+		setclip weapon_mp40 32
+		setammo ammo_9mm 128
+		
+		setammo ammo_grenades 2
+		
+		selectweapon weapon_mp40
+		
+		giveinventory key_binocs
+	}
+
+	// COOP: in co-op this runs on every client spawn; the level start is "trigger coopstart"
+	playerstart
+	{
+	}
+
+	// This trigger will be called when the player actually hits the changelevel trigger,
+	// AND he has found all the secrets.  Give him a cookie!
+	trigger endmap_bonus
+	{
+		// COOP-OFF (endmap_bonus is never called in co-op): printbonus ee6
+		// COOP-OFF (endmap_bonus is never called in co-op): givehealth item_health // giveinventory item_health
+		// COOP-OFF (endmap_bonus is never called in co-op): giveammo ammo_45cal // giveinventory ammo_45cal
+	}
+	
+	trigger checkpoint // Upper Tombs
+	{
+		// COOP-OFF (SP save/bonus): savecheckpoint
+	}
+
+///////////////////////////////////////////////////
+// Achievements
+	
+	trigger achievement1
+	{
+		// COOP-OFF (SP achievement): achievement_eeTraps // Reach the last room without having triggered any of the traps across the level in the Tombs
+	}
+	
+	trigger stealth_achievement
+	{
+		// COOP-OFF (SP achievement): globalaccum 3 abort_if_greater_than 5
+		// COOP-OFF (SP achievement): globalaccum 3 inc 1
+		// COOP-OFF (SP achievement): globalaccum 3 abort_if_not_equal 5
+		// COOP-OFF (SP achievement): achievement_eeStealth // Perform 5 rewarded stealth kills in a single playthrough
+	}
+
+///////////////////////////////////////////////////
+// Misc
+
+	trigger lift_crash
+	{
+		alertentity rope // trigger lift down
+		trigger spike_trap reset
+		trigger lid open
+
+		wait 5
+
+		trigger spike2_1s reset2
+		trigger spike2_1n reset2
+		
+		#if g_reinforce >= 2 alertentity reinforce_bg1 #endif
+		#if g_reinforce >= 2 alertentity reinforce_leet1 #endif
+	}
+
+//	trigger endmap
+//	{
+//		cvar g_level_was_selected 0
+//		
+//		changelevel ee7 persistent
+//	}
+
+///////////////////////////////////////////////////
+// Ojectives
+
+	trigger obj1 // open 1st port
+	{
+		globalaccum 2 abort_if_not_equal 0
+		globalaccum 2 set 1
+		alertentity global_effect5
+		objectivemet 1
+		
+		#if fs_ee_wolf2_sound >= 1 mu_play sound/ui/objective_new4.wav #endif
+		
+		#if g_reinforce >= 2 alertentity reinforce_v2 #endif
+		
+		trigger game_manager objective1
+	}
+
+	trigger obj2 // entering exit path
+	{
+		objectivemet 2
+		
+		#if fs_ee_wolf2_sound >= 1 mu_play sound/ui/objective_new4.wav #endif
+		
+		globalaccum 2 set 2
+		
+		#if g_reinforce >= 2 alertentity reinforce_leet5 #endif
+		
+		trigger game_manager objective2
+	}
+
+///////////////////////////////////////////////////
+// Secrets
+
+	// door
+	trigger secret1
+	{
+		globalaccum 3 abort_if_not_equal 0
+		globalaccum 3 set 1
+		trigger secretdoor open
+	}
+
+	trigger nrv_secret1
+	{
+		foundsecret
+		
+		// COOP-OFF (SP achievement): globalaccum 0 inc 1
+	}
+
+	// wall
+	trigger secret2
+	{
+		foundsecret
+		
+		// COOP-OFF (SP achievement): globalaccum 0 inc 1
+	}
+
+
+	trigger sdoor1open
+	{
+		globalaccum 7 abort_if_not_equal 0
+		trigger secret2door1 open
+		globalaccum 7 inc 1
+	}
+	trigger sdoor2open
+	{
+		globalaccum 7 abort_if_not_equal 1
+		trigger secret2door2 open
+	}
+	trigger sdoorscript
+	{
+		trigger player sdoor2open
+		wait 300
+		trigger player sdoor1open
+	}
+
+	trigger action4secret
+	{
+		foundsecret
+	}
+
+/////////////////////////////////////////////
+// SECTION 1 - Drop Zone
+/////////////////////////////////////////////
+
+	trigger event_dropdownsound
+	{
+		wait 300
+		trigger nazi1b talk
+	}
+
+	trigger event_dropdown
+	{
+		trigger nazi1a go
+		trigger nazi1b go
+	}
+
+/////////////////////////////////////////////
+// SECTION 2 - Dungeon
+/////////////////////////////////////////////
+
+	// Zombies come from their cells
+
+	trigger action2a
+	{
+		#if g_reinforce >= 2 alertentity reinforce_leet2 #endif
+		
+		globalaccum 5 random 2
+		trigger player action2a_xbox
+		trigger player action2a_ps2
+	}
+
+	trigger action2a_xbox
+	{
+		globalaccum 5 abort_if_not_equal 0
+		
+		alertentity nazi2a
+		trigger nazi2a merc
+		
+		trigger player action2a_end
+	}
+
+	trigger action2a_ps2
+	{
+		globalaccum 5 abort_if_not_equal 1
+		
+		alertentity nazi2a_ps2
+		
+		trigger player action2a_end
+	}
+
+	trigger action2a_end
+	{
+		// Zombies come out of cells
+
+		alertentity zombie2a
+		alertentity zombie2b
+		alertentity zombie2c
+
+		alertentity speak1
+
+		trigger zombie2b go
+		wait 1000
+		trigger zombie2c go
+	}
+
+	// Zombie busts out of the wall
+
+	trigger action2b
+	{
+		trigger zombie2a go
+		trigger nazi2a go
+	}
+
+	// Cell Door Breaks Open
+	trigger action2bustout
+	{
+ 		alertentity speak2
+		alertentity kill_door
+		alertentity zombie2d
+		trigger zombie2d go
+	}
+
+
+/////////////////////////////////////////////
+// SECTION 3 & 4 - Pillar Room and Gate Hallway
+/////////////////////////////////////////////
+
+
+// Door Opens.  Spike trap in hallway
+
+	trigger spike_alert
+	{
+		trigger spike_trap on
+		
+		trigger game_manager achievement1_fail // Reach the last room without having triggered any of the traps across the level in the Tombs
+	}
+
+	trigger spike_off
+	{
+		trigger spike_trap stop
+	}
+
+	// trigger zombie in the room below the fighting
+	trigger action3a
+	{
+		#if g_reinforce >= 2 alertentity reinforce_bg2 #endif
+		
+		alertentity speak3
+		alertentity nazi3a
+
+		alertentity zombie3a
+		alertentity zombie3b
+
+		mu_queue sound/music/c_chant
+	}
+
+	// no action 3b yet
+
+	// Two nazis run away, and leave behind a present
+	trigger action3c
+	{
+		#if g_reinforce >= 2 alertentity reinforce_v1 #endif
+		
+		alertentity zombie3d
+
+		// spawn running nazi's
+		alertentity nazi3c
+		alertentity nazi3cc
+
+		// sounds, + door crash
+		alertentity second_fight
+		trigger ast second_fight
+		alertentity global_effect6
+
+		// general nazi drone, has target_delay to start after nazi run
+		alertentity speak4
+		wait 300
+	}
+
+
+	// Two zombies bust out of opposite sides of room
+	// TODO: Make some sort of commosion wake them up.
+	// banging on sides?
+
+	trigger action3d
+	{
+		#if g_reinforce >= 2 alertentity reinforce_bg3 #endif
+
+		alertentity zombie3c
+		alertentity zombie3cc
+
+		// blow out walls
+		alertentity z3c_blow
+		alertentity z3cc_blow
+
+		// play sound
+		alertentity speak5
+		wait 300
+
+	}
+
+	// The two nazis that ran away get killed by relay
+	// Moved the trigger to the beginning of section 4
+
+	trigger action3e
+	{
+		alertentity kill_escape
+		
+		#if g_reinforce >= 2 alertentity reinforce_leet3 #endif
+	}
+
+
+// Upstairs
+
+	trigger action4count
+	{
+		globalaccum 0 inc 1
+		globalaccum 0 abort_if_not_equal 6
+
+			globalaccum 0 set 0
+			wait 500
+			alertentity zombie4d
+	}
+
+	// Setup at bottom of stairs
+
+	trigger action4a
+	{
+		globalaccum 5 random 2
+		
+		trigger player action4a_ps2
+		trigger player action4a_xbox
+	}
+
+	trigger action4a_xbox
+	{
+		globalaccum 5 abort_if_not_equal 0
+		
+		alertentity nazi4a
+		trigger nazi4a merc
+		alertentity nazi4b
+		trigger nazi4b merc
+		alertentity nazi4c
+		trigger nazi4c merc
+		
+		trigger player action4a_end
+	}
+
+	trigger action4a_ps2
+	{
+		globalaccum 5 abort_if_not_equal 1
+	
+		alertentity nazi4a_ps2
+		trigger nazi4a_ps2 soldier
+		alertentity nazi4b_ps2
+		trigger nazi4b_ps2 soldier
+		alertentity nazi4c_ps2
+		trigger nazi4c_ps2 soldier
+		
+		trigger player action4a_end
+	}
+
+	trigger action4a_end
+	{
+		alertentity zombie4a
+		alertentity zombie4b
+		alertentity zombie4c
+
+		alertentity effect_rumble2
+		alertentity global_effect2
+		wait 15
+		trigger zombie4a go
+		
+		trigger player action4a_end_xbox
+		trigger player action4a_end_ps2
+	}
+
+	trigger action4a_end_xbox
+	{
+		globalaccum 5 abort_if_not_equal 0
+		
+		trigger nazi4a go
+	}
+
+	trigger action4a_end_ps2
+	{
+		globalaccum 5 abort_if_not_equal 1
+		
+		trigger nazi4a_ps2 go
+	}
+
+	// Nazis attack the player
+	trigger action4b
+	{
+		#if g_reinforce >= 2 alertentity reinforce_bg4 #endif
+		
+		trigger zombie4b go
+		trigger zombie4c go
+		trigger zombie4a can_hurt
+		
+		trigger player action4b_xbox
+		trigger player action4b_ps2
+	}
+	
+	trigger action4b_xbox
+	{
+		globalaccum 5 abort_if_not_equal 0
+		
+		trigger nazi4a cover
+		trigger nazi4b go
+		trigger nazi4c go
+	}
+	
+	trigger action4b_ps2
+	{
+		globalaccum 5 abort_if_not_equal 1
+		
+		trigger nazi4a_ps2 cover
+		trigger nazi4b_ps2 go
+		trigger nazi4c_ps2 go
+	}
+
+	trigger action4c
+	{
+		trigger zombie4b can_hurt
+		trigger zombie4c can_hurt
+
+		trigger player action4c_xbox
+		trigger player action4c_ps2
+	}
+
+	trigger action4c_xbox
+	{
+		globalaccum 5 abort_if_not_equal 0
+
+		trigger nazi4b can_hurt
+		trigger nazi4c can_hurt
+	}
+
+	trigger action4c_ps2
+	{
+		globalaccum 5 abort_if_not_equal 1
+
+		trigger nazi4b_ps2 can_hurt
+		trigger nazi4c_ps2 can_hurt
+	}
+
+	trigger action4d
+	{
+	//	alertentity zombie4d
+	
+		#if g_reinforce >= 2 alertentity reinforce_leet4 #endif
+	}
+
+// Start of Next Room
+
+	// Start eating zombie
+	trigger action4e_setup
+	{
+		trigger zombie4eat start
+		alertentity z4_eatsound
+//		alertentity effect_rumble2
+	}
+
+	// Zombie that is feasting wants a peice of YOU
+	trigger action4e
+	{
+		trigger zombie4eat go
+	}
+
+/////////////////////////////////////////////
+// SECTION 5 - Upper Level Connections
+/////////////////////////////////////////////
+
+
+	trigger spike2_trap2
+	{
+		trigger spike2_1n go
+		
+		trigger game_manager achievement1_fail // Reach the last room without having triggered any of the traps across the level in the Tombs
+	}
+
+	trigger spike2_trap
+	{
+		trigger spike2_1s go
+		
+		trigger game_manager achievement1_fail // Reach the last room without having triggered any of the traps across the level in the Tombs
+	}
+
+	trigger action5b
+	{
+		alertentity zombie5a
+		trigger zombie5a go
+	}
+
+	trigger action5_setup
+	{
+		#if g_reinforce >= 2 alertentity reinforce_bg5 #endif
+		
+		alertentity nazi5a
+		trigger nazi5a go
+
+		mu_queue sound/music/c_chant
+	}
+
+	trigger action5_secret
+	{
+		alertentity zombie5b
+	}
+	trigger action5c
+	{
+		#if g_reinforce >= 2 alertentity reinforce_bg6 #endif
+		
+		alertentity nazi6a
+		alertentity nazi6b
+		wait 5
+		trigger nazi6a go
+		trigger nazi6b go
+
+		mu_queue sound/music/c_chant
+	}
+
+/////////////////////////////////////////////
+// SECTION 6 - Big Sqaure Room
+/////////////////////////////////////////////
+
+	trigger action6a
+	{
+		#if g_reinforce >= 2 alertentity reinforce_zombie1 #endif
+		
+		//playsound ee6_rumble3
+		trigger stoned nrv_shake3
+		alertentity zombie6a
+		alertentity zombie6b
+		alertentity zombie6c
+		alertentity zombie6d
+		alertentity zombie6e
+
+		wait 100
+		trigger stoned close
+		
+		trigger game_manager achievement1 // Reach the last room without having triggered any of the traps across the level in the Tombs
+	}
+
+	trigger event_killzombie
+	{
+		// add one more zombie to kill check
+		globalaccum 4 inc 1
+		globalaccum 4 abort_if_not_equal 5
+		globalaccum 4 set 0
+
+		trigger player zombie6f_go
+	}
+
+	trigger action6b
+	{
+		alertentity speak6
+
+	}
+
+	trigger action6c
+	{
+		globalaccum 4 set 4
+		trigger player event_killzombie
+	}
+	trigger zombie6f_go
+	{
+		alertentity zombie6f
+		wait 5
+		alertentity zombie6g
+		wait 5
+		alertentity elite1
+
+		alertentity blow_exit
+
+		trigger zombie6f go
+		wait 5
+		trigger zombie6g go
+		wait 5
+		trigger elite1 go
+
+		trigger stoned open
+	}
+
+/////////////////////////////////////////////
+// Doors and Movers
+/////////////////////////////////////////////
+
+
+	// Primary Gate
+	trigger port1_toggle
+	{
+		trigger player obj1
+		wait 5
+		trigger portcullis1 toggle
+	}
+
+	// Dungeon Passage Gate
+	trigger port2_toggle
+	{
+		trigger portcullis2 toggle
+	}
+
+// SECTION End Map - Gate Hall
+
+	trigger endmap
+	{
+		trigger game_manager checkexit // COOP: game_manager (ee6.coop.script) checks objectives 1 and 2 (SP: "globalaccum 2 abort_if_not_equal 2")
+	}
+
+	trigger exitlevel
+	{
+		globalaccum 2 set 0
+		
+		// COOP-OFF (SP achievement): globalaccum 1 inc 1
+		
+		// COOP-OFF (SP achievement): if g_gameskill >= 3 globalaccum 2 inc 1 endif
+		
+		#if g_ee_progress == 5 cvar g_ee_progress 6 #endif
+		
+		cvar g_level_was_selected 0
+		
+		changelevel ee7 persistent
+	}
+}
+
+
+/////////////////////////////////////////////
+// Cinematics
+/////////////////////////////////////////////
+
+cine_helga1
+{
+	attributes
+	{
+	}
+
+	spawn
+	{
+		explicit_routing on
+		takeweapon all
+		headlook off
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	trigger talk1
+	{
+		playsound ee6_helga_talk1
+	}
+
+	trigger talk2
+	{
+		playsound ee6_helga_talk2
+	}
+
+	trigger talk3
+	{
+		playsound ee6_helga_talk3
+	}
+
+	trigger face_death
+	{
+		facetargetangles cine_helga1_spot1
+	}
+
+	trigger walk_to_death
+	{
+		walktomarker cine_helga1_spot2
+	//	clearanim
+	//	facetargetangles cine_peon_spot1
+	}
+
+	trigger face_away
+	{
+		facetargetangles cine_helga1_spot2
+	}
+
+	trigger anim8
+	{
+		playanim cs_5-08 both
+	}
+}
+
+peon
+{
+	attributes
+	{
+	}
+
+	spawn
+	{
+		explicit_routing on
+		takeweapon all
+		headlook off
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	trigger talk1
+	{
+		playsound ee6_peon_talk1
+	}
+
+	trigger talk2
+	{
+		playsound ee6_peon_talk2
+	}
+
+	trigger talk3
+	{
+		playsound ee6_peon_talk3
+	}
+
+	trigger face_death
+	{
+		facetargetangles cine_peon_spot1
+	}
+
+	trigger face_away
+	{
+		facetargetangles cine_peon_spot2
+	}
+	trigger face_helga
+	{
+		facetargetangles cine_helga1_spot2
+	}
+
+	trigger run_away
+	{
+		//alertentity nazi_scream1
+		//alertentity nazi_scream2
+		//trigger ast nazi_scream2
+		wait 200
+		runtomarker cine_peon_spot3 nostop
+		runtomarker cine_peon_spot4 nostop
+		runtomarker cine_peon_spot5 nostop
+		runtomarker cine_peon_spot6 nostop
+	}
+}
+
+cine_leet1
+{
+	attributes
+	{
+	}
+
+	spawn
+	{
+		explicit_routing on
+		takeweapon all
+		giveweapon weapon_mp40
+		//setammo ammo_9mm 999
+		selectweapon weapon_mp40
+		wait 100
+		trigger cine_leet1 relax
+	}
+
+	trigger alert1
+	{
+		statetype alert
+		wait 5
+		playanim query_idle_2h both forever
+	}
+
+	trigger alert2
+	{
+		clearanim
+		runtomarker cine_leet1_spot1 nostop
+		facetargetangles cine_leet1_spot1
+		wait 1000
+		playanim alert_crchidle both forever
+	}
+}
+
+cine_leet2
+{
+	attributes
+	{
+	}
+
+	spawn
+	{
+		explicit_routing on
+		takeweapon all
+		giveweapon weapon_mp40
+		//setammo ammo_9mm 999
+		selectweapon weapon_mp40
+		wait 100
+		trigger cine_leet2 relax
+	}
+
+	trigger relax
+	{
+		playanim relaxed_idle_2h_1 both
+		wait 120
+		trigger cine_leet2 relax
+	}
+
+	trigger alert1
+	{
+		statetype alert
+		wait 5
+		playanim query_idle_2h both forever
+	}
+
+	trigger alert2
+	{
+		clearanim
+		runtomarker cine_leet2_spot1 nostop
+		facetargetangles cine_leet2_spot1
+		wait 800
+		playanim alert_crchidle both forever
+	}
+}
+
+cine_helga1a
+{
+	attributes
+	{
+		//default
+	}
+
+	spawn
+	{
+		takeweapon all
+		nosight 10000
+	}
+
+	trigger turn
+	{
+		facetargetangles cine_helga1a_spot2
+	}
+
+	trigger anim8
+	{
+		playanim cs_5-08 both
+	}
+}
+
+cine_leet1a
+{
+	attributes
+	{
+		//default
+	}
+
+	spawn
+	{
+		takeweapon all
+		giveweapon weapon_mp40
+		//setammo ammo_9mm 999
+		selectweapon weapon_mp40
+		nosight 10000
+		clearanim
+	}
+
+	trigger turn
+	{
+		clearanim
+		facetargetangles cine_leet1a_spot2
+	}
+}
+
+cine_leet2a
+{
+	attributes
+	{
+		//default
+	}
+
+	spawn
+	{
+		takeweapon all
+		giveweapon weapon_mp40
+		//setammo ammo_9mm 999
+		selectweapon weapon_mp40
+		nosight 10000
+		clearanim
+	}
+
+	trigger turn
+	{
+		facetargetangles cine_leet2a_spot2
+	}
+}
+/////////////////////////////////////////////
+// SECTION 1 - Drop Zone
+/////////////////////////////////////////////
+
+nazi1a
+{
+	attributes
+	{
+		fov 110 		// Default: 240 Range 1 ? 360
+		aim_skill 0.2 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics)
+		reaction_time 0.4	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+		attack_crouch 0.2	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+		aggression 0.2		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.4		// Default: 0.8 Range: 0.0 ? 1.0 (protection)
+		camper 0.4		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 12000		// Default: 16000 Range: 0 ? 999999
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // Default: 512 (detection of things units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // done talking
+
+		takeweapon all
+
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+		giveweapon weapon_luger
+		selectweapon weapon_luger
+	}
+
+	trigger talk
+	{
+		nosight 5000
+	//	playsound rocket_nazi2a_elevator
+		playsound nazi_ee6_1b
+		wait 1200
+		sight
+		accum 0 set 1
+		statetype alert
+		trigger nazi1b go
+	}
+
+	trigger go
+	{
+		accum 0 abort_if_not_equal 1
+		attack player
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		trigger nazi1b talk
+	}
+
+	bulletimpactsound
+	{
+		trigger nazi1b talk
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem item_health_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		accum 0 set 1
+		resetscript
+	}
+}
+
+nazi1b
+{
+	attributes
+	{
+		fov 110 		// Default: 240 Range 1 ? 360
+		aim_skill 0.3 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.2	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics)
+		reaction_time 0.3	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+		attack_crouch 0.2	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+		aggression 0.4		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.8		// Default: 0.8 Range: 0.0 ? 1.0 (protection)
+		camper 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 12000		// Default: 16000 Range: 0 ? 999999
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+		hearing_scale 0.2	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 256 // Default: 512 (detection of things units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // gone
+		accum 1 set 0 // talked
+
+		takeweapon all
+
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+		giveweapon weapon_luger
+		selectweapon weapon_luger
+
+		statetype alert
+	}
+
+	trigger talk
+	{
+		accum 1 abort_if_not_equal 0
+		accum 1 set 1
+
+		playsound nazi_ee6_1a
+		wait 1500
+		trigger nazi1a talk
+	}
+
+	trigger go
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+		runtomarker nazi1b_spot1 nostop
+		runtomarker nazi1b_spot2
+		wait 500
+		playsound MiscHalt
+	}
+
+	enemysight
+	{
+		resetscript
+		attack player
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem item_health_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		accum 0 set 1
+		resetscript
+	}
+}
+
+/////////////////////////////////////////////
+// SECTION 2 - Dungeon
+/////////////////////////////////////////////
+
+
+nazi2a
+nazi2a_ps2
+{
+	attributes
+	{
+		fov 110 		// Default: 240 Range 1 ? 360
+		aim_skill 0.3 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.2	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics)
+		reaction_time 0.3	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+		attack_crouch 0.2	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+		aggression 0.4		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.2		// Default: 0.8 Range: 0.0 ? 1.0 (protection)
+		camper 0.4		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 12000		// Default: 16000 Range: 0 ? 999999
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+		hearing_scale 0.2	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 256 // Default: 512 (detection of things units)
+	}
+
+	spawn
+	{
+		takeweapon all
+
+		giveweapon weapon_mp40
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+		selectweapon weapon_mp40
+
+		statetype alert
+	}
+		
+	trigger merc
+	{
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 0 random 2
+		accum 0 abort_if_equal 0
+		trigger self* skin
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		
+		accum 1 random 2
+		trigger self* skin1
+		trigger self* skin2
+	}
+		
+	trigger skin1
+	{
+		accum 1 abort_if_not_equal 0
+		
+		changeaiskin merc2/merc1
+		changeaihead merc1
+	}
+		
+	trigger skin2
+	{
+		accum 1 abort_if_not_equal 1
+		
+		changeaiskin merc2/merc2
+		changeaihead merc2
+	}
+
+	trigger go
+	{
+		nosight 2000
+		runtomarker nazi2a_spot1 nostop
+		sight
+		runtomarker nazi2a_spot2 nostop
+		runtomarker nazi2a_spot3
+
+		resetscript
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+	}
+}
+
+zombie2a
+{
+	attributes
+	{
+		fov 240
+		starting_health 50
+		aggression 1.0
+		hearing_scale 1.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		wait forever 0
+	}
+
+	trigger go
+	{
+
+		clearanim
+		alertentity z2a_blow
+		// wait 500 0
+		runtomarker z2a_spot1
+		attack player
+		resetscript
+
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	death
+	{
+
+	}
+	enemysight
+	{
+		resetscript
+	}
+}
+
+zombie2b
+{
+	attributes
+	{
+		fov 240
+		starting_health 45
+		aggression 1.0
+		hearing_scale 1.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		wait forever 0
+		alertentity global_effect1
+	}
+
+	trigger go
+	{
+		clearanim
+		runtomarker zombie2b_spot1
+		resetscript
+		attack player
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	death
+	{
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+}
+
+zombie2c
+{
+	attributes
+	{
+		fov 240
+		starting_health 65
+		aggression 1.0
+		hearing_scale 1.0
+		tactical 0.1
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		noaidamage on
+		wait forever 0
+	}
+
+	trigger go
+	{
+		noaidamage off
+		clearanim
+		runtomarker zombie2c_spot1
+		resetscript
+		attack player
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	death
+	{
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+}
+
+zombie2d
+{
+	attributes
+	{
+		fov 240
+		starting_health 45
+		aggression 1.0
+		hearing_scale 1.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		wait forever 0
+	}
+
+	trigger go
+	{
+		// wait 1000 0
+		clearanim
+		runtomarker zombie2c_spot1
+		resetscript
+		attack player
+
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	death
+	{
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+}
+
+/////////////////////////////////////////////
+// SECTION 3 - Pillar Room and Gate Hall
+/////////////////////////////////////////////
+
+// Nazi Health side, running away
+
+nazi3a
+{
+	attributes
+	{
+		fov 100	 		// Default: 240 Range 1 ? 360
+		aim_skill 0.2 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics)
+		reaction_time 0.4	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+		attack_crouch 0.2	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+		aggression 0.6		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.4		// Default: 0.8 Range: 0.0 ? 1.0 (protection)
+		camper 0.2		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 1500		// Default: 16000 Range: 0 ? 999999
+		starting_health 40	// Default: 100 Range: 0 ? 99999 (spawn health)
+		hearing_scale 0.2	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 256 // Default: 512 (detection of things units)
+	}
+
+	spawn
+	{
+		takeweapon all
+
+		giveweapon weapon_luger
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+		selectweapon weapon_luger
+
+		statetype alert
+
+		trigger nazi3a go
+	}
+
+	trigger go
+	{
+		clearanim
+		runtomarker nazi3a_spot1 nostop
+		runtomarker nazi3a_spot2 nostop
+		runtomarker nazi3a_spot3
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+}
+
+// Zombie by health, chasing.
+
+zombie3a
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		hearing_scale 1.0
+		tactical 0.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+//		runtomarker zombie3a_spot1
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	enemysight
+	{
+
+	}
+}
+
+
+zombie3b
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		hearing_scale 1.0
+		tactical 0.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		runtomarker zombie3a_spot1
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+}
+
+// Nazi Running Behind Gate #1
+
+nazi3c
+{
+	attributes
+	{
+		accum 0 set 0 //set is alive   reset is dead
+
+		fov 70
+		aim_accuracy 0.2
+		aggression 1.0
+		starting_health 40
+	}
+
+	spawn
+	{
+		setammo ammo_grenades 0
+		trigger nazi3c run_away_and_fight
+	}
+
+	trigger run_away_and_fight
+	{
+		alertentity nazi3c
+		wait 5
+		nosight 99999
+		runtomarker nazi3c_run2 nostop
+		runtomarker nazi3c_run3 nostop
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+}
+
+// Nazi Running Behind Gate #2
+
+nazi3cc
+{
+	attributes
+	{
+		accum 0 set 0 //set is alive   reset is dead
+
+		fov 70
+		aim_accuracy 0.2
+		aggression 1.0
+		starting_health 40
+	}
+
+	spawn
+	{
+		setammo ammo_grenades 0
+		trigger nazi3cc run_away_and_fight
+	}
+
+	trigger run_away_and_fight
+	{
+		alertentity nazi3cc
+		wait 5
+		nosight 99999
+		runtomarker nazi3cc_run2 nostop
+		runtomarker nazi3cc_run3 nostop
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+}
+
+
+// Zombie bustout first side
+
+zombie3c
+{
+	attributes
+	{
+		fov 240
+		starting_health 50
+		aggression 1.0
+		hearing_scale 1.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		trigger zombie3c go
+	}
+
+	trigger go
+	{
+		runtomarker zombie3c_spot1
+		attack player
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+	}
+
+	enemysight
+	{
+	}
+}
+
+
+// Zombie bustout far side
+
+zombie3cc
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		hearing_scale 1.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		trigger zombie3cc go
+	}
+
+	trigger go
+	{
+		runtomarker zombie3cc_spot1
+		attack player
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+	}
+
+	enemysight
+	{
+	}
+}
+
+
+// Zombie creeping around above
+
+zombie3d
+{
+	attributes
+	{
+		fov 240
+		starting_health 50
+		aggression 1.0
+		hearing_scale 1.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		nosight 10000
+		trigger zombie3d go
+	}
+
+	trigger go
+	{
+		walktomarker zombie3d_spot1
+		walktomarker zombie3d_spot2
+		walktomarker zombie3d_spot3
+		wait 500
+		trigger zombie3d go
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+}
+
+/////////////////////////////////////////////
+// SECTION 4 - Upsairs and Connections
+/////////////////////////////////////////////
+
+nazi4a
+nazi4a_ps2
+{
+	attributes
+	{
+		fov 70	 		// Default: 240 Range 1 ? 360
+		aim_skill 0.4		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics)
+		reaction_time 0.4	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+		attack_crouch 0.2	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+		aggression 0.5		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.3		// Default: 0.8 Range: 0.0 ? 1.0 (protection)
+		camper 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 6000		// Default: 16000 Range: 0 ? 999999
+		starting_health 35	// Default: 100 Range: 0 ? 99999 (spawn health)
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // Default: 512 (detection of things units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // has talked
+		statetype alert
+
+		// takeweapon all
+		// giveweapon weapon_mp40
+
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+		selectweapon weapon_mp40
+	}
+		
+	trigger merc
+	{
+		#if g_ee_skinMercenary <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 1 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger soldier
+	{
+		trigger self* start
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		
+		accum 2 random 2
+		trigger self* skin1
+		trigger self* skin2
+	}
+		
+	trigger skin1
+	{
+		accum 2 abort_if_not_equal 0
+		
+		changeaiskin merc2/merc1
+		changeaihead merc1
+		
+		trigger self* start
+	}
+		
+	trigger skin2
+	{
+		accum 2 abort_if_not_equal 1
+		
+		changeaiskin merc2/merc2
+		changeaihead merc2
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 1 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 1 abort_if_not_equal 0
+		
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		wait 10
+		trigger self* go
+	}
+
+	trigger go
+	{
+		nosight 99999
+		noaidamage on
+
+		runtomarker nazi4a_spot1 nostop
+		facetargetangles zombie4a_spot1
+		fireattarget zombie4a 1200
+		playsound Miscschnell
+		wait 50
+		facetargetangles nazi4a_spot2
+		runtomarker nazi4a_spot2
+		sight
+		noaidamage off
+		trigger zombie4a can_hurt
+		trigger nazi1a cover
+	}
+
+	trigger cover
+	{
+		sight
+		noaidamage off
+		trigger zombie4a can_hurt
+		resetscript
+	}
+
+	enemysight
+	{
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	bulletimpactsound
+	{
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem item_health_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger zombie4a can_hurt
+		trigger player action4count
+	}
+}
+
+nazi4b
+nazi4b_ps2
+{
+	attributes
+	{
+		fov 110 		// Default: 240 Range 1 ? 360
+		aim_skill 0.4		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.2	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics)
+		reaction_time 0.4	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+		attack_crouch 0.2	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+		aggression 0.5		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.6		// Default: 0.8 Range: 0.0 ? 1.0 (protection)
+		camper 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 12000		// Default: 16000 Range: 0 ? 999999
+		starting_health 40	// Default: 100 Range: 0 ? 99999 (spawn health)
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // Default: 512 (detection of things units)
+	}
+
+	spawn
+	{
+		accum 0 set 0
+
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+		selectweapon weapon_mp40
+
+		noaidamage on
+		statetype alert
+	}
+		
+	trigger merc
+	{
+		#if g_ee_skinMercenary <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 1 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger soldier
+	{
+		accum 3 set 1 // 'talk_ps2'
+	
+		trigger self* start
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		
+		accum 2 random 2
+		trigger self* skin1
+		trigger self* skin2
+	}
+		
+	trigger skin1
+	{
+		accum 2 abort_if_not_equal 0
+		
+		changeaiskin merc2/merc1
+		changeaihead merc1
+		
+		trigger self* start
+	}
+		
+	trigger skin2
+	{
+		accum 2 abort_if_not_equal 1
+		
+		changeaiskin merc2/merc2
+		changeaihead merc2
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 1 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 1 abort_if_not_equal 0
+		
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		nosight 2000
+		playsound blank
+	}
+
+	trigger go
+	{
+		fireattarget zombie4b 750
+		wait 500
+		fireattarget zombie4b 500
+		wait 100
+		fireattarget zombie4b 100
+		trigger self* go
+	}
+
+	trigger cover
+	{
+		sight
+		noaidamage off
+		trigger self* talk
+		runtomarker nazi4b_spot1
+		resetscript
+	}
+
+	trigger can_hurt
+	{
+		trigger self* talk
+		trigger self* talk_ps2
+		sight
+		noaidamage off
+		resetscript
+	}
+
+	trigger talk
+	{
+		accum 3 abort_if_equal 1
+		
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+	//	playsound Miscschnell
+		playsound blank
+	}
+
+	trigger talk_ps2
+	{
+		accum 3 abort_if_not_equal 1
+		accum 3 set 0
+
+		playsound Miscschnell
+	}
+
+	enemysight
+	{
+		trigger self* cover
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem item_health_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger zombie4b attack_player
+		trigger player action4count
+	}
+}
+
+nazi4c
+nazi4c_ps2
+{
+	attributes
+	{
+		fov 120
+		aim_accuracy 0.2
+		aggression 0.5
+		tactical 0.5
+		starting_health 40
+	}
+
+	spawn
+	{
+		// takeweapon all
+
+		// giveweapon weapon_mp40
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+		selectweapon weapon_mp40
+	}
+		
+	trigger merc
+	{
+		#if g_ee_skinMercenary <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 1 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger soldier
+	{
+		trigger self* start
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		
+		accum 2 random 2
+		trigger self* skin1
+		trigger self* skin2
+	}
+		
+	trigger skin1
+	{
+		accum 2 abort_if_not_equal 0
+		
+		changeaiskin merc2/merc1
+		changeaihead merc1
+		
+		trigger self* start
+	}
+		
+	trigger skin2
+	{
+		accum 2 abort_if_not_equal 1
+		
+		changeaiskin merc2/merc2
+		changeaihead merc2
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 1 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 1 abort_if_not_equal 0
+		
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		noaidamage on
+		nosight 2000
+		playsound blank
+		statetype alert
+	}
+
+	trigger go
+	{
+		fireattarget zombie4c 500
+		wait 100
+		fireattarget zombie4c 150
+		wait 500
+		fireattarget zombie4c 750
+		trigger self* go
+	}
+
+	trigger cover
+	{
+		sight
+		noaidamage off
+		runtomarker nazi4c_spot1
+		resetscript
+
+	}
+
+	trigger can_hurt
+	{
+		sight
+		noaidamage off
+		resetscript
+	}
+
+	enemysight
+	{
+		trigger self* cover
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger player action4count
+	}
+}
+
+zombie4a
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		aim_accuracy 1.0
+		hearing_scale 1.0
+		tactical 0.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		noaidamage on
+		noavoid
+		nosight 99999
+	}
+
+	trigger go
+	{
+		clearanim
+		wait 50
+		runtomarker zombie4a_spot1
+
+		sight
+		noaidamage off
+		resetscript
+
+		runtomarker zombie4a_spot2
+		runtomarker zombie4a_spot3
+	}
+
+	trigger can_hurt
+	{
+		sight
+		noaidamage off
+		resetscript
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	death
+	{
+		trigger player action4count
+	}
+	enemysight
+	{
+		trigger zombie4a can_hurt
+	}
+}
+
+zombie4b
+{
+	attributes
+	{
+		fov 240
+		starting_health 65
+		aggression 1.0
+		aim_accuracy 1.0
+		hearing_scale 1.0
+		tactical 0.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		accum 0 set 0 //alive or dead
+
+		noaidamage on
+		noavoid
+		nosight 99999
+	}
+
+	trigger go
+	{
+		clearanim
+		runtomarker zombie4b_spot1 nostop
+		runtomarker zombie4b_spot2 nostop
+		runtomarker zombie4b_spot3
+	}
+
+	trigger can_hurt
+	{
+		sight
+		noaidamage off
+		resetscript
+	}
+
+	enemysight
+	{
+		trigger nazi4b cover
+		trigger nazi4b_ps2 cover
+	}
+
+	trigger cover
+	{
+		runtomarker nazi4b_spot1
+		resetscript
+	}
+
+	trigger attack_player
+	{
+		accum 0 abort_if_not_equal 0
+		resetscript
+		wait 10
+		attack player
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	death
+	{
+		accum 0 set 1
+		trigger player action4count
+	}
+}
+
+zombie4c
+{
+	attributes
+	{
+		fov 240
+		starting_health 65
+		aggression 1.0
+		hearing_scale 1.0
+		aim_accuracy 1.0
+		tactical 0.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy1
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		noaidamage on
+		noavoid
+		nosight 99999
+	}
+
+	trigger go
+	{
+		walktomarker zombie4c_spot1 nostop
+		walktomarker zombie4c_spot2 nostop
+		walktomarker zombie4c_spot3
+	}
+
+	trigger can_hurt
+	{
+		sight
+		noaidamage off
+		resetscript
+	}
+
+	enemysight
+	{
+		trigger nazi4c cover
+		trigger nazi4c_ps2 cover
+	}
+
+	trigger cover
+	{
+		runtomarker nazi4c_spot1
+		resetscript
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+	death
+	{
+		trigger player action4count
+	}
+}
+
+zombie4d
+{
+	attributes
+	{
+		fov 240
+		starting_health 65
+		aggression 1.0
+		hearing_scale 1.0
+		aim_accuracy 1.0
+		tactical 0.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy2
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		knockback off
+		nosight 9999
+		alertentity coffin_blow1
+		// laying_back
+		// playanim roll_out both
+		playanim getup_back both
+		sight
+
+		trigger zombie4d go
+	}
+
+	trigger go
+	{
+		runtomarker zombie4d_spot1
+		runtomarker zombie4d_spot2
+		runtomarker zombie4d_spot3
+		runtomarker zombie4d_spot4
+	}
+
+	enemysight
+	{
+		resetscript
+		attack player
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+	}
+}
+
+
+// All this stuff is behind the door that opens after this room.
+// This guy has more health cause he just ate heh
+
+zombie4eat
+{
+	attributes
+	{
+		accum 0 set 0 // done eating, sound kill
+		fov 90
+		starting_health 85
+		aggression 1.0
+		hearing_scale 1.0
+	}
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy2
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start1
+	}
+		
+	trigger start1
+	{
+		takeweapon MonsterAttack2
+		wait forever 0
+	}
+
+	trigger go
+	{
+		trigger zombie4eat stopeating
+		resetscript
+		attack player
+	}
+
+	trigger stopeating
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+		alertentity z4_doneeat
+	}
+
+	trigger start
+	{
+		alertentity zombie4eat
+		nosight 10000
+		playanim eating_loop both forever
+		wait 100
+		trigger zombie4eat eat
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	avoiddanger player
+	{
+		denyactivate
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	death
+	{
+	}
+
+	enemysight
+	{
+		alertentity z4_doneeat
+	}
+}
+
+/////////////////////////////////////////////
+// SECTION 5 - Upper Connectivity
+/////////////////////////////////////////////
+
+nazi5a
+{
+	attributes
+	{
+		fov 100	 		// Default: 240 Range 1 ? 360
+		aim_skill 0.2 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.2	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics)
+		reaction_time 0.4	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+		attack_crouch 0.2	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+		aggression 0.5		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.3		// Default: 0.8 Range: 0.0 ? 1.0 (protection)
+		camper 0.4		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 1500		// Default: 16000 Range: 0 ? 999999
+		starting_health 30	// Default: 100 Range: 0 ? 99999 (spawn health)
+		hearing_scale 0.2	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 256 // Default: 512 (detection of things units)
+	}
+
+	spawn
+	{
+	//	takeweapon all
+
+	//	giveweapon weapon_luger
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+	//	selectweapon weapon_luger
+
+		statetype alert
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 0 random 2
+		accum 0 abort_if_equal 0
+		trigger self* skin
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		changeaiskin merc2/merc1
+		changeaihead merc1
+	}
+
+	trigger go
+	{
+		clearanim
+		trigger nazi5a talk
+		runtomarker nazi5a_spot1 nostop
+		runtomarker nazi5a_spot2 nostop
+		wait 500
+		runtomarker nazi5a_spot3 nostop
+		trigger nazi5a cover
+		resetscript
+	}
+
+	trigger talk
+	{
+		playsound merc_american
+	}
+
+	trigger cover
+	{
+		attack player
+		resetscript
+	}
+
+	enemysight
+	{
+		trigger nazi5a cover
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+}
+
+zombie5b
+{
+	attributes
+	{
+		fov 240
+		starting_health 65
+		aggression 1.0
+		hearing_scale 1.0
+		aim_accuracy 1.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy2
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		knockback off
+		nosight 9999
+		alertentity coffin_blow2
+		playanim getup_back both
+		sight
+		wait 5
+		trigger zombie4b go
+	}
+
+	trigger go
+	{
+		runtomarker zombie4d_spot1
+		resetscript
+		attack player
+	}
+
+	enemysight
+	{
+		attack player
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+	}
+}
+
+// Zombie in crevace above at gate switch
+zombie5a
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		hearing_scale 1.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy2
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		trigger zombie5a go
+	}
+
+	trigger go
+	{
+		wait 700
+		runtomarker zombie5a_spot1
+		runtomarker zombie5a_spot2
+		attack player
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+	}
+
+	enemysight
+	{
+	}
+}
+
+
+/////////////////////////////////////////////
+// SECTION 6 - Big Square Room
+/////////////////////////////////////////////
+
+// runs out of big room as you enter
+nazi6a
+{
+	attributes
+	{
+		fov 30
+		aim_accuracy 0.2
+		aggression 0.4
+		starting_health 20
+	}
+
+	spawn
+	{
+
+		takeweapon all
+		setammo ammo_grenades 0
+		setammo ammo_9mm 999
+		giveweapon weapon_luger
+		selectweapon weapon_luger
+		statetype alert
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+
+	trigger go
+	{
+		clearanim
+		noattack 2500
+		runtomarker nazi6a_spot1 nostop
+		resetscript
+
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+}
+
+// cowering in back tomb corner
+
+nazi6b
+{
+	attributes
+	{
+		fov 70
+		aim_accuracy 0.2
+		aggression 0.3
+		tactical 0.5
+		reaction_time 0.2
+		starting_health 20
+		alertness 12000
+		idle_crouch 0.85
+	}
+
+	spawn
+	{
+		takeweapon all
+		setammo ammo_grenades 0
+		setammo ammo_9mm 999
+		giveweapon weapon_luger
+		selectweapon weapon_luger
+		wait 5
+		statetype alert
+	}
+
+	trigger go
+	{
+		noattack 2000
+		runtomarker nazi6b_spot1
+		resetscript
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+}
+
+
+zombie6a
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		tactical 0.0
+		hearing_scale 1.0
+		reaction_time 0.2
+		running_speed 250
+		walking_speed 130
+	}
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy2
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		trigger zombie6a go
+	}
+
+	trigger go
+	{
+		runtomarker z6_7
+		runtomarker z6_8
+		runtomarker z6_5
+		runtomarker z6_4
+		alertentity global_effect3
+		trigger zombie6a go
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+		trigger player event_killzombie
+	}
+}
+
+zombie6b
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		tactical 0.0
+		hearing_scale 1.0
+		reaction_time 0.2
+		running_speed 250
+		walking_speed 130
+	}
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy2
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		trigger zombie6b go
+	}
+
+	trigger go
+	{
+		runtomarker z6_9
+		runtomarker z6_8
+		runtomarker z6_5
+		runtomarker z6_6
+		trigger zombie6b go
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+		trigger player event_killzombie
+	}
+}
+
+zombie6c
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		tactical 0.0
+		hearing_scale 1.0
+		reaction_time 0.2
+		running_speed 250
+		walking_speed 130
+	}
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy2
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		trigger zombie6c go
+	}
+
+	trigger go
+	{
+		runtomarker z6_1
+		runtomarker z6_4
+		runtomarker z6_5
+		runtomarker z6_2
+		trigger zombie6c go
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+		trigger player event_killzombie
+	}
+}
+
+zombie6d
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		tactical 0.0
+		hearing_scale 1.0
+		reaction_time 0.2
+		running_speed 250
+		walking_speed 130
+	}
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy2
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		trigger zombie6d go
+	}
+
+	trigger go
+	{
+		runtomarker z6_2
+		runtomarker z6_5
+		runtomarker z6_6
+		runtomarker z6_3
+		trigger zombie6d go
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+		trigger player event_killzombie
+	}
+}
+
+zombie6e
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		tactical 0.0
+		hearing_scale 1.0
+		reaction_time 0.2
+		running_speed 250
+		walking_speed 130
+	}
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin zombie/mummy2
+		changeaihead mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		trigger zombie6e go
+	}
+
+	trigger go
+	{
+		runtomarker z6_5
+		runtomarker z6_8
+		gotocast player
+		resetscript
+		attack player
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	death
+	{
+		trigger player event_killzombie
+	}
+}
+
+// Boss Zombie (the warzombie) Breaks through closed grave cell
+
+zombie6f
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		hearing_scale 1.0
+		reaction_time 0.2
+		running_speed 250
+		walking_speed 130
+	}
+	spawn
+	{
+		takeweapon MonsterAttack2
+		statetype alert
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 0 random 2
+		accum 0 abort_if_equal 0
+		trigger self* skin
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		changeaiskin merc2/merc2
+		changeaihead merc2
+	}
+
+	trigger go
+	{
+		runtomarker zombie6f_spot1
+		playsound merc_gethim
+		gotocast player
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	pain 60
+	{
+		alertentity pain_effect1
+		//playsound ee6_rumble2
+		trigger stoned nrv_shake2
+	}
+
+	death
+	{
+		alertentity global_effect4
+	}
+}
+
+zombie6g
+{
+	attributes
+	{
+		fov 240
+		starting_health 60
+		aggression 1.0
+		hearing_scale 1.0
+		reaction_time 0.2
+		running_speed 250
+		walking_speed 130
+	}
+	spawn
+	{
+		takeweapon MonsterAttack2
+		statetype alert
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 0 random 2
+		accum 0 abort_if_equal 0
+		trigger self* skin
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		changeaiskin merc2/merc1
+		changeaihead merc1
+	}
+	
+	trigger go
+	{
+		wait 6500
+		runtomarker zombie6f_spot1
+
+		gotocast player
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	pain 50
+	{
+		alertentity pain_effect2
+		//playsound ee6_rumble1
+		trigger stoned nrv_shake1
+	}
+
+	death
+	{
+
+	}
+
+	enemysight
+	{
+	}
+}
+
+elite1
+{
+	attributes
+	{
+		fov 240			// Default: 240 Range 1 ? 360
+		aim_skill 0.6 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.6	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.9	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics)
+		reaction_time 0.3	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+		attack_crouch 0.2	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+		aggression 0.6		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.8		// Default: 0.8 Range: 0.0 ? 1.0 (protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		inner_detection_radius 512 // Default: 512 (detection of things units)
+	}
+
+	spawn
+	{
+		takeweapon all
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+		giveweapon weapon_mp40
+		selectweapon weapon_mp40
+		statetype alert
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 0 random 2
+		accum 0 abort_if_equal 0
+		trigger self* skin
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		
+		accum 1 random 2
+		accum 1 abort_if_equal 0
+		trigger self* skin1
+		trigger self* skin2
+	}
+		
+	trigger skin1
+	{
+		changeaiskin merc2/merc1
+		changeaihead merc1
+	}
+		
+	trigger skin2
+	{
+		changeaiskin merc2/merc2
+		changeaihead merc2
+	}
+
+	trigger go
+	{
+		wait 8500
+		runtomarker zombie6f_spot1 nostop
+		playsound merc_inf2
+		trigger elite1 cover
+	}
+
+	trigger cover
+	{
+		resetscript
+		attack player
+	}
+
+	enemysight
+	{
+		trigger elite1 cover
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+	}
+}
+
+ast
+{
+	spawn
+	{
+		notarget on
+	}
+
+	trigger nazi_scream2
+	{
+		playsound sound/scenaric/crypt1/ast/cn3_get_out.wav
+	}
+
+	trigger second_fight
+	{
+		playsound sound/scenaric/crypt1/ast/lets_go.wav
+	}
+
+	death
+	{
+	}
+}
+
+// Reinforcements
+
+reinforce_leet1
+{
+	spawn
+	{
+		#if g_ee_skinEliteGuard <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinEliteGuard == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinEliteGuard >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin eliteguard/desert1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon all
+		giveweaponfull weapon_silencer weapon_mp34 weapon_mp40
+	}
+
+	death
+	{
+	}
+}
+
+reinforce_leet2
+reinforce_leet3
+reinforce_leet4
+reinforce_leet5
+{
+	spawn
+	{
+		#if g_ee_skinEliteGuard <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinEliteGuard == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinEliteGuard >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin eliteguard/desert1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon all
+		giveweaponfull weapon_mp34 weapon_mp40
+		statetype alert
+	}
+
+	death
+	{
+	}
+}
+
+reinforce_bg1
+{
+	spawn
+	{
+		takeweapon all
+		giveweaponfull weapon_g43 weapon_mp44
+	}
+	
+	death
+	{
+	}
+}
+
+reinforce_bg2
+reinforce_bg3
+reinforce_bg4
+reinforce_bg5
+reinforce_bg6
+{
+	spawn
+	{
+		takeweapon all
+		giveweaponfull weapon_g43 weapon_mp44
+		statetype alert
+	}
+	
+	death
+	{
+	}
+}
+
+reinforce_v1
+reinforce_v2
+{
+	spawn
+	{
+		takeweapon all
+		giveweaponfull weapon_mg42m
+		statetype alert
+	}
+	
+	death
+	{
+	}
+}
+
+reinforce_zombie1
+{
+	attributes
+	{
+		fov 240
+		starting_health 400 // 65
+		aggression 1.0
+		aim_accuracy 1.0
+		hearing_scale 1.0
+		tactical 0.0
+	}
+
+	spawn
+	{
+		#if g_ee_skinZombie <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinZombie == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinZombie >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+	
+	trigger skin
+	{
+		changeaihead mummy1
+		
+		accum 0 random 2
+		trigger self* skin1
+		trigger self* skin2
+	}
+	
+	trigger skin1
+	{
+		accum 0 abort_if_not_equal 0
+		
+		changeaiskin zombie/mummy1
+		
+		trigger self* start
+	}
+		
+	trigger skin2
+	{
+		accum 0 abort_if_not_equal 1
+		
+		changeaiskin zombie/mummy2
+		
+		trigger self* start
+	}
+	
+	trigger start
+	{
+		takeweapon MonsterAttack2
+		giveweapon MonsterAttack1
+	}
+	
+	death
+	{
+	}
+}

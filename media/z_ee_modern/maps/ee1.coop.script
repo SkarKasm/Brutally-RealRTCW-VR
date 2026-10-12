@@ -1,0 +1,538 @@
+//
+// Script file for ee1
+// Last edited by Scancode (2003), William Faure (2026)
+
+game_manager
+{
+	// COOP: added by the co-op authors (script_multiplayer "game_manager" in maps/ee1.ents).
+	// Starts the level once for everyone and checks the objectives before the exit (objectives are shared).
+	spawn
+	{
+		accum 0 bitreset 1 // objective 1
+		accum 0 bitreset 2 // objective 2
+
+		trigger player coopstart // prevents late players affecting the game
+	}
+
+	trigger checkexit
+	{
+		accum 0 abort_if_not_bitset 1 // objective 1
+		accum 0 abort_if_not_bitset 2 // objective 2
+
+		trigger player exitlevel
+	}
+	
+	trigger objective1
+	{
+		accum 0 bitset 1
+	}
+	
+	trigger objective2
+	{
+		accum 0 bitset 2
+	}
+}
+
+/////////////////////////////////////////////
+// DYNAMIC SOUND CHECKER - ala Scancode
+/////////////////////////////////////////////
+
+dsound
+{
+	spawn
+	{
+		// Music Conditionals
+		// dead	must call nazi_live trigger for intermittent states
+		accum 1 set 0
+		accum 2 set 0
+
+		accum 3 bitset 0	// alive nazi1a
+		accum 3 bitset 1	// alive nazi1b
+		accum 3 bitreset 2	// dead nazi1c
+
+		accum 3 bitset 3	// alive nazi1d
+		accum 3 bitset 4	// alive nazi1e
+		accum 3 bitset 5	// alive nazi1f
+		accum 3 bitset 6	// alive nazi1g
+
+		accum 3 bitset 7	// alive nazi2a
+		accum 3 bitset 8	// alive nazi2b
+		accum 3 bitset 9	// alive nazi2c
+
+		accum 4 bitset 0	// alive nazi3a
+		accum 4 bitreset 1	// dead nazi3b - radio room
+		accum 4 bitset 2	// alive nazi3c
+		accum 4 bitset 3	// alive nazi3cc
+		accum 4 bitreset 4	// dead nazi3d - crate room
+		accum 4 bitset 5	// alive nazi3e
+		accum 4 bitset 6	// alive nazi3f
+		accum 4 bitset 7	// alive nazi3g
+
+		accum 4 bitreset 8	// ac6 has passed
+	}
+	
+	trigger nazi1a_kill 
+	{	
+		accum 3 bitreset 0 			
+		trigger dsound ac3check
+	}
+	trigger nazi1b_kill 
+	{
+		accum 3 bitreset 1
+		trigger dsound ac3check
+	}
+	trigger nazi1c_live
+	{
+		accum 3 bitset 2
+		trigger dsound ac3check
+	}
+	trigger nazi1c_kill
+	{ 
+		accum 3 bitreset 2 
+		trigger dsound ac3check
+	}
+	trigger ac3check
+	{
+		accum 3 abort_if_bitset 0
+		accum 3 abort_if_bitset 1
+		accum 3 abort_if_bitset 2
+
+		trigger player musicstealth
+		wait 500
+		trigger player family
+	}
+
+	trigger nazi1d_kill 
+	{ 
+		accum 3 bitreset 3
+		trigger dsound ac4check
+	}
+	trigger nazi1e_kill 
+	{
+		accum 3 bitreset 4
+		trigger dsound ac4check
+	}
+	trigger nazi1f_kill
+	{ 
+		accum 3 bitreset 5 
+		trigger dsound ac4check
+	}
+	trigger nazi1g_kill
+	{ 
+		accum 3 bitreset 6
+		trigger dsound ac4check
+	}
+	trigger ac4check
+	{
+		accum 3 abort_if_bitset 3
+		accum 3 abort_if_bitset 4
+		accum 3 abort_if_bitset 5
+		accum 3 abort_if_bitset 6
+
+		trigger player musicstealth
+	}
+
+	trigger nazi2a_kill 
+	{
+		accum 3 bitreset 7
+		trigger dsound ac5check
+	}
+	trigger nazi2b_kill 
+	{ 
+		accum 3 bitreset 8
+		trigger dsound ac5check
+	}
+	trigger nazi2c_kill 
+	{ 
+		accum 3 bitreset 9
+		trigger dsound ac5check
+	}
+	trigger ac5check
+	{
+		accum 3 abort_if_bitset 7
+		accum 3 abort_if_bitset 8
+		accum 3 abort_if_bitset 9
+
+		trigger player musicstealth
+	}
+
+	trigger nazi3a_kill 
+	{ 
+		accum 4 bitreset 0
+		trigger dsound ac6check
+	}
+	trigger nazi3b_live
+	{ 
+		accum 4 bitset 1
+		trigger dsound ac6check
+	}
+	trigger nazi3b_kill 
+	{ 
+		accum 4 bitreset 1
+		trigger dsound ac6check
+	}
+	trigger nazi3c_kill 
+	{ 
+		accum 4 bitreset 2
+		trigger dsound ac6check
+	}
+	trigger nazi3cc_kill 
+	{ 
+		accum 4 bitreset 3
+		trigger dsound ac6check
+	}
+	trigger nazi3d_live
+	{ 
+		accum 4 bitset 4
+		trigger dsound ac6check
+	}
+	trigger nazi3d_kill 
+	{ 
+		accum 4 bitreset 4
+		trigger dsound ac6check
+	}
+	trigger nazi3e_kill 
+	{ 
+		accum 4 bitreset 5
+		trigger dsound ac6check
+	}
+	trigger nazi3f_kill 
+	{ 
+		accum 4 bitreset 6
+		trigger dsound ac6check
+	}
+	trigger nazi3g_kill 
+	{ 
+		accum 4 bitreset 7
+		trigger dsound ac6check
+	}
+	trigger ac6check // fixed by William Faure
+	{
+		#if g_reinforce >= 1 accum 4 abort_if_bitset 0 #endif	// 3a - balcony
+		accum 4 abort_if_bitset 1	// 3b - radio guy
+		accum 4 abort_if_bitset 2	// 3c - starts near radio room
+		accum 4 abort_if_bitset 3	// 3cc - runs from exit hall room
+		accum 4 abort_if_bitset 4	// 3d - crate room
+		#if g_reinforce >= 1 accum 4 abort_if_bitset 5 #endif	// 3e - mauser guy
+		accum 4 abort_if_bitset 6	// 3f - runs from crate room
+		accum 4 abort_if_bitset 7	// 3g - runs from radio room
+
+		accum 4 bitset 8 // has passed
+		trigger player musicgrave
+	}
+	trigger nazi4a_kill 				
+	{ 
+		accum 4 abort_if_not_bitset 8
+		trigger player musicgrave
+	}
+
+}
+
+/////////////////////////////////////////////
+// Cinematic Procedures
+/////////////////////////////////////////////
+counter1
+{
+	spawn
+	{
+
+	}
+
+	trigger cine1
+	{
+
+	// setup first camera
+
+		trigger player cam1
+
+	// alert bj and agent1 to run into position
+
+		wait 100
+		alertentity fakebj
+
+		wait 10
+		trigger fakebj run
+
+		alertentity agent1
+		wait 10
+
+		trigger agent1 run
+		wait 7000
+
+	// start dialogue
+
+		trigger counter1 cine_dialogue
+	}
+
+	trigger cine_dialogue
+	{
+		trigger player cam2
+		wait 1400
+		trigger counter1 cine_dialogue2
+	}
+
+	trigger cine_dialogue2
+	{
+
+		//alertentity osa_speak
+		alertentity n1a_cine
+		alertentity n3b_cine
+
+		trigger agent1 talk1a	// Good we're in...
+		wait 5000
+
+		trigger agent1 talk1b
+		trigger player pancam
+		wait 5000
+
+		trigger agent1 talk1c
+		wait 5000
+
+		trigger player cam3
+		trigger fakebj talk1
+		wait 2500
+
+		trigger agent1 talk2a
+		trigger player cam1a
+		wait 4000
+
+		trigger agent1 talk2b
+		wait 3000
+
+		trigger player cam2
+		trigger agent1 talk2c
+		wait 3000
+		
+		trigger agent1 talk3
+		wait 3300
+
+		trigger player cam3
+	//	alertentity bj_speak
+		trigger fakebj talk2	// Ok, so i'll meet you on the other side?
+		wait 6000
+		
+		trigger agent1 talk4
+		wait 1000
+		trigger player cam4
+		trigger fakebj run2
+		wait 3000
+
+	// end and cleanup
+
+		 trigger player camerainterrupt
+	}
+
+	trigger cine_cleanup
+	{
+		alertentity cine_cleanup
+		trigger player action1_civ
+		// not used
+		// trigger fakebj stop
+		// trigger agent1 stop
+
+		wait 500
+	}
+}
+
+/////////////////////////////////////////////
+// Shutter
+/////////////////////////////////////////////
+
+shutter1
+{
+	spawn
+	{
+		wait 1000
+		faceangles 0 0 0 100
+		trigger shutter1 open01
+	}
+
+	trigger open01
+	{
+		wait 100
+		playsound sound/world/creak_01.wav
+		faceangles 0 100 0 1500
+		faceangles 0 130 0 1500
+
+		faceangles 0 0 0 300
+		playsound sound/world/shutter1c.wav
+		wait 4000
+
+		playsound sound/world/creak_01.wav
+		faceangles 0 150 0 1000
+		faceangles 0 147 0 60
+		faceangles 0 150 0 60
+		faceangles 0 147 0 60
+		faceangles 0 150 0 60
+		faceangles 0 147 0 60
+		faceangles 0 150 0 60
+		faceangles 0 147 0 60
+		faceangles 0 150 0 60
+		faceangles 0 147 0 60
+		faceangles 0 150 0 60
+		faceangles 0 147 0 60
+
+		faceangles 0 0 0 400
+		playsound sound/world/shutter1c.wav
+		wait 3000
+
+		playsound sound/world/creak_01.wav
+		faceangles 0 130 0 2600
+		faceangles 0 170 0 1500
+
+		faceangles 0 0 0 250
+		playsound sound/world/shutter1c.wav
+		wait 3000
+		trigger shutter1 open01
+	}
+}
+
+/////////////////////////////////////////////
+// Civilian Door Shutting
+/////////////////////////////////////////////
+
+civdoor0
+{
+	spawn
+	{
+		wait 10
+		faceangles 0 270 0 100
+	}
+
+	trigger close
+	{
+		faceangles 0 0 0 300
+		playsound sound/movers/doors/door4_endc.wav
+
+	}
+
+}
+
+civdoor1a
+{
+	spawn
+	{
+		wait 1000
+		faceangles 0 90 0 100
+	}
+
+	trigger close
+	{
+		trigger civdoor1b close
+		faceangles 0 0 0 300
+		playsound sound/movers/doors/door4_endc.wav
+
+	}
+
+}
+
+civdoor1b
+{
+	spawn
+	{
+		wait 1000
+		faceangles 0 270 0 100
+	}
+
+	trigger close
+	{
+		faceangles 0 0 0 250
+		wait 20
+		playsound sound/movers/doors/door4_endc.wav
+
+	}
+
+}
+
+
+shed1
+{
+	spawn
+	{
+	//	wait 1000
+	//	faceangles 0 0 0 100
+	}
+
+	trigger open
+	{
+		trigger shed2 open
+		faceangles 0 270 0 1000
+		playsound sound/movers/doors/door9_open.wav
+
+	}
+
+}
+
+shed2
+{
+	spawn
+	{
+	//	wait 1000
+	//	faceangles 0 0 0 100
+	}
+
+	trigger open
+	{
+		faceangles 0 90 0 1000
+		wait 20
+		playsound sound/movers/doors/door9_open.wav
+
+	}
+
+}
+/////////////////////////////////////////////
+// Barrel Move Down Stairs
+/////////////////////////////////////////////
+
+bar1
+{
+	spawn
+	{
+
+	}
+
+	trigger fall
+	{
+		wait 25
+
+		gotomarker bar1_spot1 250 
+
+		gotomarker bar1_spot1a 250 
+		faceangles -30 0 0 gototime
+		gotomarker bar1_spot1b 250 
+		faceangles -60 0 0 gototime
+		gotomarker bar1_spot2 250 
+		faceangles -90 0 0 gototime
+		playsound sound/movers/doors/door4_locked.wav
+		
+		gotomarker bar1_spot2a 300 
+		faceangles -120 0 0 gototime
+		gotomarker bar1_spot2b 300 
+		faceangles -150 0 0 gototime
+		gotomarker bar1_spot2c 300 
+		faceangles -180 0 0 gototime
+		gotomarker bar1_spot3 300 
+		faceangles -200 0 0 gototime
+		playsound sound/movers/doors/door4_locked.wav
+
+		gotomarker bar1_spot3a 350 
+		faceangles -220 0 0 gototime
+		gotomarker bar1_spot3b 350 
+		faceangles -240 0 0 gototime
+		gotomarker bar1_spot3c 350 
+		faceangles -260 0 0 gototime
+		gotomarker bar1_spot3d 350 
+		faceangles -280 0 0 gototime
+		gotomarker bar1_spot3e 350 
+		faceangles -300 0 0 gototime
+		gotomarker bar1_spot3f 350 
+		faceangles -320 0 0 gototime
+		gotomarker bar1_spot4 350 
+		faceangles -340 0 0 gototime
+		playsound sound/movers/doors/door4_locked.wav
+
+		alertentity bar1_func
+		alertentity bar1_func_explode
+		alertentity kill_bar1
+	}
+}

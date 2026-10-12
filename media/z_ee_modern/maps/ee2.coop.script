@@ -1,0 +1,483 @@
+//
+// Script file for ee2
+// Last edited by Scancode (2003), William Faure (2026)
+//
+
+game_manager
+{
+	// COOP: added by the co-op authors (script_multiplayer "game_manager" in maps/ee2.ents).
+	// Starts the level once for everyone and checks the objectives before the exit (objectives are shared).
+	spawn
+	{
+		accum 0 bitreset 1 // objective 1
+		accum 0 bitreset 2 // objective 2
+
+		trigger player coopstart // prevents late players affecting the game
+	}
+
+	trigger checkexit
+	{
+		accum 0 abort_if_not_bitset 1 // objective 1
+		accum 0 abort_if_not_bitset 2 // objective 2
+
+		trigger player exitlevel
+	}
+	
+	trigger objective1
+	{
+		accum 0 bitset 1
+	}
+	
+	trigger objective2
+	{
+		accum 0 bitset 2
+	}
+}
+
+/////////////////////////////////////////////
+// DYNAMIC SOUND CHECKER - ala Scancode
+/////////////////////////////////////////////
+
+dsound
+{
+	spawn
+	{
+		// Music Conditionals
+		// dead	must call nazi_live trigger for intermittent states
+
+		accum 1 bitreset 0	// nazi1a
+		accum 1 bitreset 1	// nazi1b
+		accum 1 bitreset 2	// nazi1c - objective officer
+
+		accum 1 bitset 3	// nazi1d - redidence
+		accum 1 bitset 4	// nazi1e - objective officer
+		accum 1 bitset 5	// nazi1f
+
+		accum 1 bitreset 6	// nazi2a - guy opens gate
+		accum 1 bitset 7	// nazi2b - courtyard mp40
+		accum 1 bitset 8	// nazi2c - courtyard mp40
+
+		accum 1 bitset 9	// nazi2d - wave #1
+		accum 1 bitset 10	// nazi2e
+
+		accum 1 bitset 11	// nazi2f - wave #2
+		accum 1 bitset 12	// nazi2g
+
+		accum 1 bitset 13	// nazi3a - sniper in window
+
+		accum 1 bitreset 20	// nazi5d - merc in hall
+		accum 1 bitreset 21	// nazi5e
+		accum 1 bitreset 22	// nazi5f
+
+		accum 1 bitset 14	// nazi4a - guys in residence
+		accum 1 bitset 15	// nazi4b
+
+		accum 1 bitset 16	// nazi5a - mercenaries
+		accum 1 bitset 17	// nazi5b
+		accum 1 bitset 18	// nazi5c
+
+		accum 1 bitset 19	// nazi6a - last nazi soldier
+		
+		#if g_reinforce >= 1
+		accum 1 bitset 23	// Nerve coop spawn, added by William Faure
+		accum 1 bitset 24	// Nerve coop spawn, added by William Faure
+		accum 1 bitset 25	// Nerve coop spawn, added by William Faure
+		#endif
+	}
+
+	trigger nazi1a_live
+	{
+		accum 1 bitset 0
+		trigger dsound ac1check
+	}
+	trigger nazi1a_kill
+	{
+		accum 1 bitreset 0
+		trigger dsound ac1check
+	}
+	trigger nazi1b_live
+	{
+		accum 1 bitset 1
+		trigger dsound ac1check
+	}
+	trigger nazi1b_kill
+	{
+		accum 1 bitreset 1
+		trigger dsound ac1check
+	}
+	trigger nazi1c_live
+	{
+		accum 1 bitset 2
+		trigger dsound ac1check
+	}
+	trigger nazi1c_kill
+	{
+		accum 1 bitreset 2
+		trigger dsound ac1check
+	}
+	trigger ac1check
+	{
+		accum 1 abort_if_bitset 0
+		accum 1 abort_if_bitset 1
+		accum 1 abort_if_bitset 2
+
+		trigger player musicstealth
+	}
+
+	trigger nazi1d_kill
+	{
+		accum 1 bitreset 3
+		trigger dsound ac2check
+	}
+	trigger nazi1e_kill
+	{
+		accum 1 bitreset 4
+		trigger dsound ac2check
+	}
+	trigger nazi1f_kill
+	{
+		accum 1 bitreset 5
+		trigger dsound ac2check
+	}
+	trigger nazi2a_live
+	{
+		accum 1 bitset 6
+		trigger dsound ac2check
+	}
+	trigger nazi2a_kill
+	{
+		accum 1 bitreset 6
+		trigger dsound ac2check
+	}
+
+	trigger ac2check
+	{
+		accum 1 abort_if_bitset 3
+		accum 1 abort_if_bitset 4
+		accum 1 abort_if_bitset 5
+		accum 1 abort_if_bitset 6
+
+		trigger player musicstealth
+	}
+
+	trigger nazi2b_kill
+	{
+		accum 1 bitreset 7
+		trigger dsound ac3check
+	}
+	trigger nazi2c_kill
+	{
+		accum 1 bitreset 8
+		trigger dsound ac3check
+	}
+	// wave 1
+	trigger nazi2d_kill
+	{
+		accum 1 bitreset 9
+		trigger dsound ac3check
+	}
+	trigger nazi2e_kill
+	{
+		accum 1 bitreset 10
+		trigger dsound ac3check
+	}
+	// wave2
+	trigger nazi2f_kill
+	{
+		accum 1 bitreset 11
+		trigger dsound ac3check
+	}
+	trigger nazi2g_kill
+	{
+		accum 1 bitreset 12
+		trigger dsound ac3check
+	}
+	// sniper
+	trigger nazi3a_kill
+	{
+		accum 1 bitreset 13
+		trigger dsound ac3check
+	}
+
+	trigger nazi5d_live
+	{
+		accum 1 bitset 20
+		trigger dsound ac3check
+	}
+	trigger nazi5d_kill
+	{
+		accum 1 bitreset 20
+		trigger dsound ac3check
+	}
+
+	trigger ac3check
+	{
+
+		accum 1 abort_if_bitset 7
+		accum 1 abort_if_bitset 8
+
+		// waves
+		accum 1 abort_if_bitset 9
+		accum 1 abort_if_bitset 10
+		accum 1 abort_if_bitset 11
+		accum 1 abort_if_bitset 12
+		accum 1 abort_if_bitset 13 // sniper
+		accum 1 abort_if_bitset 20 // merc
+
+		trigger player musicstealth
+	}
+
+	trigger nazi4a_kill
+	{
+		accum 1 bitreset 14
+		trigger dsound ac4check
+	}
+	trigger nazi4b_kill
+	{
+		accum 1 bitreset 15
+		trigger dsound ac4check
+	}
+	trigger nazi5a_kill
+	{
+		accum 1 bitreset 16
+		trigger dsound ac4check
+	}
+	trigger nazi5b_kill
+	{
+		accum 1 bitreset 17
+		trigger dsound ac4check
+	}
+	trigger nazi5c_kill
+	{
+		accum 1 bitreset 18
+		trigger dsound ac4check
+	}
+	trigger nazi5e_kill
+	{
+		accum 1 bitreset 21
+		trigger dsound ac4check
+	}
+	trigger nazi5f_kill
+	{
+		accum 1 bitreset 22
+		trigger dsound ac4check
+	}
+	trigger nrv_nazi5a_kill // Nerve coop spawn, added by William Faure
+	{
+		accum 1 bitreset 23
+		trigger dsound ac4check
+	}
+	trigger nrv_nazi5e_kill // Nerve coop spawn, added by William Faure
+	{
+		accum 1 bitreset 24
+		trigger dsound ac4check
+	}
+	trigger nrv_nazi5f_kill // Nerve coop spawn, added by William Faure
+	{
+		accum 1 bitreset 25
+		trigger dsound ac4check
+	}
+	trigger ac4check
+	{
+
+		accum 1 abort_if_bitset 14
+		accum 1 abort_if_bitset 15
+
+		accum 1 abort_if_bitset 16
+		accum 1 abort_if_bitset 17
+		accum 1 abort_if_bitset 18
+
+		accum 1 abort_if_bitset 21
+		accum 1 abort_if_bitset 22
+		
+		#if g_reinforce >= 1
+		accum 1 abort_if_bitset 23
+		accum 1 abort_if_bitset 24
+		accum 1 abort_if_bitset 25
+		#endif
+		
+		trigger player achievement1 // Kill all mercenaries in the Inner City
+		
+		trigger player musicstealth
+		// trigger agent1b back
+	}
+
+	trigger nazi6a_kill
+	{
+		accum 1 bitreset 19
+		trigger dsound ac5check
+	}
+	trigger ac5check
+	{
+
+		accum 1 abort_if_bitset 19
+		trigger player musicstealth
+	}
+
+}
+
+/////////////////////////////////////////////
+// SecretDoor1
+/////////////////////////////////////////////
+
+secret1door
+{
+	spawn
+	{
+		wait 1000
+		faceangles 0 0 0 100
+	}
+
+	trigger open
+	{
+		wait 100
+		playsound sound/world/creak_01.wav
+		faceangles 0 250 0 1500
+	}
+
+	trigger close
+	{
+		wait 100
+		faceangles 0 0 0 1500
+	}
+
+}
+
+/////////////////////////////////////////////
+// Secret3Door1
+/////////////////////////////////////////////
+secret3door
+{
+	spawn
+	{
+	// not needed
+	//	wait 100
+	//	gotomarker sbooks1_spot1 1000
+	}
+
+	trigger open
+	{
+		trigger secret3door2 open
+		playsound sound/movers/doors/door6_open.wav
+		gotomarker sbooks1_spot2 20 wait
+		stopsound
+	}
+
+}
+
+/////////////////////////////////////////////
+// Secret3Door2
+/////////////////////////////////////////////
+secret3door2
+{
+	spawn
+	{
+	// not needed
+	//	wait 100
+	//	gotomarker sbooks2_spot1 1000
+	}
+
+	trigger open
+	{
+		gotomarker sbooks2_spot2 20
+
+	}
+
+}
+
+/////////////////////////////////////////////
+// Civilian Door Shutting
+/////////////////////////////////////////////
+
+civdoor1a
+{
+	spawn
+	{
+		wait 1000
+		faceangles 0 90 0 100
+	}
+
+	trigger close
+	{
+		trigger civdoor1b close
+		faceangles 0 0 0 300
+		playsound sound/movers/doors/door4_endc.wav
+
+	}
+
+}
+
+civdoor1b
+{
+	spawn
+	{
+		wait 1000
+		faceangles 0 270 0 100
+	}
+
+	trigger close
+	{
+		faceangles 0 0 0 300
+		wait 20
+		playsound sound/movers/doors/door4_endc.wav
+
+	}
+
+}
+/////////////////////////////////////////////
+// Wagon Flipping Over
+/////////////////////////////////////////////
+wagon
+{
+	spawn
+	{
+	}
+
+	trigger killcounter
+	{
+		accum 0 inc 1
+		trigger wagon all_dead
+	}
+
+	trigger all_dead
+	{
+		// abort if less than 4 dead officers
+
+		accum 0 abort_if_less_than 3
+
+
+		trigger player action_roof
+	}
+
+	trigger reset
+	{
+		faceangles 0 45 0 100
+	}
+
+	trigger flip
+	{
+		// playsound sound/movers/doors/door6_open.wav
+		gotomarker wagon_spot1 160
+		faceangles 0 0 -90 gototime
+	}
+
+}
+
+/////////////////////////////////////////////
+// radio button
+/////////////////////////////////////////////
+rbutton
+{
+	spawn
+	{
+		accum 0 set 0
+	}
+
+	trigger down
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+			gotomarker rbutton_spot1 100
+	}
+}

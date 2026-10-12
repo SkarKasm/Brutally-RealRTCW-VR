@@ -1,0 +1,4000 @@
+//
+// AI scripts for village part 2, ee2
+// Last edited by: Scan (2003), William Faure (2026)
+//
+// DONT TOUCH, FIXING UP
+
+player
+{
+	// COOP: level start, run once from game_manager's spawn (maps/ee2.coop.script). It holds what
+	// RealRTCW runs for its single player in "spawn", "playerstart" and "trigger playgame".
+	trigger coopstart
+	{
+		globalaccum 0 set 0 // Officer Death Count
+		globalaccum 1 set 0 // Boss (mg) to run away
+		globalaccum 2 set 0 // Music
+		globalaccum 3 set 0 // Door has blown up (action4_boom)
+		globalaccum 4 set 0 // Check to see if player is dead, used for radio conversation. Also once radio conv is finished
+		globalaccum 5 set 0 // mp40 guys dead; objectives (RealRTCW)
+		globalaccum 6 set 0 // radio guy dead, can use radio.
+		globalaccum 7 set 0 // objective 1
+
+		cvar g_episode 1
+		objectivesneeded 2
+		
+		numsecrets 4
+		
+		//
+		
+		globalaccum 2 set 5
+		
+		trigger wagon reset
+		
+		//
+
+		abort_if_loadgame
+		// COOP: no briefing screen, the level music starts at once
+		// (SP: l_briefing_1 / l_theme in spawn, then "mu_fade 0 1200" + "mu_queue sound/music/m_stealth" in playerstart)
+		mu_start sound/music/m_stealth
+	}
+
+	// COOP: every player, on each (re)spawn: RealRTCW's "applyloadout ee2"
+	// (loadouts/loadouts_campaign.loadout) written with co-op actions ("setclip ... full" -> max clip)
+	spawn
+	{
+		giveweapon weapon_knife
+		
+		giveweapon weapon_colt
+		setclip weapon_colt 8
+		#if g_vanilla_guns <= 0 setammo ammo_45cal 23 #endif
+		#if g_vanilla_guns >= 1 setammo ammo_45cal 24 #endif
+		
+		#if g_newInventory <= 0
+		giveweapon weapon_mauserrifle
+		setclip weapon_mauserrifle 10
+		setammo ammo_792mm 8
+		#endif
+		
+		giveweapon weapon_luger
+		setclip weapon_luger 8
+		setammo ammo_9mm 128
+		
+		setammo ammo_grenades 2
+		
+		selectweapon weapon_colt
+		
+		giveinventory key_binocs
+	}
+
+	// COOP: in co-op this runs on every client spawn; the level start is "trigger coopstart"
+	playerstart
+	{
+	}
+
+	// This trigger will be called when the player actually hits the changelevel trigger,
+	// AND he has found all the secrets.  Give him a cookie!
+	trigger endmap_bonus
+	{
+		// COOP-OFF (endmap_bonus is never called in co-op): printbonus ee2
+		// COOP-OFF (endmap_bonus is never called in co-op): giveammo ammo_grenades // giveinventory ammo_grenades   // == "Armored Helmet"
+	}
+	
+	trigger checkpoint // Back Gate
+	{
+		// COOP-OFF (SP save/bonus): savecheckpoint
+	}
+
+///////////////////////////////////////////////////
+// Achievements
+	
+	trigger achievement1
+	{
+		// COOP-OFF (SP achievement): achievement_eeMerc // Kill all mercenaries in the Inner City
+	}
+	
+	trigger stealth_achievement
+	{
+		// COOP-OFF (SP achievement): globalaccum 3 abort_if_greater_than 5
+		// COOP-OFF (SP achievement): globalaccum 3 inc 1
+		// COOP-OFF (SP achievement): globalaccum 3 abort_if_not_equal 5
+		// COOP-OFF (SP achievement): achievement_eeStealth // Perform 5 rewarded stealth kills in a single playthrough
+	}
+
+///////////////////////////
+// Ojectives
+
+	//  Contact Agent One by radio
+	trigger objective_met_1
+	{
+		globalaccum 7 abort_if_not_equal 0
+		globalaccum 7 set 1
+
+		objectivemet 1
+		
+		#if fs_ee_wolf2_sound >= 1 mu_play sound/ui/objective_new4.wav #endif
+		
+		globalaccum 5 inc 1
+		
+		trigger game_manager objective1 // COOP
+	}
+
+	//  Gain access to second courtyard
+	trigger objective_met_2
+	{
+		objectivemet 2
+		
+		#if fs_ee_wolf2_sound >= 1 mu_play sound/ui/objective_new4.wav #endif
+		
+		globalaccum 5 inc 1
+		
+		trigger game_manager objective2
+	}
+
+///////////////////////////
+// Secrets
+
+	trigger secret1_open
+	{
+		//trigger secret1door open
+		alertentity nrv_unlockdoor1
+		wait 100
+		alertentity nrv_opendoor1
+	}
+
+	trigger nrv_secret1
+	{
+		foundsecret
+		
+		// COOP-OFF (SP achievement): globalaccum 0 inc 1
+	}
+
+	trigger secret2
+	{
+		foundsecret
+		
+		// COOP-OFF (SP achievement): globalaccum 0 inc 1
+	}
+
+	trigger secret3_open
+	{
+		trigger secret3door open
+		foundsecret
+		
+		// COOP-OFF (SP achievement): globalaccum 0 inc 1
+
+	}
+
+	trigger secret4
+	{
+		foundsecret
+		
+		// COOP-OFF (SP achievement): globalaccum 0 inc 1
+	}
+
+///////////////////////////
+// Music
+
+	// Upbeat - Moving (rolling)
+	trigger musicmoving
+	{
+		globalaccum 2 abort_if_equal 7
+		globalaccum 2 set 7
+		mu_stop 3000
+		mu_fade 0 500
+		mu_queue sound/music/m_moving
+	}
+	// Calm - Sneaky (lower  slower pace)
+	trigger musicstealth
+	{
+		globalaccum 2 abort_if_equal 5
+		globalaccum 2 set 5
+		mu_stop 3000
+		wait 1500
+		mu_fade 0 500
+		mu_queue sound/music/m_stealth
+	}
+	// Calm - After Battle (after action is over sorta)
+	trigger musicgrave
+	{
+		globalaccum 2 abort_if_equal 4
+		globalaccum 2 set 4
+		mu_stop 3000
+		wait 1500
+		mu_fade 0 500
+		mu_queue sound/music/m_grave
+	}
+	// Moderate - Anticipation (flat with no action)
+	trigger musicmission
+	{
+		globalaccum 2 abort_if_equal 1
+		globalaccum 2 set 1
+		mu_stop 3000
+		wait 1500
+		mu_fade 0 500
+		mu_queue sound/music/m_mission
+	}
+	// Moderate -  Uneasyness (throbbing and bumpy)
+	trigger musictension
+	{
+		globalaccum 2 abort_if_equal 2
+		globalaccum 2 set 2
+		mu_stop 3000
+		mu_fade 0 500
+		mu_queue sound/music/m_tension
+	}
+	// Moderate - Drum Rolls
+	trigger musicdrums
+	{
+		globalaccum 2 abort_if_equal 3
+		globalaccum 2 set 3
+		mu_stop 3000
+		wait 1500
+		mu_fade 0 500
+		mu_queue sound/music/m_drums
+	}
+	// Upbeat - Action (duh duh duh duh)
+	trigger musicaction
+	{
+		globalaccum 2 abort_if_equal 6
+		globalaccum 2 set 6
+		mu_stop 3000
+		mu_fade 0 500
+		mu_queue sound/music/m_action
+	}
+	// Upbeat - Military (drums, tromping around)
+	trigger musicsituation
+	{
+		globalaccum 2 abort_if_equal 8
+		globalaccum 2 set 8
+		mu_stop 3000
+		mu_fade 0 500
+		mu_queue sound/music/m_situation
+	}
+
+// counter for first area, unlocking gate
+
+	trigger officer_count
+	{
+		globalaccum 0 inc 1
+		trigger player all_dead
+	}
+
+	trigger all_dead
+	{
+		// abort if less than 3 dead officers
+
+		globalaccum 0 abort_if_less_than 2
+		globalaccum 4 abort_if_not_equal 1
+		alertentity open_door
+		alertentity nazi2a
+		trigger nazi2a walk
+		//alertentity kill_door_hint				//CGC
+		wait 500
+	}
+
+
+// Start first patrolling nazi
+
+	trigger action1a
+	{
+		// first nazi patrolling
+
+		alertentity nazi1a
+
+	}
+
+// Leave entrancy hallway
+
+	trigger action1b
+	{
+		alertentity nazi1b
+		alertentity nazi1c
+		trigger nazi1c side2
+	}
+
+// Start Overheard Radio Conversation
+
+	trigger action1c
+	{
+		trigger nazi1b go
+
+		alertentity radiovoice1
+		trigger ast radiovoice1
+
+		wait 3500
+
+		trigger nazi1b speak1
+	}
+
+	trigger nazi1c_side1
+	{
+		trigger nazi1c side1
+	}
+	trigger nazi1c_side2
+	{
+		trigger nazi1c side2
+	}
+	trigger nazi1c_side3
+	{
+		trigger nazi1c side3
+	}
+
+	trigger radioguydead
+	{
+		globalaccum 6 set 1
+	}
+
+// Bj and Agent one talk
+
+	trigger radio_conversation2
+	{
+
+		trigger radio_conversation2
+		globalaccum 6 abort_if_not_equal 0
+		// play deny sound
+
+	}
+
+	trigger radio_conversation
+	{
+		globalaccum 6 abort_if_not_equal 1
+		globalaccum 4 abort_if_not_equal 0
+		
+		alertentity rbutton_fiu_kill_relay
+
+		trigger rbutton down
+		
+		trigger player playbink_ps2
+	}
+
+	trigger playbink
+	{
+		#if cg_drawSubtitles <= 0 cin_play ee2.webm #endif
+		#if cg_drawSubtitles >= 1 cin_play ee2_sub.webm #endif
+		
+		trigger player radio_conversation_end
+	}
+
+	trigger playbink_ps2
+	{
+		#if cg_drawSubtitles <= 0 cin_play ee2_ps2.webm #endif
+		#if cg_drawSubtitles >= 1 cin_play ee2_ps2_sub.webm #endif
+		
+		trigger player radio_conversation_end
+	}
+
+	trigger radio_conversation_end
+	{
+		//teleport radio_away // MBJ
+		//startcam ee2_radio_cam
+
+		//lockplayer on
+		//wait 1000
+
+		//alertentity radio2_talk1
+		//trigger ast radio2_talk1
+		//wait 1700
+
+		//globalaccum 4 abort_if_equal 1
+		//alertentity radio2_talk2
+		//trigger ast radio2_talk2
+		//wait 1700
+
+		//alertentity radio2_talk3
+		//trigger ast radio2_talk3
+		//wait 8300
+
+		//globalaccum 4 abort_if_equal 1
+		//alertentity radio2_talk4
+		//trigger ast radio2_talk4
+		//wait 1500
+
+		//teleport radio_back
+		//wait 5
+		//stopcam
+		wait 500
+		alertentity radio2_talk5					// 'radio2_talk5' restored, William Faure
+		trigger ast radio2_talk5
+		//lockplayer off
+
+		globalaccum 4 set 1
+		trigger player objective_met_1
+		wait 5
+		trigger player all_dead
+	}
+
+
+// Entering residence
+
+	trigger action1d
+	{
+		alertentity nazi1d
+		alertentity nazi1e
+		alertentity nazi1f
+	}
+
+	trigger action2a
+	{
+		trigger player objective_met_2
+		alertentity nazi2b
+		alertentity nazi2c
+		#if g_reinforce >= 2 alertentity reinforce_leet1 #endif
+		wait 10
+		trigger nazi2b speak
+		wait 500
+		trigger player musicaction
+	}
+
+// entranec view
+
+	trigger action2b
+	{
+		trigger nazi2b go
+		
+		alertentity nazi2d
+		alertentity nazi2e
+		
+		globalaccum 0 random 2
+		trigger player action2b_xbox
+		trigger player action2b_ps2
+	}
+	
+	trigger action2b_xbox
+	{
+		globalaccum 0 abort_if_not_equal 0
+		alertentity nazi3a
+	}
+	
+	trigger action2b_ps2
+	{
+		globalaccum 0 abort_if_not_equal 1
+		alertentity nazi3a_ps2
+		trigger nazi3a_ps2 merc
+	}
+
+// mid drift
+
+	trigger action2c
+	{
+		trigger nazi2c go
+		trigger nazi2b moved
+	}
+
+
+// make first wave go
+
+	trigger action2d_go
+	{
+		trigger nazi2d go
+		wait 200
+		trigger nazi2e go
+		trigger nazi2c cover
+	}
+
+// onto covered decked
+
+	trigger action2d
+	{
+		alertentity nazi2f
+		wait 250
+		alertentity nazi2g
+		
+		#if g_reinforce >= 2
+		alertentity reinforce_leet2
+		alertentity reinforce_leet3
+		#endif
+	}
+
+// agent one, yet again runs by you ;]
+
+	trigger agent1_walk
+	{
+		// alertentity agent1 // COOP: removed by the co-op authors
+		
+		#if g_reinforce >= 2 alertentity reinforce_dog1 #endif
+	}
+
+// chat city
+
+	trigger action2e
+	{
+		wait 1000
+		alertentity misc_chatter01a
+		wait 2500
+		alertentity misc_chatter01b
+		wait 2300
+		alertentity misc_chatter01c
+		wait 3300
+		alertentity misc_chatter01d
+	}
+
+
+// heading up into hallway house
+
+	trigger action3a
+	{
+		trigger nazi3a go
+		trigger nazi3a_ps2 go_merc
+	}
+
+	trigger action_merc1
+	{
+		alertentity nazi5d
+		
+		#if g_reinforce >= 2 alertentity reinforce_leet4 #endif
+	}
+
+// Down ladder hole into residence
+
+	trigger action4a
+	{
+		alertentity kill_wagon
+		
+		#if g_reinforce >= 2 alertentity reinforce_leet5 #endif
+	}
+
+	trigger action4b
+	{
+		trigger wagon flip
+		alertentity nazi4a
+		alertentity nazi4b
+
+		wait 500
+
+		trigger nazi4a sound1
+
+		wait 7000
+
+		trigger nazi4b sound1
+
+		wait 4000
+
+		trigger nazi4a sound2
+
+		wait 4500
+
+		trigger nazi4b sound2
+
+	}
+
+	trigger action4c
+	{
+
+	}
+
+	trigger action4_preboom
+	{
+		globalaccum 3 abort_if_not_equal 0
+		globalaccum 3 set 1
+
+		wait 1000
+
+		// alert entity to make stuff explode
+		//alertentity e_door_relay
+
+		// make wagon trigger active
+		alertentity wagon_enable
+
+		alertentity nazi5a
+		wait 5
+		alertentity nazi5b
+		wait 5
+	//	alertentity nazi5c
+		wait 5
+		alertentity nazi5e
+		wait 5
+		alertentity nazi5f
+		wait 5
+	//	alertentity agent1b
+
+		wait 100
+
+		trigger nazi4a go
+		trigger nazi4b go
+
+
+		trigger player musicaction
+		wait 5
+
+		wait 10
+		alertentity dw1_go
+		wait 50
+		alertentity dw3_go
+		wait 250
+		alertentity dw5_go
+		wait 280
+		alertentity dw7_go
+		wait 40
+		trigger nazi5b go
+	}
+
+	trigger action4_boom
+	{
+		trigger player action4_preboom
+	}
+
+	trigger action_flipwagon
+	{
+
+	}
+
+	trigger action_roof
+	{
+		wait 1000
+		alertentity nazi5c
+		// wait 350
+		// alertentity agent1b
+		
+		#if g_reinforce >= 1
+		alertentity open_merc1
+		alertentity nrv_nazi5a
+		alertentity nrv_nazi5e
+		alertentity nrv_nazi5f
+		#endif
+	}
+
+	trigger action6a
+	{
+		alertentity nazi6a
+		
+		#if g_reinforce >= 2 alertentity reinforce_dog2 #endif
+	}
+
+	trigger endmap
+	{
+		trigger game_manager checkexit // COOP: game_manager (ee2.coop.script) checks objectives 1 and 2
+	}
+
+	trigger exitlevel
+	{
+		// COOP-OFF (SP achievement): globalaccum 1 inc 1
+		
+		// COOP-OFF (SP achievement): if g_gameskill >= 3 globalaccum 2 inc 1 endif
+		
+		#if g_ee_progress == 1 cvar g_ee_progress 2 #endif
+		
+		cvar g_level_was_selected 0
+		
+		changelevel ee3 persistent
+	}
+
+	death
+	{
+	}
+}
+
+/////////////////////////////////////////////
+// SECTION 1 - Entrance Loop
+/////////////////////////////////////////////
+
+nazi1a
+{
+	attributes
+	{
+		fov 65	 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.2 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.7	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.2	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.6		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.2		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 6000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 30	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // spotted
+		accum 1 set 0 // spoken
+
+		takeweapon all
+		#if g_ee_earlyWeapons <= 0 giveweaponfull weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 giveweaponfull weapon_mp40 #endif
+
+		trigger nazi1a go
+	}
+
+	trigger go
+	{
+		wait 50
+		walktomarker nazi1a_spot1 nostop
+		walktomarker nazi1a_spot2 nostop
+		walktomarker nazi1a_spot3 nostop
+		walktomarker nazi1a_spot4 nostop
+		walktomarker nazi1a_spot5 nostop
+		walktomarker nazi1a_spot6 nostop
+		walktomarker nazi1a_spot7 nostop
+		walktomarker nazi1a_spot8 nostop
+		walktomarker nazi1a_spot9 nostop
+		walktomarker nazi1a_spot10 nostop
+		resetscript
+	}
+
+	trigger spotted
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		trigger player musicmoving
+		trigger dsound nazi1a_live
+
+		attrib fov 240
+		attrib alertness 12000
+		statetype alert
+		clearanim
+		#if g_ee_earlyWeapons <= 0 selectweapon weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 selectweapon weapon_mp40 #endif
+		resetscript
+	//	wait 250 player
+	}
+
+	trigger speak
+	{
+		accum 1 abort_if_not_equal 0
+		accum 1 set 1
+
+		playsound nazi_whogoes
+		wait 300
+	}
+	enemysight
+	{
+		trigger nazi1a spotted
+	}
+
+	statechange relaxed alert
+	{
+		trigger nazi1a spotted
+	}
+
+	statechange query alert
+	{
+		trigger nazi1a spotted
+	}
+
+	statechange relaxed combat
+	{
+		trigger nazi1a spotted
+	}
+
+	statechange query combat
+	{
+		trigger nazi1a spotted
+	}
+
+	bulletimpact
+	{
+		trigger nazi1a speak
+		trigger nazi1a spotted
+	}
+
+	bulletimpactsound
+	{
+		trigger nazi1a speak
+		attrib fov 240
+		clearanim
+	}
+
+	inspectsoundstart
+	{
+		trigger nazi1a speak
+		attrib fov 240
+		clearanim
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi1a_kill
+	}
+}
+
+// Radioroom guy
+nazi1b
+{
+	attributes
+	{
+		fov 120	 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.2 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.7	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.0	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.2		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.6		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.4		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 400		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 30	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 0.5	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // spotted
+		accum 1 set 0 // speak
+		accum 2 set 0 // inside
+		accum 3 set 0 // dead
+
+		takeweapon all
+		giveweapon weapon_luger
+		setammo ammo_9mm 999
+		nosight 99999
+	}
+
+	trigger go
+	{
+		accum 0 abort_if_not_equal 0
+		accum 3 abort_if_not_equal 0
+		sight
+		playanim tunning_radio both forever
+	}
+
+	trigger speak1
+	{
+		accum 3 abort_if_not_equal 0
+		accum 1 abort_if_not_equal 0
+		clearanim
+		playsound nazi_ee2_2b
+		playanim tunning_radio both
+		wait 400
+		//trigger nazi1b walk
+	}
+
+	trigger walk
+	{
+		accum 3 abort_if_not_equal 0
+		clearanim
+		resetscript
+		walktomarker nazi1b_spot1 nostop
+		walktomarker nazi1b_spot1b nostop
+		walktomarker nazi1b_spot2 nostop
+		walktomarker nazi1b_spot3 nostop
+		walktomarker nazi1b_spot4 nostop
+		attrib fov 140
+		clearanim
+		resetscript
+	}
+
+	trigger stoptalk
+	{
+		accum 1 set 1
+		playsound blank
+	}
+
+	trigger spotted
+	{
+		accum 3 abort_if_not_equal 0
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		sight
+
+		trigger player musicmoving
+		trigger nazi1b stoptalk
+		trigger dsound nazi1b_live
+
+		attrib fov 240
+		attrib alertness 7000
+
+		statetype alert
+		clearanim
+		resetscript
+		playsound MiscHalt
+		wait 250 player
+		selectweapon weapon_luger
+		resetscript
+		attack player
+	}
+	enemysight
+	{
+		trigger nazi1b spotted
+	}
+
+	statechange relaxed combat
+	{
+		trigger nazi1b spotted
+	}
+
+	statechange query combat
+	{
+		trigger nazi1b spotted
+	}
+
+	bulletimpact
+	{
+		trigger nazi1b spotted
+
+	}
+
+	bulletimpactsound
+	{
+		trigger nazi1b spotted
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	death
+	{
+		accum 3 set 1
+		trigger dsound nazi1b_kill
+		trigger player radioguydead
+	}
+
+}
+
+// Objective Officer
+
+nazi1c
+{
+	attributes
+	{
+		fov 55	 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.2 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.3	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.8		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.0		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.5		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 6000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 30	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 256 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // alerted
+		accum 1 set 0 // side 2
+		accum 2 set 0 // cant hear
+
+		takeweapon all
+		giveweapon weapon_luger
+		setammo ammo_9mm 999
+		trigger nazi1c go
+	}
+	trigger go
+	{
+		accum 0 abort_if_not_equal 0
+		playanim looking_over_table both forever
+	}
+	trigger side1
+	{
+		accum 1 set 1
+	}
+	trigger side2
+	{
+		accum 1 set 0
+	}
+	trigger side3
+	{
+		accum 1 set 2
+	}
+
+	trigger spotted
+	{
+		clearanim
+		trigger nazi1c spotted3
+		wait 5
+		trigger nazi1c spotted2
+		wait 5
+		trigger nazi1c spotted1
+	}
+	trigger spotted1
+	{
+		accum 1 abort_if_not_equal 1
+
+
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		trigger player musicmoving
+		trigger dsound nazi1c_live
+
+		nosight 5000
+		explicit_routing on
+
+		attrib fov 240
+		clearanim
+		statetype alert
+
+		//giveweapon weapon_luger
+		//selectweapon weapon_luger
+
+		// wait 350 player
+
+		runtomarker nazi1c_spot0 nostop
+		facetargetangles nazi1c_spot1
+		runtomarker nazi1c_spot1
+		explicit_routing off
+		sight
+		wait forever 0
+		attack player
+
+	}
+
+	trigger spotted2
+	{
+		accum 1 abort_if_not_equal 0
+
+
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		trigger player musicmoving
+		trigger dsound nazi1c_live
+
+		nosight 5000
+		//explicit_routing on
+
+		clearanim
+		statetype alert
+		//giveweapon weapon_luger
+		//selectweapon weapon_luger
+		//facetargetangles nazi1c_spot2
+		//runtomarker nazi1c_spot2
+		//explicit_routing off
+		sight
+
+		attrib fov 240
+		wait forever 0
+		attack player
+	}
+
+	trigger spotted3
+	{
+		accum 1 abort_if_not_equal 2
+
+
+		trigger player musicmoving
+		trigger dsound nazi1c_live
+
+		clearanim
+		attrib fov 240
+		//giveweapon weapon_luger
+		//selectweapon weapon_luger
+		statetype alert
+		resetscript
+	}
+
+	enemysight
+	{
+		trigger nazi1c spotted
+	}
+	statechange relaxed alert
+	{
+		trigger nazi1c spotted
+	}
+	statechange relaxed combat
+	{
+		trigger nazi1c spotted
+	}
+	statechange query alert
+	{
+		trigger nazi1c spotted
+	}
+	statechange query combat
+	{
+		trigger nazi1c spotted
+	}
+	bulletimpact
+	{
+		trigger nazi1c spotted
+	}
+	bulletimpactsound
+	{
+		trigger nazi1c spotted
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger player officer_count
+		trigger dsound nazi1c_kill
+		// alertentity t1213 // alertentity nazi1c_deathcheck
+		// alertentity t2099 // alertentity nazi1c_deathcheck
+	}
+}
+
+// Inside Residence
+
+nazi1d
+{
+	attributes
+	{
+		fov 140	 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.2 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.7	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.35		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.5		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.7		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 6000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // spotted
+
+		takeweapon all
+		setammo ammo_grenades 0
+
+		trigger nazi1d go
+	}
+
+	trigger go
+	{
+		playanim tunning_radio both forever
+	}
+
+	trigger spotted
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		trigger player musicmoving
+
+		facetargetangles nazi1d_spot1
+		clearanim
+		statetype alert
+
+		#if g_ee_earlyWeapons <= 0
+		giveweaponfull weapon_luger
+		selectweapon weapon_luger
+		#endif
+		
+		#if g_ee_earlyWeapons >= 1
+		giveweaponfull weapon_mp40
+		selectweapon weapon_mp40
+		#endif
+
+		runtomarker nazi1d_spot1
+		resetscript
+		attack player
+	}
+
+	enemysight
+	{
+		trigger nazi1d spotted
+	}
+
+	statechange relaxed alert
+	{
+		resetscript
+	}
+
+	statechange relaxed combat
+	{
+		trigger nazi1d spotted
+	}
+
+	statechange query alert
+	{
+		resetscript
+	}
+
+	statechange query combat
+	{
+		resetscript
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger nazi1f spotted
+		trigger dsound nazi1d_kill
+	}
+
+
+}
+
+// Objective Officer
+
+nazi1e
+{
+	attributes
+	{
+		fov 160	 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.2 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.4	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.4		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.5		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.8		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 7000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 30	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // spotted
+
+		takeweapon all
+		setammo ammo_grenades 0
+
+		trigger nazi1e go
+	}
+
+	trigger go
+	{
+		playanim talking_1h both forever
+	}
+
+	trigger spotted
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		trigger player musicmoving
+
+	//	facetargetangles nazi1e_spot1
+		clearanim
+		statetype alert
+
+		playsound male_ze_american
+	//	wait 1000
+
+		setammo ammo_9mm 999
+		giveweapon weapon_luger
+		selectweapon weapon_luger
+
+		runtomarker nazi1e_spot1 nostop
+		runtomarker nazi1e_spot2 nostop
+
+		resetscript
+
+		runtomarker nazi1e_spot3 nostop
+		runtomarker nazi1e_spot4
+
+		attack player
+	}
+
+	enemysight
+	{
+		clearanim
+		trigger nazi1e spotted
+	}
+
+	statechange relaxed alert
+	{
+		resetscript
+	}
+
+	statechange relaxed combat
+	{
+		trigger nazi1e spotted
+	}
+
+	statechange query alert
+	{
+		resetscript
+	}
+
+	statechange query combat
+	{
+		trigger nazi1e spotted
+	}
+
+	inspectfriendlycombatstart
+	{
+		resetscript
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger player officer_count
+		trigger nazi1f spotted
+		trigger dsound nazi1e_kill
+	}
+}
+
+nazi1f
+{
+	attributes
+	{
+		fov 140	 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.2 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.7	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.35		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.5		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.7		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 6000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0
+
+		takeweapon all
+		setammo ammo_grenades 0
+		#if g_ee_earlyWeapons <= 0 giveweaponfull weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 giveweaponfull weapon_mp40 #endif
+
+		trigger nazi1f go
+	}
+
+	trigger go
+	{
+		playanim tunning_radio both forever
+	}
+
+	trigger spotted
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		trigger player musicmoving
+
+		clearanim
+		facetargetangles nazi1f_spot1
+		statetype alert
+		playsound MiscKillHim
+		wait 300 player
+		#if g_ee_earlyWeapons <= 0 selectweapon weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 selectweapon weapon_mp40 #endif
+		wait 250 player
+
+		resetscript
+		attack player
+	}
+
+	enemysight
+	{
+		trigger nazi1f spotted
+	}
+
+	statechange relaxed alert
+	{
+		clearanim
+	}
+
+	statechange relaxed combat
+	{
+		trigger nazi1f spotted
+	}
+
+	statechange query alert
+	{
+		resetscript
+	}
+
+	statechange query combat
+	{
+		trigger nazi1f spotted
+	}
+
+	inspectfriendlycombatstart
+	{
+		clearanim
+	}
+	bulletimpact
+	{
+		trigger nazi1f spotted
+	}
+
+	bulletimpactsound
+	{
+		attrib fov 240
+		attrib reaction_time 0.2
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger nazi1e spotted
+		trigger nazi1d spotted
+		trigger dsound nazi1f_kill
+	}
+}
+
+
+/////////////////////////////////////////////
+// SECTION 2 - Courtyard
+/////////////////////////////////////////////
+
+// heads out into area one unlocking gate
+
+nazi2a
+{
+	attributes
+	{
+		fov 140	 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.2 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.7	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.6		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.4		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 12000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 20	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+
+		starting_health 20
+	}
+
+	spawn
+	{
+		statetype alert
+
+		takeweapon all
+
+		setammo ammo_grenades 0
+		#if g_ee_earlyWeapons <= 0 giveweaponfull weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 giveweaponfull weapon_mp40 #endif
+		wait 5
+		#if g_ee_earlyWeapons <= 0 selectweapon weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 selectweapon weapon_mp40 #endif
+		wait 150
+		trigger nazi2a go
+	}
+
+	trigger go
+	{
+		runtomarker nazi2a_spot1
+		facetargetangles nazi2a_spot2
+		runtomarker nazi2a_spot2
+		playsound MiscHesHere2
+		resetscript
+		runtomarker nazi2a_spot3
+	}
+
+	enemysight
+	{
+		trigger player musicmoving
+		playsound MiscHalt
+		attack player
+		resetscript
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi2a_kill
+	}
+}
+
+
+// Courtyard Mg40 Behind Lattace
+
+nazi2b
+{
+	attributes
+	{
+		fov 180 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.3 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.3	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.7		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.5		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 14000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 50	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // moved
+		accum 1 set 0 // speak
+
+		// takeweapon all
+
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+		// giveweapon weapon_mp40
+		selectweapon weapon_mp40
+
+		wait 150
+
+		statetype alert
+		trigger nazi2b talk
+		wait forever 0
+	}
+
+	trigger speak
+	{
+		accum 1 abort_if_not_equal 0
+
+		playsound nazi_ee2_3
+	}
+
+	trigger stoptalk
+	{
+		accum 1 set 1
+		playsound blank
+	}
+
+	trigger moved
+	{
+		accum 0 set 1
+		runtomarker nazi2b_spot2
+		resetscript
+		attack player
+	}
+
+	trigger go
+	{
+		trigger nazi2b stoptalk
+
+		// playsound MiscOverThere1
+
+		playsound MiscStopHim
+
+		fireattarget nazi2b_fire 1400
+		wait 20
+
+		accum 0 abort_if_not_equal 0
+
+		runtomarker nazi2b_spot1 nostop
+
+		accum 0 abort_if_not_equal 0
+
+		runtomarker nazi2b_spot2 nazi2b_fire
+
+		resetscript
+		attack player
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi2b_kill
+		trigger nazi3a go
+		trigger nazi3a_ps2 go_merc
+	}
+}
+
+// Courtyard Mg40 on Deck
+
+nazi2c
+{
+	attributes
+	{
+		fov 240 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.4 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.7	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.7		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.3		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 1.0		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 14000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 75	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // interrupted to cover
+
+		// takeweapon all
+		// giveweapon weapon_mp40
+
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+
+		selectweapon weapon_mp40
+	}
+
+	trigger go
+	{
+		accum 0 abort_if_not_equal 0
+		nosight 2000
+		explicit_routing on
+		wait 20
+		accum 0 abort_if_not_equal 0
+		playsound MiscKillHim
+		statetype alert
+		facetargetangles nazi2c_spot1
+		runtomarker nazi2c_spot1
+		fireattarget nazi2c_fire 1400
+		sight
+		accum 0 abort_if_not_equal 0
+		wait forever 0
+		explicit_routing off
+//		trigger nazi2c shoot
+		wait forever 0
+	}
+	trigger shoot
+	{
+		accum 0 abort_if_not_equal 0
+		wait forever 0
+	}
+
+	trigger cover
+	{
+		accum 0 set 1
+		sight
+		statetype alert
+		clearanim
+		resetscript
+		attack player
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+	bulletimpact
+	{
+		deny
+	}
+	inspectsoundstart
+	{
+		deny
+	}
+	inspectsoundend
+	{
+		deny
+	}
+	inspectbodystart
+	{
+		deny
+	}
+	inspectbodyend
+	{
+		deny
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem item_health_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		// alertentity t2102 // trigger nazi2c_deathcheck
+		trigger player action2d_go
+		trigger dsound nazi2c_kill
+		trigger nazi3a go
+		trigger nazi3a_ps2 go_merc
+	}
+
+}
+
+// Guard Running Down Hall #1
+
+nazi2d
+{
+	attributes
+	{
+		fov 60	 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.7		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.5		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 14000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // covered
+
+		takeweapon all
+
+		setammo ammo_grenades 0
+		
+		#if g_ee_earlyWeapons <= 0
+		giveweaponfull weapon_luger
+		selectweapon weapon_luger
+		#endif
+		
+		#if g_ee_earlyWeapons >= 1
+		giveweaponfull weapon_mp40
+		selectweapon weapon_mp40
+		#endif
+
+		statetype alert
+
+		nosight 99999
+	}
+
+	trigger go
+	{
+		sight
+		clearanim
+		noavoid
+		runtomarker nazi2d_spot1 nostop
+		runtomarker nazi2d_spot2 nostop
+		runtomarker nazi2d_spot3
+		trigger nazi2d cover
+	}
+
+	enemysight
+	{
+		attrib fov 240
+		trigger nazi2d cover
+	}
+
+	trigger cover
+	{
+		resetscript
+		runtomarker nazi2d_spot4
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi2d_kill
+	}
+}
+
+// Guard Running Down Hall #2
+
+nazi2e
+{
+	attributes
+	{
+		fov 60			// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.7		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.5		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 14000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		takeweapon all
+
+		setammo ammo_grenades 0
+		
+		#if g_ee_earlyWeapons <= 0
+		giveweaponfull weapon_luger
+		selectweapon weapon_luger
+		#endif
+		
+		#if g_ee_earlyWeapons >= 1
+		giveweaponfull weapon_mp40
+		selectweapon weapon_mp40
+		#endif
+
+		statetype alert
+
+		nosight 99999
+	}
+
+	trigger go
+	{
+		sight
+		clearanim
+		noavoid
+		runtomarker nazi2d_spot1 nostop
+		runtomarker nazi2d_spot2 nostop
+		runtomarker nazi2d_spot3
+		trigger nazi2e cover
+	}
+
+	enemysight
+	{
+		attrib fov 240
+		trigger nazi2e cover
+	}
+
+	trigger cover
+	{
+		resetscript
+		runtomarker nazi2d_spot5
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi2e_kill
+	}
+
+}
+
+agent1
+{
+	attributes
+	{
+		fov 1	  		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.5 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.75	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.0	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.5		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.8		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 0		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 0.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 0 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		knockback off
+		nosight 10000
+		wait 5
+		setammo ammo_grenades 0
+		takeweapon all
+		//giveweapon weapon_mp40		// removed by William Faure
+		//selectweapon weapon_mp40		// removed by William Faure
+		giveweapon weapon_thompson		// added by William Faure
+		selectweapon weapon_thompson 	// added by William Faure
+
+	//	giveweapon weapon_colt
+	//	selectweapon weapon_colt
+		trigger agent1 run
+	}
+
+	bulletimpact
+	{
+		deny
+	}
+
+	inspectsoundstart
+	{
+		deny
+	}
+
+	inspectsoundend
+	{
+		deny
+	}
+
+	inspectbodystart
+	{
+		deny
+	}
+
+	inspectbodyend
+	{
+		deny
+	}
+
+	trigger run
+	{
+		wait 350
+		runtomarker agent1_spot1
+		wait 1000
+		alertentity agent1_kill
+	}
+	death
+	{
+		missionfailed 2 10
+	}
+}
+
+// Second Hall Wave #1
+
+nazi2f
+{
+	attributes
+	{
+		fov 60	 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 1.0		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.5		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 14000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		takeweapon all
+
+		setammo ammo_grenades 0
+		
+		#if g_ee_earlyWeapons <= 0
+		giveweaponfull weapon_luger
+		selectweapon weapon_luger
+		#endif
+		
+		#if g_ee_earlyWeapons >= 1
+		giveweaponfull weapon_mp40
+		selectweapon weapon_mp40
+		#endif
+
+		statetype alert
+		trigger nazi2f go
+	}
+
+	trigger go
+	{
+		sight
+		clearanim
+		noavoid
+		runtomarker nazi2d_spot1 nostop
+		runtomarker nazi2d_spot2 nostop
+		runtomarker nazi2d_spot3
+		trigger nazi2f cover
+	}
+
+	enemysight
+	{
+		attrib fov 240
+		trigger nazi2f cover
+	}
+
+	trigger cover
+	{
+		resetscript
+		runtomarker nazi2d_spot4
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi2f_kill
+	}
+}
+
+// Second Hall Wave #2
+
+nazi2g
+{
+	attributes
+	{
+		fov 60 			// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 1.0		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.3		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 14000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		takeweapon all
+
+		setammo ammo_grenades 0
+		
+		#if g_ee_earlyWeapons <= 0
+		giveweaponfull weapon_luger
+		selectweapon weapon_luger
+		#endif
+		
+		#if g_ee_earlyWeapons >= 1
+		giveweaponfull weapon_mp40
+		selectweapon weapon_mp40
+		#endif
+
+		statetype alert
+		trigger nazi2g go
+	}
+
+	trigger go
+	{
+		sight
+		clearanim
+		noavoid
+		runtomarker nazi2d_spot0 nostop
+		runtomarker nazi2d_spot1 nostop
+		runtomarker nazi2d_spot2 nostop
+		runtomarker nazi2d_spot3
+		trigger nazi2g cover
+	}
+
+	enemysight
+	{
+		attrib fov 240
+		trigger nazi2g cover
+	}
+
+	trigger cover
+	{
+		resetscript
+		runtomarker nazi2d_spot5
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi2g_kill
+	}
+}
+
+/////////////////////////////////////////////
+// SECTION 3 - Hall Out of Courtyard and Into Building
+/////////////////////////////////////////////
+
+// Window sniper in hall
+
+nazi3a
+nazi3a_ps2
+{
+	attributes
+	{
+		fov 200  		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.5 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.8	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.6		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.5		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 16000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 15	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 0.7	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 256 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0
+
+		takeweapon all
+
+		setammo ammo_grenades 0
+		setammo ammo_792mm 100
+		giveweapon weapon_mauserrifle
+		selectweapon weapon_mauserrifle
+
+		statetype alert
+	//	nosight 99999
+	}
+	
+	trigger merc
+	{
+		#if g_ee_skinMercenary <= 0
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 1 random 2
+		accum 1 abort_if_equal 0
+		trigger self* skin
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		
+		accum 2 random 2
+		trigger self* skin1
+		trigger self* skin2
+	}
+		
+	trigger skin1
+	{
+		accum 2 abort_if_not_equal 0
+		
+		changeaiskin merc/black
+		changeaihead black
+	}
+		
+	trigger skin2
+	{
+		accum 2 abort_if_not_equal 1
+		
+		changeaiskin merc/red
+		changeaihead red
+	}
+
+	trigger go
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		sight
+		facetargetangles nazi3a_spot1
+		playsound Miscschnell
+		wait forever 0
+		
+		trigger self* shoot
+	}
+
+	trigger go_merc
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+		
+		sight
+		facetargetangles nazi3a_spot1
+		playsound local_ee2_1
+		wait forever 0
+		
+		trigger self* shoot
+	}
+	
+	trigger shoot
+	{
+		wait forever 0
+		resetscript
+	}
+	enemysight
+	{
+		attack player
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi3a_kill
+	}
+
+}
+
+/////////////////////////////////////////////
+// SECTION 4 - Residence
+/////////////////////////////////////////////
+
+nazi4a
+{
+	attributes
+	{
+		fov 60 			// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.2	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.5		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.5		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 800		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 0.2	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // alerted
+		accum 1 set 0 // speak
+
+		takeweapon all
+
+		setammo ammo_9mm 999
+		setammo ammo_grenades 0
+		#if g_ee_earlyWeapons <= 0 giveweaponfull weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 giveweaponfull weapon_mp40 #endif
+
+		// trigger nazi4a relaxed
+	}
+
+	trigger relaxed
+	{
+		playanim looking_over_table both forever
+	}
+
+	trigger sound1
+	{
+		accum 1 abort_if_not_equal 0
+
+		clearanim
+		playsound nazi_ee2_4a
+
+		trigger nazi4a relaxed
+	}
+
+
+	trigger sound2
+	{
+		accum 1 abort_if_not_equal 0
+
+		clearanim
+		playsound nazi_ee2_4c
+
+		trigger nazi4a relaxed
+	}
+
+	trigger stoptalk
+	{
+		accum 1 set 1
+		playsound blank
+	}
+
+	trigger spotted
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		trigger nazi4a stoptalk
+		trigger player musicaction
+
+		clearanim
+		attrib fov 240
+		#if g_ee_earlyWeapons <= 0 selectweapon weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 selectweapon weapon_mp40 #endif
+		trigger player action4_preboom
+		resetscript
+	}
+
+	trigger go
+	{
+		trigger nazi4a stoptalk
+
+		#if g_ee_earlyWeapons <= 0 selectweapon weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 selectweapon weapon_mp40 #endif
+		clearanim
+		attrib fov 240
+		facetargetangles nazi4a_fire
+		wait 800
+		runtomarker nazi4a_spot1 nostop
+		facetargetangles nazi4a_fire
+		clearanim
+		fireattarget nazi4a_fire 600
+		resetscript
+	}
+
+	enemysight
+	{
+		trigger nazi4a spotted
+	}
+
+	statechange relaxed alert
+	{
+		deny
+	}
+
+	statechange query alert
+	{
+		deny
+	}
+
+	statechange relaxed combat
+	{
+		trigger nazi4a spotted
+	}
+
+	statechange query combat
+	{
+		trigger nazi4a spotted
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		trigger nazi4a spotted
+	}
+
+	bulletimpactsound
+	{
+		trigger nazi4a spotted
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi4a_kill
+	}
+
+}
+
+nazi4b
+{
+	attributes
+	{
+		fov 60 			// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.5		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.5		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 800		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 0.2	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // alerted
+
+		takeweapon all
+
+		setammo ammo_grenades 0
+		#if g_ee_earlyWeapons <= 0 giveweaponfull weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 giveweaponfull weapon_mp40 #endif
+
+	}
+
+	trigger sound1
+	{
+		accum 1 abort_if_not_equal 0
+
+		clearanim
+		playsound nazi_ee2_4b
+	}
+
+
+	trigger sound2
+	{
+		accum 1 abort_if_not_equal 0
+
+		clearanim
+		playsound nazi_ee2_4d
+	}
+
+	trigger stoptalk
+	{
+		accum 1 set 1
+		playsound blank
+	}
+
+	trigger spotted
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		trigger nazi4b stoptalk
+		trigger player musicaction
+
+		clearanim
+		attrib fov 240
+		#if g_ee_earlyWeapons <= 0 selectweapon weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 selectweapon weapon_mp40 #endif
+		playsound MiscWhatsThat
+		wait 150
+		trigger player action4_preboom
+		resetscript
+	}
+
+	trigger go
+	{
+		trigger nazi4b stoptalk
+
+		#if g_ee_earlyWeapons <= 0 selectweapon weapon_luger #endif
+		#if g_ee_earlyWeapons >= 1 selectweapon weapon_mp40 #endif
+		wait 1200
+		fireattarget nazi4a_fire 2400
+		runtomarker nazi4b_spot1 nostop
+		runtomarker nazi4b_spot2
+		resetscript
+		playsound Miscschnell
+	}
+
+	enemysight
+	{
+		trigger nazi4b spotted
+	}
+
+	trigger talk1
+	{
+		accum 0 abort_if_not_equal 0
+		playsound nazi_ee4_4b
+	}
+
+	trigger talk2
+	{
+		accum 0 abort_if_not_equal 0
+		playsound nazi_ee4_4d
+	}
+
+	statechange relaxed alert
+	{
+		deny
+	}
+
+	statechange query alert
+	{
+		deny
+	}
+
+	statechange relaxed combat
+	{
+		trigger nazi4b spotted
+	}
+
+	statechange query combat
+	{
+		trigger nazi4b spotted
+	}
+
+	inspectfriendlycombatstart
+	{
+		deny
+	}
+
+	bulletimpact
+	{
+		trigger nazi4b spotted
+	}
+
+	bulletimpactsound
+	{
+		trigger nazi4b spotted
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi4b_kill
+	}
+
+}
+
+/////////////////////////////////////////////
+// SECTION 5 - Mercenary Attack
+/////////////////////////////////////////////
+
+nazi5a
+{
+	attributes
+	{
+		fov 240 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.4 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.3	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 1.0		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.0		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 14000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 35	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		setammo ammo_9mm 999
+		selectweapon weapon_mp40
+
+		statetype alert
+		
+		#if g_ee_skinMercenary <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		changeaiskin merc2/merc1
+		changeaihead merc1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		wait 500
+		trigger self* go
+	}
+	
+	trigger go
+	{
+		facetargetangles nazi5a_spot1
+		wait 1000
+		runtomarker nazi5a_spot1
+		facetargetangles nazi5a_fire
+		wait forever 0
+		resetscript
+//		attack player
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi5a_kill
+		trigger wagon killcounter
+	}
+
+}
+
+nazi5b
+{
+	attributes
+	{
+		fov 240 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.4 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.3	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.9		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.4		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 14000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 35	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		setammo ammo_9mm 999
+		setammo ammo_grenades 2
+
+		selectweapon weapon_mp40
+		statetype alert
+		
+		#if g_ee_skinMercenary <= 0
+		trigger self* shoot
+		#endif
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		changeaiskin merc2/merc2
+		changeaihead merc2
+		
+		// spawn
+		trigger self* shoot
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* shoot
+	}
+
+	trigger shoot
+	{
+	//	wait 500
+		wait forever 0
+		fireattarget nazi5b_fire3 5000
+		wait forever 0
+	}
+
+	trigger go
+	{
+		playsound merc_inf
+//	//	explicit_routing on
+//		noavoid
+//		// facetargetangles nazi5b_fire
+//		fireattarget nazi5b_fire 1000
+//		wait 5
+//		runtomarker nazi5b_spot1 nostop
+//	//	nosight 1500
+//		runtomarker nazi5b_spot2 nazi5b_fire
+//	//	clearanim
+//		runtomarker nazi5b_spot3
+//		explicit_routing off
+//		clearanim
+//		resetscript
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi5b_kill
+		trigger wagon killcounter
+	}
+
+}
+
+nazi5c
+{
+	attributes
+	{
+		fov 240  		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.5 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.5	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.4		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.6		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.0		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.6		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 16000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 10	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 0.7	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 256 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0
+
+		takeweapon all
+		setammo ammo_792mm 100
+		giveweapon weapon_mauserrifle
+		selectweapon weapon_mauserrifle
+	//	nosight 99999 // COOP: commented out by the co-op authors (agent1b, who shoots him, is removed)
+		
+		#if g_ee_skinMercenary <= 0
+		trigger self* go
+		#endif
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 1 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		changeaiskin merc2/merc1
+		changeaihead merc1
+		
+		trigger self* go
+	}
+		
+	trigger skin_yes
+	{
+		accum 1 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 1 abort_if_not_equal 0
+		
+		trigger self* go
+	}
+
+	trigger go
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		wait 50
+		clearanim
+		runtomarker nazi5c_spot1
+		wait forever 0
+	}
+
+	enemysight
+	{
+		attack player
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		alertentity t2107 // alertentity nazi5c_deathcheck
+		trigger dsound nazi5c_kill
+	}
+}
+
+
+nazi5d
+{
+	attributes
+	{
+		fov 240 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.4 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.3	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.7		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.4		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 14000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 35	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // spoken
+
+		setammo ammo_9mm 999
+		selectweapon weapon_mp40
+
+		statetype alert
+		trigger dsound nazi5d_live
+		trigger nazi5d go
+	}
+
+	trigger go
+	{
+		runtomarker nazi5d_spot1
+		clearanim
+		resetscript
+	}
+	trigger speak
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		playsound merc_gethim
+	}
+	enemysight
+	{
+		trigger nazi5d speak
+		trigger player musicaction
+		clearanim
+		resetscript
+		attack player
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi5d_kill
+		trigger wagon killcounter
+	}
+
+}
+
+nazi5e
+{
+	attributes
+	{
+		fov 240  		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.5 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.5	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.4		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.6		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.0		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.6		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 16000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 15	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 0.7	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 256 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // gone
+
+		setammo ammo_grenades 0
+		selectweapon weapon_mp40
+
+		statetype alert
+		
+		#if g_ee_skinMercenary <= 0
+		trigger self* go
+		#endif
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 1 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		changeaiskin merc2/merc1
+		changeaihead merc1
+		
+		trigger self* go
+	}
+		
+	trigger skin_yes
+	{
+		accum 1 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 1 abort_if_not_equal 0
+		
+		trigger self* go
+	}
+
+	trigger go
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		knockback off
+		wait forever 0
+		trigger nazi5e shoot
+	}
+
+	trigger shoot
+	{
+		wait forever 0
+	}
+	enemysight
+	{
+	//	attack player
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi5e_kill
+		trigger wagon killcounter
+	}
+}
+
+
+nazi5f
+{
+	attributes
+	{
+		fov 240  		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.5 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.5	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.4		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.6		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.0		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.6		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 16000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 15	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 0.7	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 256 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // gone
+
+		setammo ammo_grenades 0
+		selectweapon weapon_mp40
+
+		statetype alert
+		
+		#if g_ee_skinMercenary <= 0
+		trigger self* go
+		#endif
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 1 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		changeaiskin merc2/merc2
+		changeaihead merc2
+		
+		trigger self* go
+	}
+		
+	trigger skin_yes
+	{
+		accum 1 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 1 abort_if_not_equal 0
+		
+		trigger self* go
+	}
+
+	trigger go
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		knockback off
+		wait forever 0
+		trigger nazi5f shoot
+	}
+
+	trigger shoot
+	{
+		wait forever 0
+	}
+	enemysight
+	{
+	//	attack player
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem item_health_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi5f_kill
+		trigger wagon killcounter
+	}
+}
+
+// Agent one sniper AI
+
+agent1b
+{
+	attributes
+	{
+		fov 300 		// Default: 240 Range 1 ? 360
+		aim_skill 0.9 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.9	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.9	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics)
+		reaction_time 0.2	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+		attack_crouch 0.0	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+		aggression 1.0		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.0		// Default: 0.8 Range: 0.0 ? 1.0 (protection)
+		camper 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 24000		// Default: 16000 Range: 0 ? 999999
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // Default: 512 (detection of things units)
+	}
+
+	spawn
+	{
+//		giveweapon weapon_mauserRifle
+//		selectweapon weapon_mauserRifle
+		setammo ammo_grenades 0
+		takeweapon all
+		//setammo ammo_9mm 999			// removed by William Faure
+		//giveweapon weapon_mp40		// removed by William Faure
+		//selectweapon weapon_mp40		// removed by William Faure
+		setammo ammo_45cal 999			// added by William Faure
+		giveweapon weapon_thompson		// added by William Faure
+		selectweapon weapon_thompson	// added by William Faure
+		statetype alert
+		trigger agent1b go
+	}
+
+	trigger go
+	{
+		nosight 99999
+		explicit_routing on
+		runtomarker agent1b_spot1
+		wait 500
+		playsound osa_ee2_lo
+		wait 500
+		trigger agent1b attack
+		wait 150
+		trigger agent1b attack
+		clearanim
+		runtomarker agent1b_spot3
+		wait 1000
+		
+	//	#if g_reinforce <= 0
+	//	trigger agent1b back
+	//	#endif
+	}
+
+	trigger attack
+	{
+		attack nazi5c
+	}
+
+	trigger back
+	{
+		wait 6200
+		explicit_routing on
+		clearanim
+		runtomarker agent1b_spot2 nostop
+		alertentity kill_1b
+	}
+
+	trigger shoot
+	{
+		resetscript
+		wait forever 0
+	}
+
+	trigger done
+	{
+		wait 2500
+		playsound osa_ee3_done
+	}
+
+	death player
+	{
+		missionfailed 2 10
+	}
+
+	death
+	{
+		missionfailed 2 10
+	}
+}
+
+/////////////////////////////////////////////
+// SECTION 6 - End Hall
+/////////////////////////////////////////////
+
+nazi6a
+{
+	attributes
+	{
+		fov 240 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.2	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.5		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.5		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 14000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 25	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		takeweapon all
+
+		setammo ammo_grenades 0
+		
+		#if g_ee_earlyWeapons <= 0
+		giveweaponfull weapon_luger
+		selectweapon weapon_luger
+		#endif
+		
+		#if g_ee_earlyWeapons >= 1
+		giveweaponfull weapon_mp40
+		selectweapon weapon_mp40
+		#endif
+
+		statetype alert
+
+		trigger nazi6a go
+	}
+
+	trigger go
+	{
+		playsound MiscGoingOn
+		runtomarker nazi6a_spot1 nostop
+		wait 250 player
+		runtomarker nazi6a_spot2
+		resetscript
+	}
+
+	enemysight
+	{
+		resetscript
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nazi6a_kill
+	}
+}
+
+nrv_nazi5e
+{
+	attributes
+	{
+		fov 240  		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.5 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.5	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.4		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.6		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.0		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.6		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 16000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 15	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 0.7	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 256 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // gone
+
+		setammo ammo_grenades 0
+		selectweapon weapon_mp40
+
+		statetype alert
+		
+		#if g_ee_skinMercenary <= 0
+		trigger self* go
+		#endif
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 1 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		
+		accum 2 random 2
+		trigger self* skin1
+		trigger self* skin2
+	}
+		
+	trigger skin1
+	{
+		accum 2 abort_if_not_equal 0
+		
+		changeaiskin merc2/merc1
+		changeaihead merc1
+		
+		trigger self* go
+	}
+		
+	trigger skin2
+	{
+		accum 2 abort_if_not_equal 1
+	
+		changeaiskin merc2/merc2
+		changeaihead merc2
+		
+		trigger self* go
+	}
+		
+	trigger skin_yes
+	{
+		accum 1 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 1 abort_if_not_equal 0
+		
+		trigger self* go
+	}
+
+	trigger go
+	{
+		explicit_routing on
+		runtomarker nrv_spot1 nostop
+		runtomarker nrv_spot2
+		explicit_routing off
+		//fireattarget nrv_fire 1400
+		//alertentity dw1_go
+		//wait 50
+		//alertentity dw3_go
+		//wait 250
+		//alertentity dw5_go
+		//wait 280
+		//alertentity dw7_go
+	}
+	
+	enemysight
+	{
+	//	attack player
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nrv_nazi5e_kill // 'nrv_' restored by William Faure
+		trigger wagon killcounter
+	}
+}
+
+nrv_nazi5f
+{
+	attributes
+	{
+		fov 240  		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.5 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.5 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.5	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.5	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.4		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 0.6		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.0		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.6		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 16000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 15	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 0.7	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 256 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		accum 0 set 0 // gone
+
+		setammo ammo_grenades 0
+		selectweapon weapon_mp40
+
+		statetype alert
+		
+		#if g_ee_skinMercenary <= 0
+		trigger self* go
+		#endif
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 1 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		
+		accum 2 random 2
+		trigger self* skin1
+		trigger self* skin2
+	}
+		
+	trigger skin1
+	{
+		accum 2 abort_if_not_equal 0
+		
+		changeaiskin merc2/merc1
+		changeaihead merc1
+		
+		trigger self* go
+	}
+		
+	trigger skin2
+	{
+		accum 2 abort_if_not_equal 1
+	
+		changeaiskin merc2/merc2
+		changeaihead merc2
+		
+		trigger self* go
+	}
+		
+	trigger skin_yes
+	{
+		accum 1 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 1 abort_if_not_equal 0
+		
+		trigger self* go
+	}
+
+	trigger go
+	{
+		wait 1000
+		explicit_routing on
+		runtomarker nrv_spot1 nostop
+		runtomarker nrv_spot3
+		explicit_routing off
+	}
+	
+	enemysight
+	{
+	//	attack player
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem item_health_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nrv_nazi5f_kill // 'nrv_' restored by William Faure
+		trigger wagon killcounter
+	}
+}
+
+nrv_nazi5a
+{
+	attributes
+	{
+		fov 240 		// Default: 240 Range 1 ? 360
+
+		aim_skill 0.4 		// Default: 0.5 Range: 0.0 ? 1.0 (specific targets)
+		aim_accuracy 0.3 	// Default: 0.5 Range: 0.0 ? 1.0 (accuracy)
+		attack_skill 0.5	// Default: 0.75 Range: 0.0 ? 1.0 (weaponry tactics 'grenades VS. machine gun' etc.)
+
+		reaction_time 0.3	// Default: 0.5 Range: 0.0 ? 1.0 (seconds)
+
+		attack_crouch 0.4	// Default: 0.4 Range: 0.0 ? 1.0 (frequency)
+		idle_crouch 0.0		// Default: 0.0 Range: 0.0 ? 1.0 (frequency)
+
+		aggression 1.0		// Default: 0.5 Range: 0.0 ? 1.0 (charging)
+		tactical 0.0		// Default: 0.8 Range: 0.0 ? 1.0 (using enviroment for protection)
+		camper 0.3		// Default: 0.0 Range: 0.0 ? 1.0 (camping abilities)
+
+		alertness 14000		// Default: 16000 Range: 0 ? 999999 (sight distance in pixel units)
+		starting_health 35	// Default: 100 Range: 0 ? 99999 (spawn health)
+
+		hearing_scale 1.0	// Default: 1.0 Range: 0.0 ? 10 (hearing)
+
+		inner_detection_radius 512 // (detection of things like bullet impacts within the range will affect the AI, in pixel units)
+	}
+
+	spawn
+	{
+		setammo ammo_9mm 999
+		selectweapon weapon_mp40
+
+		statetype alert
+		wait 500
+		
+		#if g_ee_skinMercenary <= 0
+		trigger self* go
+		#endif
+		
+		#if g_ee_skinMercenary == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinMercenary >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaihead default
+		
+		accum 1 random 2
+		trigger self* skin1
+		trigger self* skin2
+	}
+		
+	trigger skin1
+	{
+		accum 1 abort_if_not_equal 0
+		
+		changeaiskin merc2/merc1
+		changeaihead merc1
+		
+		trigger self* go
+	}
+		
+	trigger skin2
+	{
+		accum 1 abort_if_not_equal 1
+		
+		changeaiskin merc2/merc2
+		changeaihead merc2
+		
+		trigger self* go
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		trigger self* go
+	}
+
+	trigger go
+	{
+		wait 2000
+		explicit_routing on
+		runtomarker nrv_spot1
+		explicit_routing off
+//		attack player
+	}
+
+	// This will be called when BJ kills me by stabbing me in the back with a knife!
+	stealthkill
+	{
+		dropitem ammo_9mm_small
+		
+		trigger player stealth_achievement
+	}
+
+	death
+	{
+		trigger dsound nrv_nazi5a_kill // 'nrv_' restored by William Faure
+		trigger wagon killcounter
+	}
+
+}
+
+ast
+{
+	spawn
+	{
+		notarget on
+	}
+
+	trigger radiovoice1
+	{
+		playsound sound/scenaric/ee/ast/ee2_2a.wav
+	}
+
+	trigger radio2_talk1
+	{
+		playsound sound/scenaric/ee/ast/ee2_osa_talk1.wav
+	}
+
+	trigger radio2_talk2
+	{
+		playsound sound/scenaric/ee/ast/ee2_bj_talk1.wav
+	}
+
+	trigger radio2_talk3
+	{
+		playsound sound/scenaric/ee/ast/ee2_osa_talk2.wav
+	}
+
+	trigger radio2_talk4
+	{
+		playsound sound/scenaric/ee/ast/ee2_bj_talk2.wav
+	}
+
+	trigger radio2_talk5
+	{
+		playsound sound/scenaric/ee/ast/ee2_radio_huh.wav
+	}
+
+	death
+	{
+	}
+}
+
+// Reinforcements
+
+reinforce_leet1
+reinforce_leet2
+reinforce_leet3
+reinforce_leet4
+reinforce_leet5
+{
+	spawn
+	{
+		#if g_ee_skinEliteGuard <= 0
+		trigger self* start
+		#endif
+		
+		#if g_ee_skinEliteGuard == 1
+		trigger self* skin
+		#endif
+		
+		#if g_ee_skinEliteGuard >= 2
+		accum 0 random 2
+		trigger self* skin_yes
+		trigger self* skin_no
+		#endif
+	}
+		
+	trigger skin
+	{
+		changeaiskin eliteguard/desert1
+		
+		trigger self* start
+	}
+		
+	trigger skin_yes
+	{
+		accum 0 abort_if_not_equal 1
+		
+		trigger self* skin
+	}
+		
+	trigger skin_no
+	{
+		accum 0 abort_if_not_equal 0
+		
+		// spawn
+		trigger self* start
+	}
+		
+	trigger start
+	{
+		takeweapon all
+		giveweaponfull weapon_silencer weapon_mp34 weapon_mp40
+		statetype alert
+	}
+
+	death
+	{
+	}
+}
+
+reinforce_dog1
+reinforce_dog2
+{
+	spawn
+	{
+		statetype alert
+	}
+
+	death
+	{
+	}
+}

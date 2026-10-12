@@ -1,0 +1,748 @@
+// Script file for EE3
+// Last Edited by: Scancode (2003), William Faure (2026)
+//
+
+game_manager
+{
+	// COOP: added by the co-op authors (script_multiplayer "game_manager" in maps/ee3.ents).
+	// Starts the level once for everyone and checks the objectives before the exit (objectives are shared).
+	spawn
+	{
+		accum 0 bitreset 1 // objective 1
+		accum 0 bitreset 2 // objective 2
+		accum 0 bitreset 3 // objective 3
+
+		trigger player coopstart // prevents late players affecting the game
+	}
+
+	trigger checkexit
+	{
+		accum 0 abort_if_not_bitset 2 // objective 2
+		accum 0 abort_if_not_bitset 3 // objective 3
+
+		trigger player exitlevel
+	}
+	
+	trigger objective1
+	{
+		accum 0 bitset 1
+	}
+	
+	trigger objective2
+	{
+		accum 0 bitset 2
+	}
+	
+	trigger objective3
+	{
+		accum 0 bitset 3
+	}
+}
+
+/////////////////////////////////////////////
+// DYNAMIC SOUND CHECKER - ala Scancode
+/////////////////////////////////////////////
+
+dsound
+{
+	spawn
+	{
+		// Music Conditionals
+		// dead	must call nazi_live trigger for intermittent states
+
+		accum 1 bitset 0	// nazi1a
+
+		accum 1 bitreset 1	// nazi1b
+		accum 1 bitreset 2	// nazi1bb
+
+		accum 1 bitset 3	// nazi2a - eating
+		accum 1 bitset 4	// nazi2b - aleterd
+		accum 1 bitreset 5	// nazi2c - radioroom
+
+
+		accum 1 bitset 6	// nazi2d - blow fence
+
+		accum 1 bitset 7	// nazi2f - courtyard
+		accum 1 bitset 8	// nazi2g
+
+		accum 1 bitset 9	// nazi3a
+		accum 1 bitset 10	// nazi3b - courtyard
+		accum 1 bitset 11	// nazi3c
+
+		accum 1 bitset 21	// nazi3d - courtyard
+		accum 1 bitset 22	// nazi3e - courtyard
+		accum 1 bitset 23	// nazi3f - courtyard
+
+		accum 1 bitset 12	// nazi4a - inside
+		accum 1 bitset 13	// nazi4b - hallway talk #2
+		accum 1 bitset 14	// nazi4c - around bend
+		accum 1 bitset 15	// nazi4d - officer
+		accum 1 bitset 16	// nazi4e - exit room
+
+
+		accum 1 bitset 17	// nazi5a - exit path
+
+		accum 1 bitset 18	// nazi5b - mg42
+		accum 1 bitset 19	// nazi5c - booth
+		accum 1 bitset 20	// nazi5d - truck
+	}
+
+	trigger nazi1a_kill
+	{
+		accum 1 bitreset 0
+		trigger dsound ac1check
+	}
+	trigger nazi1b_live
+	{
+		accum 1 bitset 1
+		trigger dsound ac1check
+	}
+	trigger nazi1b_kill
+	{
+		accum 1 bitreset 1
+		trigger dsound ac1check
+	}
+	trigger nazi1bb_live
+	{
+		accum 1 bitset 2
+		trigger dsound ac1check
+	}
+	trigger nazi1bb_kill
+	{
+		accum 1 bitreset 2
+		trigger dsound ac1check
+	}
+	trigger ac1check
+	{
+		accum 1 abort_if_bitset 0
+		accum 1 abort_if_bitset 1
+		accum 1 abort_if_bitset 2
+
+		trigger player musicstealth
+	}
+
+	trigger nazi2a_kill
+	{
+		accum 1 bitreset 3
+		trigger dsound ac2check
+	}
+	trigger nazi2b_kill
+	{
+		accum 1 bitreset 4
+		trigger dsound ac2check
+	}
+	trigger nazi2c_live
+	{
+		accum 1 bitset 5
+		trigger dsound ac2check
+	}
+	trigger nazi2c_kill
+	{
+		accum 1 bitreset 5
+		trigger dsound ac2check
+	}
+	trigger ac2check
+	{
+		accum 1 abort_if_bitset 3
+		accum 1 abort_if_bitset 4
+		accum 1 abort_if_bitset 5
+
+		trigger player musicstealth
+	}
+
+	trigger nazi2d_kill
+	{
+		accum 1 bitreset 6
+		trigger dsound ac3check
+	}
+	trigger nazi2f_kill
+	{
+		accum 1 bitreset 7
+		trigger dsound ac3check
+	}
+	trigger nazi2g_kill
+	{
+		accum 1 bitreset 8
+		trigger dsound ac3check
+	}
+	trigger nazi3a_kill
+	{
+		accum 1 bitreset 9
+		trigger dsound ac3check
+	}
+	trigger nazi3b_kill
+	{
+		accum 1 bitreset 10
+		trigger dsound ac3check
+	}
+	trigger nazi3c_kill
+	{
+		accum 1 bitreset 11
+		trigger dsound ac3check
+	}
+	trigger nazi3d_kill
+	{
+		accum 1 bitreset 21
+		trigger dsound ac3check
+	}
+	trigger nazi3e_kill
+	{
+		accum 1 bitreset 22
+		trigger dsound ac3check
+	}
+	trigger nazi3f_kill
+	{
+		accum 1 bitreset 23
+		trigger dsound ac3check
+	}
+	trigger ac3check
+	{
+		accum 1 abort_if_bitset 6
+		accum 1 abort_if_bitset 7
+		accum 1 abort_if_bitset 8
+		accum 1 abort_if_bitset 9
+		accum 1 abort_if_bitset 10
+		accum 1 abort_if_bitset 11
+		accum 1 abort_if_bitset 21
+		accum 1 abort_if_bitset 22
+		accum 1 abort_if_bitset 23
+		
+		trigger player achievement1 // Clear the courtyard with Agent One before recovering the CORPS Book in the Headquarters
+
+		trigger player musicstealth
+	//	wait 5
+	//	trigger player obj_2 // disabled (already called by trigger brush), edit by William Faure
+		wait 5
+		trigger agent1 done
+	}
+
+	trigger nazi4a_kill
+	{
+		accum 1 bitreset 12
+		trigger dsound ac4check
+	}
+	trigger nazi4b_kill
+	{
+		accum 1 bitreset 13
+		trigger dsound ac4check
+	}
+	trigger nazi4c_kill
+	{
+		accum 1 bitreset 14
+		trigger dsound ac4check
+	}
+	trigger nazi4d_kill
+	{
+		accum 1 bitreset 15
+		trigger dsound ac4check
+	}
+	trigger nazi4e_kill
+	{
+		accum 1 bitreset 16
+		trigger dsound ac4check
+	}
+	trigger ac4check
+	{
+		accum 1 abort_if_bitset 12
+		accum 1 abort_if_bitset 13
+		accum 1 abort_if_bitset 14
+		accum 1 abort_if_bitset 15
+		accum 1 abort_if_bitset 16
+
+		trigger player musicstealth
+	}
+
+	trigger nazi5a_kill
+	{
+		trigger player musicstealth
+	}
+
+	trigger nazi5b_kill
+	{
+		accum 1 bitreset 18
+		trigger dsound ac5check
+	}
+	trigger nazi5c_kill
+	{
+		accum 1 bitreset 19
+		trigger dsound ac5check
+	}
+	trigger nazi5d_kill
+	{
+		accum 1 bitreset 20
+		trigger dsound ac5check
+	}
+	trigger ac5check
+	{
+		#if g_reinforce >= 1 accum 1 abort_if_bitset 18 #endif
+		accum 1 abort_if_bitset 19
+		accum 1 abort_if_bitset 20
+		
+		trigger agent2 yell // moved from 'nazi5b/death' by William Faure
+
+		trigger player musicgrave
+	}
+}
+
+// The truck
+t2body
+{
+	spawn
+	{
+		accum 0 set 0 // 1 = nazi4 is dead or running to alarm
+
+		wait 100
+		gotomarker t2_spot1 100
+		faceangles 0 360 0 gototime
+	}
+
+	trigger nazi4nogate
+	{
+		accum 0 set 1
+	}
+
+	trigger smoke
+	{
+		alertentity tsmoke
+		wait 1000
+		trigger t2body smoke
+	}
+
+	trigger begin2
+	{
+		alertentity nazi5d // MBJ
+		playsound sound/world/shift_01.wav looping
+		trigger t2bwheels begin2
+		trigger t2lwheel begin2
+		trigger t2rwheel begin2
+	//	trigger t2tail begin2
+		trigger t2cargo begin2
+
+		trigger t2rwheel strait
+		trigger t2lwheel strait
+
+
+		gotomarker t2_spot2 500 wait // 250
+		gotomarker t2_spot3 500 wait // 250 wait
+		gotomarker t2_spot4 500 wait // 250 wait
+		gotomarker t2_spot5 800 wait // 400 wait
+		gotomarker t2_spot6 800 wait // 400 wait
+
+		stopsound
+
+		trigger t2bwheels stop2
+		trigger t2lwheel stop2
+		trigger t2rwheel stop2
+
+		gotomarker t2_spot7 800 deccel wait // 400 deccel wait
+
+
+		alertentity truckeffect_1
+		trigger burned_tailgate go
+	//	trigger player take_away	// simply unsupported, removed out by William Faure
+		gotomarker t2_spot8 9999	// workaround, added by William Faure
+	}
+}
+
+t2cargo
+{
+	spawn
+	{
+		wait 100
+		gotomarker t2_spot1 100
+		faceangles 0 360 0 gototime
+	}
+
+	trigger begin2
+	{
+		
+		gotomarker t2_spot2 500 wait // 250
+		gotomarker t2_spot3 500 wait // 250 wait
+		gotomarker t2_spot4 500 wait // 250 wait
+		gotomarker t2_spot5 800 wait // 400 wait
+		gotomarker t2_spot6 800 wait // 400 wait
+		gotomarker t2_spot7 800 deccel wait // 400 deccel wait
+//	//	trigger player take_away // simply unsupported, removed by William Faure // already called by 't2body/begin2'
+		gotomarker t2_spot8 9999 // workaround, added by William Faure
+	}
+}
+
+t2bwheels
+{
+	spawn
+	{
+		wait 100
+		attachtotag t2body tbwheels
+	}
+
+	trigger begin2
+	{
+		playsound sound/world/shift_01.wav looping
+		wait 5
+		playanim 0 10 looping forever
+		stopsound
+	}
+
+	trigger stop2
+	{
+		playsound sound/world/idle_01.wav
+		playanim 0 5 500
+	}
+}
+
+t2rwheel
+{
+	spawn
+	{
+		wait 100
+		attachtotag t2body tag_w2
+	}
+
+	trigger begin2
+	{
+		wait 5
+		playanim 0 19 looping forever
+	}
+
+	trigger strait
+	{
+		faceangles 0 0 0 2000
+	}
+
+	trigger stop2
+	{
+		playanim 0 1 500
+	}
+}
+
+t2lwheel
+{
+	spawn
+	{
+		wait 100
+		attachtotag t2body tag_w1
+	}
+
+	trigger begin2
+	{
+		wait 5
+		playanim 0 19 looping forever
+	}
+
+	trigger strait
+	{
+		faceangles 0 0 0 2000
+	}
+
+	trigger stop2
+	{
+//		wait 1000
+//		playanim 0 10 10000
+		playanim 0 1 500
+	}
+}
+
+t2door
+{
+	spawn
+	{
+		wait 100
+		attachtotag t2body tag_door
+	}
+
+	trigger hatchdown
+	{
+		faceangles -90 0 0 2000
+	}
+
+	trigger hatchup
+	{
+		faceangles 0 0 0 500
+	}
+}
+
+t2tail
+{
+	spawn
+	{
+//		wait 100
+//		gotomarker t2spot1 100
+//		faceangles 0 360 0 gototime
+	}
+
+	trigger begin2
+	{
+		
+		gotomarker t2_spot2 500 wait // 250
+		gotomarker t2_spot3 500 wait // 250 wait
+		gotomarker t2_spot4 500 wait // 250 wait
+		gotomarker t2_spot5 800 wait // 400 wait
+		gotomarker t2_spot6 800 wait // 400 wait
+		gotomarker t2_spot7 800 deccel wait // 400 deccel wait
+//	//	trigger player take_away // simply unsupported, removed by William Faure // already called by 't2body/begin2'
+		gotomarker t2_spot8 9999 // workaround, added by William Faure
+	}
+}
+
+//	burned_truck // PS2 // replaced with 'misc_model' by William Faure
+//	{
+//		spawn
+//		{
+//			gotomarker bt1 1000
+//		}
+//	}
+
+burned_tailgate // PS2
+{
+	spawn
+	{
+		gotomarker tg1 1000
+	}
+
+	trigger go
+	{
+		gotomarker tg2 1500 accel
+		gotomarker tg3 1700 accel wait
+		gotomarker tg4 1900 accel wait
+		alertentity go_shack
+		gotomarker tg5 2000 deccel wait
+		trigger burned_tailgate land
+	}
+
+	trigger land
+	{
+		faceangles 90 180 -355 1
+		gotomarker tg6 2000
+	}
+}
+
+///////////////////////////////
+// The first truck in courtyard
+///////////////////////////////
+
+t1body
+{
+	spawn
+	{
+		accum 0 set 0
+
+		wait 150
+		gotomarker t1_spot1 100
+		faceangles 0 45 0 gototime
+	}
+
+	trigger begin2
+	{
+		playsound sound/world/shift_01.wav looping
+
+		// mid bracket
+		trigger t1bwheels begin2
+		trigger t1lwheel begin2
+		trigger t1rwheel begin2
+	//	trigger t1tail begin2
+	//	trigger t1rwheel strait
+	//	trigger t1lwheel strait
+
+		gotomarker t1_spot2 120
+
+		gotomarker t1_spot3 120 wait
+		gotomarker t1_spot4 120 wait
+		gotomarker t1_spot5 80 wait
+		gotomarker t1_spot6 80 wait
+		alertentity nazi3b
+		stopsound
+
+		trigger t1bwheels stop2
+		trigger t1lwheel stop2
+		trigger t1rwheel stop2
+
+		gotomarker t1_spot7 60 deccel wait
+		stopsound
+	}
+}
+
+t1bwheels
+{
+	spawn
+	{
+		wait 100
+		attachtotag t1body tbwheels
+	}
+
+	trigger begin2
+	{
+		playsound sound/world/shift_01.wav looping
+		wait 5
+		playanim 0 20 looping forever
+	}
+
+	trigger stop2
+	{
+		playsound sound/world/idle_01.wav looping
+		playanim 0 20 500
+	}
+}
+
+t1rwheel
+{
+	spawn
+	{
+		wait 100
+		attachtotag t1body tag_w2
+	}
+
+	trigger begin2
+	{
+		wait 5
+		playanim 0 20 looping forever
+	}
+
+	trigger strait
+	{
+		// faceangles 0 0 0 2000
+		// faceangles 0 -45 0 100
+	}
+
+	trigger stop2
+	{
+		playanim 0 10 500
+	}
+}
+
+t1lwheel
+{
+	spawn
+	{
+		wait 100
+		attachtotag t1body tag_w1
+	}
+
+	trigger begin2
+	{
+		wait 5
+		playanim 0 20 looping forever
+	}
+
+	trigger strait
+	{
+		// faceangles 0 0 0 2000
+		// faceangles 0 45 0 100
+	}
+
+	trigger stop2
+	{
+		playanim 0 10 500
+	}
+}
+
+t1door
+{
+	spawn
+	{
+		wait 100
+		attachtotag t1body tag_door
+	}
+}
+
+t1tail
+{
+	spawn
+	{
+		wait 100
+		gotomarker t1_spot1 100
+		faceangles 0 45 0 gototime
+	}
+
+	trigger begin2
+	{
+		gotomarker t1_spot2 160
+		gotomarker t1_spot3 120 wait
+		gotomarker t1_spot4 120 wait
+		gotomarker t1_spot5 80 wait
+		gotomarker t1_spot6 80 wait
+		gotomarker t1_spot7 60 deccel wait
+	}
+}
+
+/////////////////////////////////////////////
+// Secret3Door
+/////////////////////////////////////////////
+
+secret3door
+{
+	spawn
+	{
+		wait 1000
+		faceangles 0 0 0 100
+	}
+
+	trigger open
+	{
+		wait 100
+		playsound sound/world/creak_01.wav
+		faceangles 95 0 0 1500
+	}
+
+	trigger close
+	{
+		wait 100
+		faceangles 0 0 0 1500
+	}
+}
+
+/////////////////////////////////////////////
+// doorfall
+/////////////////////////////////////////////
+
+doorfall
+{
+	spawn
+	{
+		accum 0 set 0 // can open
+
+		// wait 1000
+		// faceangles 0 90 0 100
+	}
+
+	trigger cantopen
+	{
+		accum 0 set 1
+	}
+
+	trigger fall
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		wait 150
+		playsound sound/movers/doors/door8_open.wav
+		faceangles 0 -90 0 450 wait
+		playsound sound/movers/doors/door8_endc.wav
+
+		// old fall
+		// playsound sound/movers/doors/door5_kicked.wav
+		// faceangles 90 0 0 800
+		// // playsound sound/movers/elevators/elev2_crash.wav
+		// alertentity playdoorfall
+	}
+}
+
+/////////////////////////////////////////////
+// radio button
+/////////////////////////////////////////////
+rbutton
+{
+	spawn
+	{
+		accum 0 set 0
+	}
+
+	trigger down
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+			gotomarker rbutton_spot1 100
+	}
+}
+

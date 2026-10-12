@@ -1,0 +1,432 @@
+//
+//Brush Scripting
+//Map: ee4
+//Last edited by: Scancode (2003), William Faure (2026)
+//
+
+game_manager
+{
+	// COOP: added by the co-op authors (script_multiplayer "game_manager" in maps/ee4.ents).
+	// Starts the level once for everyone and checks the objectives before the exit (objectives are shared).
+	spawn
+	{
+		accum 0 bitreset 1 // objective 1
+
+		trigger player coopstart // prevents late players affecting the game
+	}
+
+	trigger checkexit
+	{
+		accum 0 abort_if_not_bitset 1 // objective 1
+
+		trigger player exitlevel
+	}
+	
+	trigger objective1
+	{
+		accum 0 bitset 1
+	}
+}
+
+/////////////////////////////////////////////
+// DYNAMIC SOUND CHECKER - ala Scancode
+/////////////////////////////////////////////
+
+dsound
+{
+	spawn
+	{
+		// Music Conditionals
+		// dead	must call nazi_live trigger for intermittent states
+
+		accum 1 bitset 0	// nazi1a
+		accum 1 bitset 1	// nazi1b
+		accum 1 bitreset 2	// nazi1c
+		accum 1 bitset 3	// nazi1d
+		accum 1 bitset 4	// nazi1e
+		accum 1 bitset 5	// nazi1f
+		
+		#if g_reinforce >= 1
+		accum 1 bitset 24	// nazi1g, restored by William Faure
+		#endif
+
+		accum 1 bitset 6	// nazi2a
+		accum 1 bitset 7	// nazi2b
+		accum 1 bitset 8	// nazi2c
+		accum 1 bitreset 9	// nazi2d
+
+		accum 1 bitset 10	// nazi3a
+		accum 1 bitset 11	// nazi3b
+		accum 1 bitset 12	// nazi3c
+		accum 1 bitset 13	// nazi3d
+		accum 1 bitset 14	// nazi3e
+
+		accum 1 bitreset 15	// nazi4aa
+		accum 1 bitreset 16	// nazi4bb
+		accum 1 bitset 17	// nazi4c
+
+		accum 1 bitset 18	// nazi4a
+		accum 1	bitset 19	// nazi4b
+
+		accum 1 bitset 20	// nazi5a
+		accum 1	bitset 21	// nazi5b
+		accum 1	bitset 22	// nazi5c
+
+		accum 1	bitset 22	// nazi2e
+		accum 1	bitset 23	// nazi2f
+	}
+
+
+	trigger nazi1a_kill
+	{
+		accum 1 bitreset 0
+		trigger dsound ac1check
+	}
+	trigger nazi1b_kill
+	{
+		accum 1 bitreset 1
+		trigger dsound ac1check
+	}
+	trigger nazi1b_live
+	{
+		accum 1 bitset 2
+		trigger dsound ac1check
+	}
+	trigger nazi1c_kill
+	{
+		accum 1 bitreset 2
+		trigger dsound ac1check
+	}
+	trigger nazi1d_kill
+	{
+		accum 1 bitreset 3
+		trigger dsound ac1check
+	}
+	trigger nazi1e_kill
+	{
+		accum 1 bitreset 4
+		trigger dsound ac1check
+	}
+	trigger nazi1f_kill
+	{
+		accum 1 bitreset 5
+		trigger dsound ac1check
+	}
+	trigger nazi1g_kill // restored by William Faure
+	{
+		accum 1 bitreset 24
+		trigger dsound ac1check
+	}
+	trigger ac1check
+	{
+		accum 1 abort_if_bitset 0
+		accum 1 abort_if_bitset 1
+		accum 1 abort_if_bitset 2
+		accum 1 abort_if_bitset 3
+		accum 1 abort_if_bitset 4
+		accum 1 abort_if_bitset 5
+		
+		#if g_reinforce >= 1
+		accum 1 abort_if_bitset 24  // restored by William Faure
+		#endif
+
+		trigger player musicgrave
+	}
+
+	trigger nazi2a_kill
+	{
+		accum 1 bitreset 6
+		trigger dsound ac2check
+	}
+	trigger nazi2b_kill
+	{
+		accum 1 bitreset 7
+		trigger dsound ac2check
+	}
+	trigger nazi2c_kill
+	{
+		accum 1 bitreset 8
+		trigger dsound ac2check
+	}
+	trigger nazi2d_live
+	{
+		accum 1 bitset 9
+		trigger dsound ac2check
+	}
+	trigger nazi2d_kill
+	{
+		accum 1 bitreset 9
+		trigger dsound ac2check
+	}
+
+	trigger nazi2e_kill
+	{
+		accum 1 bitreset 22
+		trigger dsound ac2check
+	}
+
+	trigger nazi2f_kill
+	{
+		accum 1 bitreset 23
+		trigger dsound ac2check
+	}
+
+	trigger ac2check
+	{
+		accum 1 abort_if_bitset 6
+		accum 1 abort_if_bitset 7
+		accum 1 abort_if_bitset 8
+		accum 1 abort_if_bitset 9
+
+		accum 1 abort_if_bitset 22
+		accum 1 abort_if_bitset 23
+
+		trigger player musicgrave
+	}
+
+	trigger nazi3a_kill
+	{
+		accum 1 bitreset 10
+		trigger dsound ac3check
+	}
+	trigger nazi3b_kill
+	{
+		accum 1 bitreset 11
+		trigger dsound ac3check
+	}
+	trigger nazi3c_kill
+	{
+		accum 1 bitreset 12
+		trigger dsound ac3check
+	}
+	trigger nazi3d_kill
+	{
+		accum 1 bitreset 13
+		trigger dsound ac3check
+	}
+	trigger nazi3e_kill
+	{
+		accum 1 bitreset 14
+		trigger dsound ac3check
+	}
+	trigger ac3check
+	{
+		accum 1 abort_if_bitset 10
+		accum 1 abort_if_bitset 11
+		accum 1 abort_if_bitset 12
+		accum 1 abort_if_bitset 13
+		accum 1 abort_if_bitset 14
+
+		trigger player musicgrave
+	}
+
+	trigger nazi4aa_live
+	{
+		accum 1 bitset 15
+		trigger dsound ac4check
+	}
+	trigger nazi4aa_kill
+	{
+		accum 1 bitreset 15
+		trigger dsound ac4check
+	}
+	trigger nazi4bb_live
+	{
+		accum 1 bitset 16
+		trigger dsound ac4check
+	}
+	trigger nazi4bb_kill
+	{
+		accum 1 bitreset 16
+		trigger dsound ac4check
+	}
+	trigger nazi4c_kill
+	{
+		accum 1 bitreset 17
+		trigger dsound ac4check
+	}
+
+	trigger ac4check
+	{
+		accum 1 abort_if_bitset 15
+		accum 1 abort_if_bitset 16
+		accum 1 abort_if_bitset 17
+
+		trigger player musictension
+	}
+
+	trigger nazi4a_kill
+	{
+		accum 1 bitreset 18
+		trigger dsound ac5check
+	}
+	trigger nazi4b_kill
+	{
+		accum 1 bitreset 19
+		trigger dsound ac5check
+	}
+	trigger ac5check
+	{
+		accum 1 abort_if_bitset 18
+		accum 1 abort_if_bitset 19
+
+	//	trigger player musictension
+	}
+
+	trigger nazi5a_kill
+	{
+		accum 1 bitreset 20
+		trigger dsound ac6check
+	}
+	trigger nazi5b_kill
+	{
+		accum 1 bitreset 21
+		trigger dsound ac6check
+	}
+	trigger nazi5c_kill
+	{
+		accum 1 bitreset 22
+		trigger dsound ac6check
+	}
+	trigger ac6check
+	{
+		accum 1 abort_if_bitset 20
+		accum 1 abort_if_bitset 21
+		accum 1 abort_if_bitset 22
+
+		trigger player musicgrave
+	}
+}
+
+counter1
+{
+	spawn
+	{
+		accum 0 set 0 // has cine_cleanup
+	}
+
+	trigger nrv_shake
+	{
+		playsound ee4_rumble1
+	}
+
+	trigger cine1
+	{
+		// exit if aborted
+		accum 0 abort_if_not_equal 0
+
+		trigger player alert_actors
+
+		wait 100
+
+		//trigger player cam1
+		//wait 4000
+
+		trigger player cam2
+		wait 1500
+		trigger agent1 speak
+
+		wait 13000
+		trigger agent1 leave
+		wait 4000
+		trigger player cam3
+		wait 2000
+
+		// stops camera
+		// trigger player stop
+
+		trigger counter1 cleanup
+	}
+
+	trigger cleanup
+	{
+		trigger agent1 stoptalk
+		wait 100
+		alertentity cine_cleanup
+		alertentity gateshut
+		trigger player lockoff
+		wait 100
+		accum 0 set 1
+		wait 100
+		trigger player start
+	}
+}
+
+// Old Hatched Door
+top
+{
+	spawn
+	{
+		gotomarker top_start 100 wait
+	}
+
+	trigger open
+	{
+		playsound sound/movers/doors/door2_loop.wav looping
+		gotomarker top_end 2 wait
+		playsound sound/movers/doors/door2_locked.wav
+		stopsound
+	}
+}
+
+mid
+{
+	spawn
+	{
+		gotomarker mid_start 100 wait
+	}
+
+	trigger open
+	{
+		playsound sound/movers/doors/door2_loop.wav looping
+		gotomarker mid_end 2 wait
+		playsound sound/movers/doors/door2_locked.wav
+		stopsound
+	}
+}
+
+bottom
+{
+	spawn
+	{
+		gotomarker bottom_start 100 wait
+	}
+
+	trigger open
+	{
+		playsound sound/movers/doors/door2_loop.wav looping
+		gotomarker bottom_end 2 wait
+		playsound sound/movers/doors/door2_locked.wav
+		stopsound
+	}
+}
+
+back
+{
+	spawn
+	{
+		gotomarker back_up 100 wait
+	}
+
+	trigger open
+	{
+		playsound sound/movers/doors/door2_loop.wav looping
+		gotomarker back_down 2 wait
+		playsound sound/movers/doors/door2_locked.wav
+		stopsound
+	}
+}
+
+nrv_end1 // End Door
+{
+	spawn
+	{
+		// print WTF			// disabled by William Faure
+		trigger nrv_end1 move
+	}
+
+	trigger move
+	{
+		faceangles 0 75 0 1000
+	}
+}

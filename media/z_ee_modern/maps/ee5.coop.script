@@ -1,0 +1,968 @@
+//
+//Brush Scripting
+//Map: ee5
+//Last edited by: ren (2003), William Faure (2026)
+//
+
+game_manager
+{
+	// COOP: added by the co-op authors (script_multiplayer "game_manager" in maps/ee5.ents).
+	// Starts the level once for everyone and checks the objectives before the exit (objectives are shared).
+	spawn
+	{
+		accum 0 bitreset 1 // objective 1
+		accum 0 bitreset 2 // objective 2
+
+		// COOP: RealRTCW's achievement flag moved from accum 0 to accum 1 (accum 0 holds the objective bits)
+		accum 1 set 0 // achievement1
+
+		trigger player coopstart // prevents late players affecting the game
+	}
+
+	trigger checkexit
+	{
+		accum 0 abort_if_not_bitset 1 // objective 1
+		accum 0 abort_if_not_bitset 2 // objective 2
+
+		trigger player exitlevel
+	}
+	
+	trigger objective1
+	{
+		accum 0 bitset 1
+	}
+	
+	trigger objective2
+	{
+		accum 0 bitset 2
+	}
+
+	// RealRTCW (SP achievements; harmless in co-op)
+
+	trigger achievement1
+	{
+		accum 1 abort_if_equal 1
+		
+		trigger player achievement1 // Clear the antechamber’s great room within 30 seconds or less in the Ritual Chamber
+	}
+	
+		trigger achievement1_count
+		{
+			wait 30000
+			
+			trigger game_manager achievement1_fail
+		}
+		
+			trigger achievement1_fail
+			{
+				accum 1 set 1
+			}
+}
+
+/////////////////////////////////////////////
+// DYNAMIC SOUND CHECKER - ala Scancode
+/////////////////////////////////////////////
+
+dsound
+{
+	spawn
+	{
+		// Music Conditionals
+		// dead	must call nazi_live trigger for intermittent states
+
+		accum 1 bitset 0	// nazi1a
+		accum 1 bitset 1	// nazi1b
+
+		accum 1 bitset 2	// nazi1bb - fires
+		accum 1 bitset 3	// nazi1bc
+
+		accum 1 bitset 4	// nazi1c - underground passage
+
+		accum 1 bitset 5	// nazi2
+
+		accum 1 bitreset 6	// nazi3a
+
+		accum 1 bitset 7	// nazi1cc - underground passage
+
+		accum 1 bitset 8	// n1
+		accum 1 bitset 9	// n2
+		accum 1 bitset 10	// n3
+		accum 1 bitset 11	// n4
+		accum 1 bitset 12	// n5
+		accum 1 bitset 13	// n6
+		accum 1 bitset 14	// n7
+
+		accum 1 bitset 15	// merc1
+	}
+	trigger merc1_kill
+	{
+		accum 1 bitreset 15
+		trigger dsound ac1check
+	}
+	trigger nazi1a_kill
+	{
+		accum 1 bitreset 0
+		trigger dsound ac1check
+	}
+	trigger nazi1b_kill
+	{
+		accum 1 bitreset 1
+		trigger dsound ac1check
+	}
+	trigger ac1check
+	{
+		accum 1 abort_if_bitset 0
+		accum 1 abort_if_bitset 1
+		accum 1 abort_if_bitset 15 // merc1
+
+		trigger player musicstealth
+	}
+	trigger nazi1bb_kill
+	{
+		accum 1 bitreset 2
+		trigger dsound ac1check
+	}
+	trigger nazi1bc_kill
+	{
+		accum 1 bitreset 3
+		trigger dsound ac1check
+	}
+	trigger ac2check
+	{
+		accum 1 abort_if_bitset 2
+		accum 1 abort_if_bitset 3
+
+		trigger player musicstealth
+	}
+	trigger nazi1c_kill
+	{
+		accum 1 bitreset 4
+		trigger dsound ac2check2
+	}
+	trigger nazi1cc_kill
+	{
+		accum 1 bitreset 7
+		trigger dsound ac2check2
+	}
+	trigger ac2check2
+	{
+		accum 1 abort_if_bitset 4
+		accum 1 abort_if_bitset 7
+
+		//trigger player musicstealth		//CGC- FIXME music ain't playin' rot
+	}
+
+	trigger nazi3a_live
+	{
+		accum 1 bitset 6
+		trigger dsound ac3check
+	}
+	trigger nazi3a_kill
+	{
+		accum 1 bitreset 6
+		trigger dsound ac3check
+	}
+	trigger nazi2_kill
+	{
+		accum 1 bitreset 5
+		trigger dsound ac3check
+	}
+	trigger n1_kill
+	{
+		accum 1 bitreset 8
+		trigger dsound ac3check
+	}
+	trigger n2_kill
+	{
+		accum 1 bitreset 9
+		trigger dsound ac3check
+	}
+	trigger n3_kill
+	{
+		accum 1 bitreset 10
+		trigger dsound ac3check
+	}
+	trigger n4_kill
+	{
+		accum 1 bitreset 11
+		trigger dsound ac3check
+	}
+	trigger n5_kill
+	{
+		accum 1 bitreset 12
+		trigger dsound ac3check
+	}
+	trigger n6_kill
+	{
+		accum 1 bitreset 13
+		trigger dsound ac3check
+	}
+	trigger n7_kill
+	{
+		accum 1 bitreset 14
+		trigger dsound ac3check
+	}
+	trigger ac3check
+	{
+		accum 1 abort_if_bitset 5	// naz2
+		accum 1 abort_if_bitset 6	// nazi3a
+		accum 1 abort_if_bitset 8	// n1
+		accum 1 abort_if_bitset 9
+		accum 1 abort_if_bitset 10
+		accum 1 abort_if_bitset 11
+		accum 1 abort_if_bitset 12
+		accum 1 abort_if_bitset 13
+		accum 1 abort_if_bitset 14	// n7
+		
+		trigger game_manager achievement1 // Clear the antechamber’s great room within 15 seconds or less in the Ritual Chamber
+		
+		trigger player obj_2
+		wait 25
+		trigger player musicgrave
+	}
+}
+
+
+counter1
+{
+	spawn
+	{
+		accum 0 set 0 // has cine_cleanup
+		accum 1 set 0 // has cine cleanup2
+	}
+
+	trigger cine1
+	{
+		// exit if aborted
+		accum 0 abort_if_not_equal 0
+
+		trigger player alert_actors
+
+		wait 100
+
+		// make elite guard and helga walk towards scientist and helga face him
+
+		trigger cine_leet1 getgoing
+		wait 50
+		trigger cine_leet2 getgoing
+
+		trigger peon start
+		wait 50
+
+		trigger player pancam
+		wait 4000
+		trigger cine_helga1 getgoing
+		wait 4000
+
+		trigger player pancam2
+	//	trigger player pancam2a
+		wait 500
+
+		trigger cine_helga1 talk1 	// what have you found?
+		wait 2000
+
+	//	trigger player pancam2
+		wait 1500
+
+		trigger peon talk1		// We've discovered the tablets
+		wait 6000
+
+		trigger peon face_helga
+		wait 1500
+
+		trigger cine_helga1 talk2	// Then why are we still here?!
+		wait 2500
+
+		trigger player peon_cam1
+		wait 100
+		trigger peon talk2		// We must be carefull not to disturbe the tombes
+		wait 3000
+
+		accum 0 abort_if_not_equal 0
+		trigger counter1 cine1a
+	}
+
+	trigger cine1a
+	{
+		trigger player helga_cam
+		wait 300
+		trigger cine_helga1 talk3	// the rike doesn't care about the tombes
+		wait 2350
+
+//		trigger cine_helga1 moveforward
+		wait 200
+		trigger player peon_cam2
+		wait 800
+
+		trigger peon talk3		// It is written that they are protected by a terrible curse
+		wait 4000
+
+		trigger player helga_cam2
+
+	//	wait 1500
+
+		trigger cine_helga1 talk4	// I can assure you that keeping Himler waiting is more terrible...
+		wait 4000
+		wait 1500
+
+		// overview
+		trigger player camera4
+		wait 3000
+
+		trigger cine_leet1 getgoing2
+		wait 50
+		trigger cine_leet2 getgoing2
+		wait 2000
+		trigger peon talk4		// As you wish
+		wait 2000
+
+		//fade out
+		trigger player camera5
+		wait 3000
+
+		// Kill first actors
+		trigger counter1 cleanup1
+		wait 10
+
+		trigger counter1 cine1b
+	}
+
+	trigger cine1b
+	{
+		// exit if aborted
+		accum 1 abort_if_not_equal 0
+
+		trigger player alert_actors2
+		wait 1000
+
+		// fade in, looking at elevator
+		trigger player camera6
+		wait 2000
+
+		// trigger lift lift_go_down_cine
+
+		trigger elevator liftdown
+
+		// countdown to death
+		wait 5000
+
+		// final fade out
+		trigger player camera7
+
+		wait 5000
+
+		trigger player stop
+
+		trigger player lockoff
+		trigger counter1 cleanup2
+	}
+
+	trigger cleanup1
+	{
+		accum 0 abort_if_not_equal 0
+		accum 0 set 1
+
+		//alertentity cine_cleanup
+	}
+
+	trigger cleanup2
+	{
+		accum 1 abort_if_not_equal 0
+		accum 1 set 1
+
+		//alertentity cine_cleanup2
+		trigger player start
+	}
+
+	trigger cleanup
+	{
+		trigger counter1 cleanup1
+		trigger counter1 cleanup2
+		trigger player lockoff
+		trigger elevator liftdown
+	}
+}
+
+
+/////////////////////////////////////////////
+// ELEVATOR Sound Queues
+/////////////////////////////////////////////
+
+elev_sounder
+{
+	spawn
+	{
+	}
+	trigger start_sound
+	{
+		playsound sound\movers\elevators\elev1_start_2.wav
+	}
+	trigger move_sound
+	{
+		playsound sound\movers\elevators\elev1_loop.wav looping
+	}
+	trigger end_sound
+	{
+		playsound sound\movers\elevators\elev1_end_2.wav
+	}
+	trigger stop_sound
+	{
+		stopsound
+	}
+}
+
+/////////////////////////////////////////////
+// ELEVATOR COIL
+/////////////////////////////////////////////
+coil
+{
+	spawn
+	{
+		accum 0 set 0 // moving
+	}
+
+	trigger rotateup
+	{
+		accum 0 set 1
+		trigger coil rotateloopup
+	}
+
+	trigger rotatedown
+	{
+		accum 0 set 1
+		trigger coil rotateloopdown
+	}
+
+	trigger stop
+	{
+		accum 0 set 0
+	}
+
+	trigger rotateloopup
+	{
+		accum 0 abort_if_not_equal 1
+		faceangles -90 0 0 1000
+		accum 0 abort_if_not_equal 1
+		faceangles -180 0 0 1000
+		accum 0 abort_if_not_equal 1
+		faceangles -270 0 0 1000
+		accum 0 abort_if_not_equal 1
+		faceangles -360 0 0 1000
+		trigger coil rotateloopup
+	}
+
+	trigger rotateloopdown
+	{
+		accum 0 abort_if_not_equal 1
+		faceangles 90 0 0 1000
+		accum 0 abort_if_not_equal 1
+		faceangles 180 0 0 1000
+		accum 0 abort_if_not_equal 1
+		faceangles 270 0 0 1000
+		accum 0 abort_if_not_equal 1
+		faceangles 360 0 0 1000
+		trigger coil rotateloopdown
+	}
+
+	death
+	{
+	}
+}
+
+
+/////////////////////////////////////////////
+// NEW ELEVATOR ROPE
+/////////////////////////////////////////////
+
+elevator
+{
+	spawn
+	{
+		accum 0 bitreset 0	// wait until done going up or down before re-trigger
+		accum 0 bitset 1	// elevator is up
+		wait 5
+
+		gotomarker link15spot1 1000 wait
+	}
+
+	trigger reset
+	{
+		resetscript
+	}
+
+	trigger toggle
+	{
+		trigger elevator liftup
+		trigger elevator liftdown
+	}
+	
+	trigger last_guy_dead // PS2, added by William Faure
+	{
+		accum 1 bitset 1
+		trigger elevator level_end
+	}
+	
+	trigger level_end // PS2, added by William Faure
+	{
+		accum 0 abort_if_not_bitset 1
+		accum 1 abort_if_not_bitset 1
+		trigger player enable_elevator
+	}
+
+	trigger liftup
+	{
+
+		// already up
+		accum 0 abort_if_bitset 1
+
+
+		// Start elevator sound
+		playsound sound\movers\elevators\elev1_start_2.wav
+		// trigger elev_sounder start_sound
+
+		// Wait for the elevator start sound to finish playing
+		wait 2540
+
+		// Start elevator movement sound and then start moving the elevator + links
+		playsound sound\movers\elevators\elev1_loop.wav looping
+		// trigger elev_sounder move_sound
+
+		trigger coil rotateup
+
+		trigger link1 linkup
+		trigger link2 linkup
+		trigger link3 linkup
+		trigger link4 linkup
+		trigger link5 linkup
+		trigger link6 linkup
+		trigger link7 linkup
+		trigger link8 linkup
+		trigger link9 linkup
+		trigger link10 linkup
+		trigger link11 linkup
+		trigger link12 linkup
+		trigger link13 linkup
+		trigger link14 linkup
+		trigger link15 linkup
+		gotomarker link14spot1 50 wait
+		gotomarker link15spot1 50 deccel
+
+		trigger coil stop
+
+		// Stop all elevator sounds and play the elevator stop sounds
+		stopsound
+		// trigger elev_sounder stop_sound
+		playsound sound\movers\elevators\elev1_end_2.wav
+		// trigger elev_sounder end_sound
+
+		// Allow the elevator to go down
+		accum 0 bitset 1
+		
+		#if g_reinforce <= 0 alertentity obj_enable #endif
+		
+		#if g_reinforce >= 1
+		trigger elevator level_end
+		trigger nazi4 go
+		#endif
+		
+		trigger elevator level_end
+	}
+
+	trigger liftdown
+	{
+
+
+		// already down
+		accum 0 abort_if_not_bitset 1
+		accum 0 bitreset 1
+
+
+		// Start moving down
+		playsound sound\movers\elevators\elev1_start_2.wav
+		// trigger elev_sounder start_sound
+
+		trigger coil rotatedown
+
+		//accelerate in one link length
+		trigger link1 linkdown
+		trigger link2 linkdown
+		trigger link3 linkdown
+		trigger link4 linkdown
+		trigger link5 linkdown
+		trigger link6 linkdown
+		trigger link7 linkdown
+		trigger link8 linkdown
+		trigger link9 linkdown
+		trigger link10 linkdown
+		trigger link11 linkdown
+		trigger link12 linkdown
+		trigger link13 linkdown
+		trigger link14 linkdown
+		trigger link15 linkdown
+		gotomarker link14spot1 50 accel wait
+
+		// Continue down, this will play the elevator moving sound
+		playsound sound\movers\elevators\elev1_loop.wav looping
+		// trigger elev_sounder move_sound
+
+		gotomarker link1spot1 50 wait
+
+		trigger coil stop
+
+		// At the bottom, stop all sounds and play the elevator stop sound
+		stopsound
+		// trigger elev_sounder stop_sound
+		playsound sound\movers\elevators\elev1_end_2.wav
+		trigger elev_sounder end_sound
+	}
+}
+
+link1 //This link is the one that is "attached" to the elevator?
+{
+	spawn
+	{
+		wait 5
+	//	gotomarker linkup 1000
+		gotomarker link15spot1 1000
+	}
+
+	trigger linkup
+	{
+		// gotomarker linkup 50 deccel wait
+
+
+		gotomarker link14spot1 50 wait
+		gotomarker link15spot1 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+
+		gotomarker link14spot1 50 accel wait
+		gotomarker link1spot1 50 wait
+		resetscript
+	}
+}
+
+link2
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link2spot1 50 wait
+		resetscript
+	}
+}
+
+link3
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link3spot1 50 wait
+		resetscript
+	}
+}
+
+link4
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link4spot1 50 wait
+		resetscript
+	}
+}
+
+link5
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link5spot1 50 wait
+		resetscript
+	}
+}
+
+link6
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link6spot1 50 wait
+		resetscript
+	}
+}
+
+link7
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link7spot1 50 wait
+		resetscript
+	}
+}
+
+link8
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link8spot1 50 wait
+		resetscript
+	}
+}
+
+link9
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link9spot1 50 wait
+		resetscript
+	}
+}
+
+link10
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link10spot1 50 wait
+		resetscript
+	}
+}
+
+link11
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link11spot1 50 wait
+		resetscript
+	}
+}
+
+link12
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link12spot1 50 wait
+		resetscript
+	}
+}
+
+link13
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link13spot1 50 wait
+		resetscript
+	}
+}
+
+link14
+{
+	spawn
+	{
+		wait 5
+		gotomarker linkup 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		gotomarker link14spot1 50 wait
+		resetscript
+	}
+}
+
+link15
+{
+	spawn
+	{
+		wait 5
+		//gotomarker linkup 1000
+		gotomarker link15spot1 1000
+	}
+
+	trigger linkup
+	{
+		gotomarker link15spot1 50 wait
+		gotomarker linkup 50 deccel wait
+		resetscript
+	}
+
+	trigger linkdown
+	{
+		gotomarker link15spot1 50 accel wait
+		resetscript
+	}
+}

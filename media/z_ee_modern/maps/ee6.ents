@@ -1,0 +1,412 @@
+// ee6.ents - RealRTCW modern map co-op extra entities (additive to the bsp).
+// Part 1: co-op additions carried from coop/EE ee_maps_coop.pk3 (game_manager/intermission/coop spawns/checkpoint trigger).
+// Part 2: current RealRTCW SP maps/ee6.ents (ee_maps_RealRTCW.pk3), verbatim - the engine reads only one .ents file.
+{
+	"classname" "info_player_intermission"
+	"origin" "421 546 143" // "421 546 167"
+	"angles" "20 190 0"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-744 -206 42"
+	"spawnflags" "3"
+	"angle" "270"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-796 -206 42"
+	"spawnflags" "3"
+	"angle" "270"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-666 -192 42"
+	"spawnflags" "3"
+	"angle" "270"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-870 -192 42"
+	"spawnflags" "3"
+	"angle" "270"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-768 -294 42"
+	"spawnflags" "3"
+	"angle" "270"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-768 -90 42"
+	"spawnflags" "3"
+	"angle" "270"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-870 -294 42"
+	"spawnflags" "3"
+	"angle" "270"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-666 -294 42"
+	"spawnflags" "3"
+	"angle" "270"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-666 -90 42"
+	"spawnflags" "3"
+	"angle" "270"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-870 -90 42"
+	"spawnflags" "3"
+	"angle" "270"
+}
+{
+	"classname" "coop_spawnpoint_trigger"
+	"origin" "-32 -696 0"
+	"target" "checkpoint_spawn"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-32 -320 24"
+	"spawnflags" "2"
+	"targetname" "checkpoint_spawn"
+	"angle" "-90"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-32 -384 24"
+	"spawnflags" "2"
+	"targetname" "checkpoint_spawn"
+	"angle" "-90"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-32 -448 24"
+	"spawnflags" "2"
+	"targetname" "checkpoint_spawn"
+	"angle" "-90"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-32 -512 24"
+	"spawnflags" "2"
+	"targetname" "checkpoint_spawn"
+	"angle" "-45"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-32 -256 24"
+	"spawnflags" "2"
+	"targetname" "checkpoint_spawn"
+	"angle" "-90"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-32 -192 24"
+	"spawnflags" "2"
+	"targetname" "checkpoint_spawn"
+	"angle" "-90"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-32 -128 24"
+	"spawnflags" "2"
+	"targetname" "checkpoint_spawn"
+	"angle" "-90"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-32 -576 24"
+	"spawnflags" "2"
+	"targetname" "checkpoint_spawn"
+	"angle" "-22.5"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-32 -640 24"
+	"spawnflags" "2"
+	"targetname" "checkpoint_spawn"
+	"angle" "22.5"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "-160 -256 24"
+	"spawnflags" "2"
+	"targetname" "checkpoint_spawn"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "2624 1024 -232"
+	"angle" "-67.5"
+	"spawnflags" "5"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "2656 1088 -232"
+	"angle" "-90"
+	"spawnflags" "5"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "2592 1088 -232"
+	"angle" "-45"
+	"spawnflags" "5"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "2720 1088 -232"
+	"angle" "-135"
+	"spawnflags" "5"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "2144 512 -232"
+	"spawnflags" "5"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "2080 512 -232"
+	"spawnflags" "5"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "2080 576 -232"
+	"angle" "-45"
+	"spawnflags" "5"
+}
+{
+	"classname" "coop_spawnpoint"
+	"origin" "2688 1024 -232"
+	"angle" "-112.5"
+	"spawnflags" "5"
+}
+// ---- RealRTCW SP ee6.ents ----
+{
+	"classname" "script_multiplayer"
+	"scriptname" "game_manager"
+}
+
+{
+	"classname" "ai_civilian"
+	"ainame" "ast"
+	"skin" "inge/default"
+	"head" "default"
+}
+
+	// PS2 Spawn(s)
+{
+	"classname" "ai_soldier"
+	"angle" "90"
+	"origin" "-240 -1488 -328"
+	"targetname" "nazi2a_ps2"
+	"ainame" "nazi2a_ps2"
+	"head" "prologue1" // "desert1"
+	"skin" "infantryss/prologue2" // "infantryss/desert2"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_soldier"
+	"head" "prologue3" // "desert3"
+	"skin" "infantryss/prologue2" // "infantryss/desert2"
+	"angle" "360"
+	"spawnflags" "1"
+	"ainame" "nazi4a_ps2"
+	"origin" "664 608 -8"
+	"targetname" "nazi4a_ps2"
+}
+{
+	"classname" "ai_soldier"
+	"skin" "infantryss/prologue2" // "infantryss/desert2"
+	"head" "prologue1" // "desert1"
+	"spawnflags" "1"
+	"ainame" "nazi4b_ps2"
+	"angle" "225"
+	"origin" "304 780 31"
+	"targetname" "nazi4b_ps2"
+}
+{
+	"classname" "ai_soldier"
+	"head" "prologue4" // "desert4"
+	"skin" "infantryss/prologue2" // "infantryss/desert2"
+	"targetname" "nazi4c_ps2"
+	"origin" "480 288 -8"
+	"ainame" "nazi4c_ps2"
+	"spawnflags" "1"
+	"angle" "180"
+}
+
+	// Reinforcements
+{
+	"classname" "ai_blackguard"
+	"ainame" "reinforce_bg1"
+	"skin" "blackguard/africa"
+	"head" "africa1"
+	"origin" "-768 -256 -168"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_eliteguard"
+	"ainame" "reinforce_leet1"
+	"skin" "eliteguard/desert"
+	"head" "desert1"
+	"angle" "90"
+	"origin" "-480 -336 -168"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_eliteguard"
+	"ainame" "reinforce_leet2"
+	"skin" "eliteguard/desert"
+	"head" "desert2"
+	"angle" "180"
+	"origin" "-200 -1120 -328"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_blackguard"
+	"ainame" "reinforce_bg2"
+	"skin" "blackguard/africa"
+	"head" "africa2"
+	"angle" "-90"
+	"origin" "512 -992 -264"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_venom"
+	"ainame" "reinforce_v1"
+	"skin" "venom/africa"
+	"head" "africa"
+	"angle" "180"
+	"origin" "2016 -608 -200"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_blackguard"
+	"ainame" "reinforce_bg3"
+	"skin" "blackguard/africa"
+	"head" "africa3"
+	"origin" "960 -192 -136"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_eliteguard"
+	"ainame" "reinforce_leet3"
+	"skin" "eliteguard/desert"
+	"head" "desert3"
+	"angle" "-90"
+	"origin" "960 448 -8"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_blackguard"
+	"ainame" "reinforce_bg4"
+	"skin" "blackguard/africa"
+	"head" "africa4"
+	"origin" "320 484 -8"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_eliteguard"
+	"ainame" "reinforce_leet4"
+	"skin" "eliteguard/desert"
+	"head" "desert4"
+	"angle" "180"
+	"origin" "160 -608 24"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_blackguard"
+	"ainame" "reinforce_bg5"
+	"skin" "blackguard/africa"
+	"head" "africa5"
+	"angle" "90"
+	"origin" "384 -992 24"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_venom"
+	"ainame" "reinforce_v2"
+	"skin" "venom/africa"
+	"head" "africa"
+	"angle" "180"
+	"origin" "2656 -608 -200"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_blackguard"
+	"ainame" "reinforce_bg6"
+	"skin" "blackguard/africa"
+	"head" "africa6"
+	"angle" "-90"
+	"origin" "2592 -384 -200"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_eliteguard"
+	"ainame" "reinforce_leet5"
+	"skin" "eliteguard/desert"
+	"head" "desert5"
+	"angle" "180"
+	"origin" "3168 768 -424"
+	"spawnflags" "1"
+}
+{
+	"classname" "ai_zombie"
+	"ainame" "reinforce_zombie1"
+	"origin" "2144 512 -232"
+	"spawnflags" "1"
+}
+
+	// New Pickups
+{
+	"classname" "holdable_cross"
+	"origin" "2656 1104 -232"
+}
+{
+	"classname" "ammo_44ammo_l"
+	"origin" "20 -1076 -144"
+}
+{
+	"classname" "ammo_m97ammo"
+	"origin" "-465 -166 -137"
+	"angle" "180"
+}
+{
+	"classname" "ammo_m97ammo"
+	"origin" "-532 -900 -280"
+	"angle" "90"
+}
+{
+	"classname" "weapon_g43"
+	"origin" "-528 -60 64"
+	"angle" "-157.5"
+}
+{
+	"classname" "weapon_mp44"
+	"origin" "-452 -104 32"
+	"angle" "-337.5"
+}
+{
+	"classname" "weapon_knife"
+	"origin" "-687.389 -1360.78 -321.023"
+	"angle" "135"
+	"spawnflags" "1"
+}
+{
+	"classname" "weapon_knife"
+	"origin" "3958.92 630.125 -121.924"
+	"angles" "70.8988 -56.8584 112.806"
+	"spawnflags" "1"
+}
+{
+	"classname" "weapon_mg42m"
+	"origin" "-284.006 -1673.47 -357.094"
+	"angles" "-0.882173 154.665 -93.3224"
+	"spawnflags" "1"
+}
