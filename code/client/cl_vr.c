@@ -241,6 +241,7 @@ static struct {
 	qboolean        sessionRunning;
 	XrSpace         playSpace;          // stage (floor origin) or local
 	qboolean        playSpaceIsStage;
+	qboolean        sim;                // vr_simulate: no headset, poses and buttons from cvars
 	XrSpace         viewSpace;
 	int64_t         colorFormat;
 
@@ -313,6 +314,8 @@ static cvar_t *vr_seatedHeight;     // metres added to the head when seated
 static cvar_t *vr_heightOffset;     // metres added to (or taken off) the player's height
 static cvar_t *vr_crouchHeight;     // head below this (metres) crouches, 0 off
 static cvar_t *vr_lean;             // metres the head can lean out over the body before it follows
+static cvar_t *vr_simulate;         // a simulated headset (testing without one)
+static cvar_t *vr_simHead, *vr_simHand[2], *vr_simButtons, *vr_simStick[2];
 static cvar_t *vr_snapTurn;
 static cvar_t *vr_turnSpeed;
 static cvar_t *vr_walkDirection;
@@ -1232,6 +1235,25 @@ void CL_VR_Init( void ) {
 	com_vr.worldScale = vr_worldScale->value;
 	com_vr.rightHanded = 1;
 
+	vr_simulate = Cvar_Get( "vr_simulate", "0", CVAR_LATCH );
+	vr_simulate->flags &= ~CVAR_ARCHIVE;
+	vr_simHead = Cvar_Get( "vr_simHead", "0 0 1.7 0 0 0", 0 );
+	vr_simHand[VR_HAND_LEFT] = Cvar_Get( "vr_simHandL", "0.35 0.2 1.2 0 0 0", 0 );
+	vr_simHand[VR_HAND_RIGHT] = Cvar_Get( "vr_simHandR", "0.35 -0.2 1.2 0 0 0", 0 );
+	vr_simButtons = Cvar_Get( "vr_simButtons", "", 0 );
+	vr_simStick[VR_HAND_LEFT] = Cvar_Get( "vr_simStickL", "0 0", 0 );
+	vr_simStick[VR_HAND_RIGHT] = Cvar_Get( "vr_simStickR", "0 0", 0 );
+	if ( vr_simulate->integer ) {
+		// no headset: the window shows the game as the headset would, poses from cvars
+		xr.sim = qtrue;
+		xr.playSpaceIsStage = qtrue;
+		xr.state = XR_SESSION_STATE_FOCUSED;
+		Cvar_Set( "cg_viewsize", "100" );
+		Cvar_Set( "r_znear", "1" );
+		Com_Printf( "VR: simulated headset (vr_simulate 1)\n" );
+		return;
+	}
+
 	if ( !vr_enable->integer ) {
 		// a VR session turns off the frame cap and vsync (the headset paces the game) and
 		// those are saved: put the flatscreen ones back, or the game runs at thousands of
@@ -1295,6 +1317,9 @@ void CL_VR_Shutdown( void ) {
 }
 
 qboolean CL_VR_Active( void ) {
+	if ( xr.sim ) {
+		return qtrue;
+	}
 	return xr.session != XR_NULL_HANDLE && xr.sessionRunning;
 }
 
@@ -1306,6 +1331,115 @@ Per frame: tracking
 ==============================================================================
 */
 
+/*
+==============================================================================
+
+Simulated headset (vr_simulate 1): testing VR without one
+
+Head and hands come from cvars, in play space with Quake axes (metres: x forward, y left,
+z up from the floor; then pitch yaw roll in degrees):
+  vr_simHead "0 0 1.7 0 0 0"   vr_simHandL / vr_simHandR "0.35 0.2 1.2 0 0 0"
+Buttons held: vr_simButtons, tokens L/R + T trigger, G grip, A lower, B upper, S stick
+click, M menu (e.g. "RT LG"). Sticks: vr_simStickL / vr_simStickR "x y".
+The game draws the right eye's 3D view and the HUD layer flat into the window, with the
+headset code (aim, hands, room scale, grabbing) running as it would with one.
+==============================================================================
+*/
+
+static void VR_SimPose( const char *str, XrPosef *pose ) {
+	float v[6] = { 0, 0, 0, 0, 0, 0 }, m[3][3], t;
+	vec3_t ang, ax[3], c[3];
+	int k;
+
+	sscanf( str, "%f %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5] );
+	pose->position.x = -v[1];
+	pose->position.y = v[2];
+	pose->position.z = -v[0];
+	VectorSet( ang, v[3], v[4], v[5] );
+	AnglesToAxis( ang, ax );        // forward, left, up
+	// the local XR axes (right, up, back) in XR play space
+	c[0][0] = ax[1][1]; c[0][1] = -ax[1][2]; c[0][2] = ax[1][0];       // -left
+	c[1][0] = -ax[2][1]; c[1][1] = ax[2][2]; c[1][2] = -ax[2][0];      // up
+	c[2][0] = ax[0][1]; c[2][1] = -ax[0][2]; c[2][2] = ax[0][0];       // -forward
+	for ( k = 0; k < 3; k++ ) {
+		m[k][0] = c[0][k];
+		m[k][1] = c[1][k];
+		m[k][2] = c[2][k];
+	}
+	t = m[0][0] + m[1][1] + m[2][2];
+	if ( t > 0 ) {
+		float r = sqrt( t + 1.0f ) * 2;
+		pose->orientation.w = 0.25f * r;
+		pose->orientation.x = ( m[2][1] - m[1][2] ) / r;
+		pose->orientation.y = ( m[0][2] - m[2][0] ) / r;
+		pose->orientation.z = ( m[1][0] - m[0][1] ) / r;
+	} else if ( m[0][0] > m[1][1] && m[0][0] > m[2][2] ) {
+		float r = sqrt( 1.0f + m[0][0] - m[1][1] - m[2][2] ) * 2;
+		pose->orientation.w = ( m[2][1] - m[1][2] ) / r;
+		pose->orientation.x = 0.25f * r;
+		pose->orientation.y = ( m[0][1] + m[1][0] ) / r;
+		pose->orientation.z = ( m[0][2] + m[2][0] ) / r;
+	} else if ( m[1][1] > m[2][2] ) {
+		float r = sqrt( 1.0f + m[1][1] - m[0][0] - m[2][2] ) * 2;
+		pose->orientation.w = ( m[0][2] - m[2][0] ) / r;
+		pose->orientation.x = ( m[0][1] + m[1][0] ) / r;
+		pose->orientation.y = 0.25f * r;
+		pose->orientation.z = ( m[1][2] + m[2][1] ) / r;
+	} else {
+		float r = sqrt( 1.0f + m[2][2] - m[0][0] - m[1][1] ) * 2;
+		pose->orientation.w = ( m[1][0] - m[0][1] ) / r;
+		pose->orientation.x = ( m[0][2] + m[2][0] ) / r;
+		pose->orientation.y = ( m[1][2] + m[2][1] ) / r;
+		pose->orientation.z = 0.25f * r;
+	}
+}
+
+static qboolean VR_SimButton( int h, char b ) {
+	const char *p = vr_simButtons->string;
+	char hc = h == VR_HAND_LEFT ? 'L' : 'R';
+
+	for ( ; p[0] && p[1]; p++ ) {
+		if ( toupper( p[0] ) == hc && toupper( p[1] ) == b && ( p == vr_simButtons->string || p[-1] == ' ' ) ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+static void VR_SimInput( void ) {
+	int h, b;
+
+	VR_SimPose( vr_simHead->string, &xr.head );
+	xr.headValid = qtrue;
+	for ( h = 0; h < 2; h++ ) {
+		vrHand_t *hand = &xr.hands[h];
+
+		Com_Memcpy( hand->wasDown, hand->down, sizeof( hand->down ) );
+		hand->trigger = VR_SimButton( h, 'T' ) ? 1.0f : 0.0f;
+		hand->squeeze = VR_SimButton( h, 'G' ) ? 1.0f : 0.0f;
+		hand->stick[0] = hand->stick[1] = 0;
+		sscanf( vr_simStick[h]->string, "%f %f", &hand->stick[0], &hand->stick[1] );
+		hand->down[VRB_TRIGGER] = hand->trigger > 0.5f;
+		hand->down[VRB_SQUEEZE] = hand->squeeze > 0.5f;
+		hand->down[VRB_LOWER] = VR_SimButton( h, 'A' );
+		hand->down[VRB_UPPER] = VR_SimButton( h, 'B' );
+		hand->down[VRB_STICK] = VR_SimButton( h, 'S' );
+		hand->down[VRB_MENU] = VR_SimButton( h, 'M' );
+		hand->down[VRB_STICK_UP] = hand->stick[1] > 0.75f;
+		hand->down[VRB_STICK_DOWN] = hand->stick[1] < -0.75f;
+		hand->down[VRB_STICK_RIGHT] = hand->stick[0] > 0.75f;
+		hand->down[VRB_STICK_LEFT] = hand->stick[0] < -0.75f;
+		for ( b = 0; b < VRB_COUNT; b++ ) {
+			if ( hand->down[b] && !hand->wasDown[b] ) {
+				hand->downTime[b] = cls.realtime;
+			}
+		}
+		VR_SimPose( vr_simHand[h]->string, &hand->grip );
+		hand->aim = hand->grip;
+		hand->gripValid = hand->aimValid = qtrue;
+	}
+}
+
 static void VR_UpdateTracking( void ) {
 	XrViewLocateInfo vli = { XR_TYPE_VIEW_LOCATE_INFO };
 	XrViewState vs = { XR_TYPE_VIEW_STATE };
@@ -1316,19 +1450,23 @@ static void VR_UpdateTracking( void ) {
 	xr.views[0].type = xr.views[1].type = XR_TYPE_VIEW;
 	xr.headViews[0].type = xr.headViews[1].type = XR_TYPE_VIEW;
 
-	vli.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-	vli.displayTime = xr.frameState.predictedDisplayTime;
-	vli.space = xr.playSpace;
-	qxrLocateViews( xr.session, &vli, &vs, 2, &count, xr.views );
-	vli.space = xr.viewSpace;
-	qxrLocateViews( xr.session, &vli, &vs, 2, &count, xr.headViews );
+	if ( xr.sim ) {
+		VR_SimInput();
+	} else {
+		vli.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+		vli.displayTime = xr.frameState.predictedDisplayTime;
+		vli.space = xr.playSpace;
+		qxrLocateViews( xr.session, &vli, &vs, 2, &count, xr.views );
+		vli.space = xr.viewSpace;
+		qxrLocateViews( xr.session, &vli, &vs, 2, &count, xr.headViews );
 
-	xr.headValid = VR_LocatePose( xr.viewSpace, xr.playSpace, &xr.head );
-	if ( !xr.headValid ) {
-		return;
+		xr.headValid = VR_LocatePose( xr.viewSpace, xr.playSpace, &xr.head );
+		if ( !xr.headValid ) {
+			return;
+		}
+
+		VR_ReadInput();
 	}
-
-	VR_ReadInput();
 
 	// artificial turning before poses are converted, so everything agrees this frame
 	dom = vr_rightHanded->integer ? VR_HAND_RIGHT : VR_HAND_LEFT;
@@ -1496,6 +1634,14 @@ void CL_VR_BeginFrame( void ) {
 	XrFrameWaitInfo fwi = { XR_TYPE_FRAME_WAIT_INFO };
 	XrFrameBeginInfo fbi = { XR_TYPE_FRAME_BEGIN_INFO };
 
+	if ( xr.sim ) {
+		if ( !xr.frameBegun ) {
+			xr.frameBegun = qtrue;
+			com_vr.active = qtrue;
+			VR_UpdateTracking();
+		}
+		return;
+	}
 	if ( xr.session == XR_NULL_HANDLE ) {
 		return;
 	}
@@ -2737,6 +2883,24 @@ qboolean CL_VR_RenderFrame( void ) {
 	GLuint fbo;
 	int eye, mirror;
 
+	if ( xr.sim ) {
+		// the right eye's 3D view, then the HUD layer over it, flat in the window
+		qboolean full = uivm && VM_Call( uivm, UI_IS_FULLSCREEN );
+		xr.frameBegun = qfalse;
+		if ( clc.state != CA_ACTIVE || !cls.cgameStarted || full || cl.cameraMode ) {
+			return qfalse;
+		}
+		re.VR_SetEye( -1, NULL, NULL );
+		VectorClear( com_vr.eyeOffset );
+		com_vr.eye = 1;
+		com_vr.pass = VR_PASS_EYE;
+		SCR_DrawScreenField( STEREO_CENTER );
+		com_vr.pass = VR_PASS_2D;
+		SCR_DrawScreenField( STEREO_CENTER );
+		com_vr.pass = VR_PASS_FLAT;
+		re.EndFrame( NULL, NULL );
+		return qtrue;
+	}
 	if ( xr.session == XR_NULL_HANDLE ) {
 		return qfalse;
 	}
@@ -2841,6 +3005,10 @@ runtime requires every xrBeginFrame to be matched.
 =================
 */
 void CL_VR_EndFrame( void ) {
+	if ( xr.sim ) {
+		xr.frameBegun = qfalse;
+		return;
+	}
 	if ( xr.session != XR_NULL_HANDLE && xr.frameBegun ) {
 		VR_SubmitFrame( qfalse, qfalse, qfalse );
 	}

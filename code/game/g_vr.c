@@ -557,6 +557,41 @@ static gentity_t *G_VR_FindBody( const vec3_t hand ) {
 	return best;
 }
 
+// a body for a VR hand: the hand has to be down on it (the body lies on the floor, its box
+// is cut down to that), never reaching past it from above, and never a hand that's going for
+// the gun in the other hand (a support grip over a corpse)
+#define VR_HAND_BODY_MARGIN 10.0f
+#define VR_HAND_BODY_HIGH   20.0f
+static gentity_t *G_VR_HandBody( gentity_t *self, const vec3_t hand ) {
+	gentity_t *e, *best = NULL;
+	vec3_t gun, top;
+	float d, bestDist = 1e9f;
+	int i, dom = ( gVR->rightHanded ? VR_HAND_RIGHT : VR_HAND_LEFT );
+
+	if ( gVR->handValid[dom] ) {
+		G_VR_HandWorld( self, dom, gun );
+		if ( Distance( gun, hand ) < 24.0f ) {
+			return NULL;
+		}
+	}
+	for ( i = 1; i < level.maxclients; i++ ) {
+		e = &g_entities[i];
+		if ( !e->inuse || !e->client || e->health > 0 || !e->r.linked ) {
+			continue;
+		}
+		VectorCopy( e->r.absmax, top );
+		if ( top[2] > e->r.absmin[2] + VR_HAND_BODY_HIGH ) {
+			top[2] = e->r.absmin[2] + VR_HAND_BODY_HIGH;
+		}
+		d = G_VR_BoxDist( hand, e->r.absmin, top );
+		if ( d <= VR_HAND_BODY_MARGIN && d < bestDist ) {
+			best = e;
+			bestDist = d;
+		}
+	}
+	return best;
+}
+
 
 // a carried body hangs from the hand: an upright box below it, so it covers the holder
 static const vec3_t vrCarryMins = { -12, -12, -54 };
@@ -794,9 +829,59 @@ static gentity_t *G_VR_FindItem( gentity_t *ent, const vec3_t hand ) {
 	return best;
 }
 
+// out of reach (gold up on a mantel, deep on a shelf): reach the hand out towards it, the
+// eyes through the hand pointing at it, and a grip pulls it in, if nothing solid is between
+#define VR_PULL_RANGE       160.0f
+static gentity_t *G_VR_PullItem( gentity_t *ent, const vec3_t hand ) {
+	gentity_t *e, *best = NULL;
+	vec3_t eye, dir, mid, v;
+	float along, off, score, bestScore = 1e9f;
+	trace_t tr;
+	int i, k;
+
+	G_VR_Eye( ent, eye );
+	VectorSubtract( hand, eye, dir );
+	if ( VectorNormalize( dir ) < 4.0f ) {
+		return NULL;    // the hand isn't reaching out
+	}
+	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
+		e = &g_entities[i];
+		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item ) {
+			continue;
+		}
+		for ( k = 0; k < 3; k++ ) {
+			mid[k] = ( e->r.absmin[k] + e->r.absmax[k] ) * 0.5f;
+		}
+		VectorSubtract( mid, hand, v );
+		along = DotProduct( v, dir );
+		if ( along < 0 || along > VR_PULL_RANGE ) {
+			continue;
+		}
+		VectorMA( v, -along, dir, v );
+		off = VectorLength( v );
+		if ( off > 8.0f + along * 0.15f ) {
+			continue;
+		}
+		trap_Trace( &tr, hand, NULL, NULL, mid, ent->s.number, MASK_SOLID );
+		if ( tr.fraction < 1.0f && tr.entityNum != e->s.number ) {
+			continue;
+		}
+		score = off / ( 8.0f + along * 0.15f ) + along * 0.002f;
+		if ( score < bestScore ) {
+			best = e;
+			bestScore = score;
+		}
+	}
+	return best;
+}
+
 static qboolean G_VR_GrabItem( gentity_t *ent, const vec3_t hand ) {
 	gentity_t *e = G_VR_FindItem( ent, hand );
 	trace_t tr;
+
+	if ( !e ) {
+		e = G_VR_PullItem( ent, hand );
+	}
 
 	if ( e ) {
 		memset( &tr, 0, sizeof( tr ) );
@@ -1161,7 +1246,7 @@ void G_VR_GrabHint( gentity_t *ent ) {
 	}
 	if ( vrp.grabbed < 0 && !vrp.heldItem ) {
 		G_VR_HandWorld( ent, gVR->rightHanded ? VR_HAND_LEFT : VR_HAND_RIGHT, hand );
-		gVR->canGrab = G_VR_FindBody( hand ) || G_VR_FindItem( ent, hand ) ||
+		gVR->canGrab = G_VR_HandBody( ent, hand ) || G_VR_FindItem( ent, hand ) ||
 					   ( G_VRX_PropHeld( ent ) < 0 && G_VRX_FindProp( hand, G_VR_AssistMargin( VR_ITEM_MARGIN ) ) );
 	}
 }
@@ -1280,7 +1365,7 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 		if ( ent->client->ps.stats[STAT_HEALTH] > 0 && G_VR_GrabItem( ent, offHand ) ) {
 			G_VR_Haptic( off, 0.4f, 40 );
 		} else {
-			body = G_VR_FindBody( offHand );
+			body = G_VR_HandBody( ent, offHand );
 			if ( !body && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
 				body = G_VR_GrabLiving( ent, offHand, off );
 				if ( !body && !vrLivingTouched ) {
