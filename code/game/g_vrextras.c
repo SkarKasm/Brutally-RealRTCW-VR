@@ -187,6 +187,11 @@ static void G_VRX_Dismember( gentity_t *targ, gentity_t *inflictor, const vec3_t
 	if ( !G_VRX_Gore( VRX_DISMEMBER ) || !targ->client || !targ->aiCharacter || targ->health > 0 ) {
 		return;
 	}
+	// only the men the stumps and torn pieces are made for (VRX_HUMAN_MALE), as with the
+	// rest of the heavy gore: an elite guard's limbs stayed on with the stumps drawn over them
+	if ( !VRX_HUMAN_MALE( targ->aiCharacter ) ) {
+		return;
+	}
 	if ( !blast && !( G_VRX( VRX_DISMEMBER ) >= 2 && ( mod == MOD_VENOM || damage >= 45 ) ) ) {
 		return;
 	}
@@ -697,7 +702,7 @@ void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, con
 	{
 		gentity_t *m = G_VRX_Marker( targ, qfalse );
 		if ( m ) {
-			m->s.density &= ~( VRX_GB_CRIPPLED | VRX_GB_DOWNED );   // (dead now; the arm stays off)
+			m->s.density &= ~( VRX_GB_CRIPPLED | VRX_GB_DOWNED | VRX_GB_SURRENDER | VRX_GB_SCARED );   // (dead now; the arm stays off)
 		}
 	}
 
@@ -1487,11 +1492,21 @@ static qboolean G_VRX_Scareable( gentity_t *e ) {
 	}
 }
 
+// the weapons someone had before dropping them (downed, crippled, given up), back when they
+// come back to life (G_VRX_Revive): a Survival enemy is the same entity respawned
+static int vrxSavedWeapons[MAX_CLIENTS][MAX_WEAPONS / ( sizeof( int ) * 8 )];
+static qboolean vrxWeaponsSaved[MAX_CLIENTS];
+
 static void G_VRX_DropWeapon( gentity_t *e, cast_state_t *cs ) {
 	gitem_t *item = e->client->ps.weapon > WP_NONE ? BG_FindItemForWeapon( e->client->ps.weapon ) : NULL;
 	vec3_t org, vel;
 
-	if ( item ) {
+	if ( e->s.number < MAX_CLIENTS && !vrxWeaponsSaved[e->s.number] ) {
+		memcpy( vrxSavedWeapons[e->s.number], e->client->ps.weapons, sizeof( vrxSavedWeapons[0] ) );
+		vrxWeaponsSaved[e->s.number] = qtrue;
+	}
+	// Survival enemies never leave weapons to pick up (TossClientWeapons): the gun just goes
+	if ( item && g_gametype.integer != GT_SURVIVAL ) {
 		VectorCopy( e->r.currentOrigin, org );
 		org[2] += 24;
 		VectorSet( vel, crandom() * 80, crandom() * 80, 140 );
@@ -1504,6 +1519,44 @@ static void G_VRX_DropWeapon( gentity_t *e, cast_state_t *cs ) {
 	memset( e->client->ps.weapons, 0, sizeof( e->client->ps.weapons ) );
 	e->client->ps.weapon = WP_NONE;
 	cs->weaponNum = WP_NONE;
+}
+
+/*
+=================
+G_VRX_Revive
+
+A character coming back to life (a Survival respawn, a scripted rebirth): whatever was done
+to them last time goes. Without this a Survival enemy who had been put down, crippled or had
+given up came back as the same entity unarmed, frozen for an hour (noAttackTime / pauseTime)
+and, if they had surrendered, still with their hands up, so the waves stalled.
+=================
+*/
+void G_VRX_Revive( gentity_t *ent ) {
+	cast_state_t *cs;
+	gentity_t *m;
+	int n = ent->s.number;
+
+	if ( !ent->client || n < 0 || n >= MAX_CLIENTS ) {
+		return;
+	}
+	m = G_VRX_Marker( ent, qfalse );
+	if ( m ) {
+		G_FreeEntity( m );
+	}
+	vrxDownedAt[n] = 0;
+	cs = AICast_GetCastState( n );
+	if ( vrxWeaponsSaved[n] ) {
+		memcpy( ent->client->ps.weapons, vrxSavedWeapons[n], sizeof( ent->client->ps.weapons ) );
+		vrxWeaponsSaved[n] = qfalse;
+	}
+	if ( cs ) {
+		cs->noAttackTime = 0;
+		cs->pauseTime = 0;
+		if ( cs->dangerEntityValidTime > level.time + 60000 ) {
+			cs->dangerEntityValidTime = 0;      // no longer running from whoever crippled them
+		}
+		// (the weapon to hold is picked by the AI as usual, as after any death)
+	}
 }
 
 static void G_VRX_Surrender( gentity_t *e, cast_state_t *cs ) {

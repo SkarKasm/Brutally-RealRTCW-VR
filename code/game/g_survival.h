@@ -58,6 +58,7 @@ void TossClientItems_Survival(gentity_t *self, gentity_t *attacker);
 void TossClientPowerups(gentity_t *self, gentity_t *attacker);
 gentity_t *SelectSpawnPoint_AI ( gentity_t *player, gentity_t *ent, vec3_t origin, vec3_t angles ) ;
 void AICast_TickSurvivalWave( void );
+void AICast_SurvivalEnemyStatus( void );   // RealRTCW-VR: enemies left, for the HUD
 
 
 // Survival parameters

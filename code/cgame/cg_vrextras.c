@@ -427,6 +427,12 @@ void CG_VRX_GoreEvent( entityState_t *es ) {
 	case VRG_LIMBS:
 		{
 			int b;
+			// only the men the stumps are made for (as the server): never a stump over a limb
+			// that stays on (elite guards and the other special ones)
+			if ( es->otherEntityNum < 0 || es->otherEntityNum >= MAX_CLIENTS ||
+				 !VRX_HUMAN_MALE( cg_entities[es->otherEntityNum].currentState.aiChar ) ) {
+				break;
+			}
 			for ( b = VRX_GB_LARM; b <= VRX_GB_RLEG; b <<= 1 ) {
 				if ( !( es->density & b ) ) {
 					continue;
@@ -875,7 +881,7 @@ static void VRX_PlaceGore( vrWound_t *w, centity_t *cent, vrSkel_t *sk, vec3_t b
 static void VRX_PlaceWound( vrWound_t *w, vrSkel_t *sk, vec3_t bAxis[][3], vec3_t bPos[] ) {
 	float best = 1e9f, r = 0;
 	int i, bi = -1;
-	vec3_t c, start, d1, n, ab, rel;
+	vec3_t c, start, d1, n, ab, rel, onPath;
 
 	VectorMA( w->hit, -40.0f, w->dir, start );
 	VectorScale( w->dir, 80.0f, d1 );
@@ -907,6 +913,7 @@ static void VRX_PlaceWound( vrWound_t *w, vrSkel_t *sk, vec3_t bAxis[][3], vec3_
 			best = d;
 			bi = i;
 			VectorCopy( p2, c );
+			VectorCopy( p1, onPath );
 			r = sk->radius[i];
 		}
 	}
@@ -917,10 +924,32 @@ static void VRX_PlaceWound( vrWound_t *w, vrSkel_t *sk, vec3_t bAxis[][3], vec3_
 	// on the limb's surface, facing where the shot came from
 	VectorSubtract( bPos[bi], bPos[sk->parents[bi]], ab );
 	VectorNormalize( ab );
-	VectorNegate( w->dir, n );
-	VectorMA( n, -DotProduct( n, ab ), ab, n );
-	if ( VectorNormalize( n ) < 0.1f ) {
-		PerpendicularVector( n, ab );
+	{
+		// where the path went into the limb: back along it from its nearest point to the bone,
+		// to the limb's surface, so the hole is where the shot met him (a graze: the nearest side)
+		vec3_t off, dperp, entry;
+		float dist, across, back;
+		VectorSubtract( onPath, c, off );
+		VectorMA( off, -DotProduct( off, ab ), ab, off );
+		dist = VectorLength( off );
+		VectorMA( w->dir, -DotProduct( w->dir, ab ), ab, dperp );
+		across = VectorLength( dperp );
+		if ( dist < r && across > 0.2f ) {
+			back = sqrt( r * r - dist * dist ) / across;
+			VectorMA( onPath, -back, w->dir, entry );
+			VectorSubtract( entry, c, n );
+			VectorMA( n, -DotProduct( n, ab ), ab, n );
+			VectorMA( c, DotProduct( entry, ab ) - DotProduct( c, ab ), ab, c );
+		} else {
+			VectorCopy( off, n );
+		}
+		if ( DotProduct( n, w->dir ) > 0 || VectorNormalize( n ) < 0.1f ) {
+			VectorNegate( w->dir, n );     // (the side facing the shot)
+			VectorMA( n, -DotProduct( n, ab ), ab, n );
+			if ( VectorNormalize( n ) < 0.1f ) {
+				PerpendicularVector( n, ab );
+			}
+		}
 	}
 	VectorMA( c, r, n, c );
 	// kept in the frame of the bone the limb hangs from
@@ -943,7 +972,7 @@ static void VRX_PlaceWound( vrWound_t *w, vrSkel_t *sk, vec3_t bAxis[][3], vec3_
 		w->localT[1] = DotProduct( down, bAxis[i][1] );
 		w->localT[2] = DotProduct( down, bAxis[i][2] );
 	}
-	w->size = 3.0f + random() * 1.2f;
+	w->size = 1.4f + random() * 0.5f;     // a bullet's hole, not half the limb (was 3 to 4.2)
 	w->bone = i;
 }
 
@@ -1507,8 +1536,8 @@ void CG_VRX_AddHeadWounds( int entityNum, refEntity_t *head ) {
 		VectorCopy( n, re.axis[0] );
 		VectorNegate( down, re.axis[2] );
 		CrossProduct( re.axis[2], re.axis[0], re.axis[1] );
-		VectorScale( re.axis[1], 1.2f, re.axis[1] );
-		VectorScale( re.axis[2], 1.2f, re.axis[2] );
+		VectorScale( re.axis[1], 0.8f, re.axis[1] );     // (was 1.2: as wide as an eye socket)
+		VectorScale( re.axis[2], 0.8f, re.axis[2] );
 		re.nonNormalizedAxes = qtrue;
 		VectorCopy( p, re.origin );
 		VectorCopy( p, re.oldorigin );
@@ -2929,6 +2958,9 @@ void CG_VRX_Dismember( centity_t *cent, refEntity_t *body ) {
 		return;
 	}
 	bits = CG_VRX_GoreBits( cent ) & ( VRX_GB_LARM | VRX_GB_RARM | VRX_GB_LLEG | VRX_GB_RLEG );
+	if ( !VRX_HUMAN_MALE( cent->currentState.aiChar ) ) {
+		bits = 0;     // (as the server: their limbs never come off)
+	}
 	if ( !( cent->currentState.eFlags & EF_DEAD ) ) {
 		bits &= VRX_GB_LARM | VRX_GB_RARM;      // the living only ever lose an arm (crippled)
 	}

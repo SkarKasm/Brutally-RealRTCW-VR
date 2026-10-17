@@ -252,9 +252,6 @@ void AICast_RegisterSurvivalKill(gentity_t *self, gentity_t *attacker, int means
 		return;
 	}
 
-	qboolean killerPlayer   = attacker->client && !attacker->aiCharacter;
-	qboolean killerFriendly = attacker->aiCharacter && attacker->aiTeam == 1;
-
 if (!attacker) {
         Com_Printf("^1[AI_SURVIVE] WARNING: AI %s died with no attacker (meansOfDeath=%d)\n",
         self->aiName ? self->aiName : "UNKNOWN", meansOfDeath);
@@ -262,6 +259,10 @@ if (!attacker) {
         AICast_CheckSurvivalProgression(&g_entities[0]);
         return;
 }
+
+	// (only now that attacker is known not to be NULL)
+	qboolean killerPlayer   = attacker->client && !attacker->aiCharacter;
+	qboolean killerFriendly = attacker->aiCharacter && attacker->aiTeam == 1;
 
 if (!killerPlayer && !killerFriendly) {
    /* Com_Printf(
@@ -477,7 +478,7 @@ void AICast_Die_Survival( gentity_t *self, gentity_t *inflictor, gentity_t *atta
 	  }
 
 	// print debugging message
-	if ( aicast_debug.integer == 2 && attacker->s.number == 0 ) {
+	if ( aicast_debug.integer == 2 && attacker && attacker->s.number == 0 ) {
 		G_Printf( "killed %s\n", self->aiName );
 	}
 
@@ -1620,6 +1621,96 @@ void AICast_TickSurvivalWave(void) {
 
 /*
 ============
+AICast_SurvivalEnemyStatus
+
+RealRTCW-VR: how many enemies are left to kill this wave, sent to the cgame for the HUD
+("svenemies <left> <shown> [x y z]..."), and once only three or fewer are left, where the
+nearest living ones are, so the HUD compass can point at them. Counted fresh from the
+living enemies each time, never kept as a running total. Sent when something changes,
+and at most four times a second.
+============
+*/
+#define SV_COMPASS_ENEMIES  3
+
+void AICast_SurvivalEnemyStatus( void ) {
+	static int lastSent, lastLeft = -1, lastShown = -1;
+	static int lastPos[SV_COMPASS_ENEMIES][3];
+	gentity_t *player = &g_entities[0];
+	gentity_t *best[SV_COMPASS_ENEMIES];
+	float bestDist[SV_COMPASS_ENEMIES];
+	int left = 0, shown = 0, i, k, j, pos[SV_COMPASS_ENEMIES][3];
+	qboolean moved = qfalse;
+	char msg[256];
+
+	if ( !player->inuse || !player->client ) {
+		return;
+	}
+	if ( level.time < lastSent ) {
+		lastSent = 0;       // a new level
+		lastLeft = lastShown = -1;
+	}
+	if ( level.time < lastSent + 250 ) {
+		return;
+	}
+	if ( svParams.waveInProgress && !svParams.wavePending ) {
+		left = svParams.killCountRequirement - svParams.waveKillCount;
+		if ( left < 0 ) {
+			left = 0;
+		}
+	}
+	if ( left > 0 && left <= SV_COMPASS_ENEMIES ) {
+		for ( i = 0; i < SV_COMPASS_ENEMIES; i++ ) {
+			best[i] = NULL;
+			bestDist[i] = 0;
+		}
+		for ( i = 0; i < level.maxclients; i++ ) {
+			gentity_t *e = &g_entities[i];
+			float d;
+			if ( !e->inuse || !e->client || !( e->r.svFlags & SVF_CASTAI ) || e->aiTeam == 1 || e->aiInactive ||
+				 e->health <= 0 || ( e->client->ps.eFlags & EF_DEAD ) ) {
+				continue;
+			}
+			d = Distance( e->r.currentOrigin, player->r.currentOrigin );
+			for ( k = 0; k < SV_COMPASS_ENEMIES; k++ ) {
+				if ( !best[k] || d < bestDist[k] ) {
+					for ( j = SV_COMPASS_ENEMIES - 1; j > k; j-- ) {
+						best[j] = best[j - 1];
+						bestDist[j] = bestDist[j - 1];
+					}
+					best[k] = e;
+					bestDist[k] = d;
+					break;
+				}
+			}
+		}
+		for ( k = 0; k < SV_COMPASS_ENEMIES && best[k]; k++ ) {
+			for ( j = 0; j < 3; j++ ) {
+				pos[k][j] = (int)best[k]->r.currentOrigin[j];
+				if ( shown != lastShown || pos[k][j] - lastPos[k][j] > 16 || lastPos[k][j] - pos[k][j] > 16 ) {
+					moved = qtrue;
+				}
+			}
+			shown++;
+		}
+	}
+	if ( left == lastLeft && shown == lastShown && !moved && level.time < lastSent + 2000 ) {
+		return;     // (and now and then anyway, for a cgame that has just started)
+	}
+	Com_sprintf( msg, sizeof( msg ), "svenemies %i %i", left, shown );
+	for ( k = 0; k < shown; k++ ) {
+		Q_strcat( msg, sizeof( msg ), va( " %i %i %i", pos[k][0], pos[k][1], pos[k][2] ) );
+		for ( j = 0; j < 3; j++ ) {
+			lastPos[k][j] = pos[k][j];
+		}
+	}
+	trap_SendServerCommand( player->s.number, msg );
+	lastSent = level.time;
+	lastLeft = left;
+	lastShown = shown;
+}
+
+/*
+============
 AICast_SurvivalRespawn
 ============
 */
@@ -1693,6 +1784,7 @@ void AICast_SurvivalRespawn(gentity_t *ent, cast_state_t *cs) {
 
 			if ( numTouch == 0 ) {    // ok to spawn
 
+				G_VRX_Revive( ent );     // RealRTCW-VR: armed, free to move and fight again, no gore left on them
 				BG_SetBehaviorForSurvival(ent->aiCharacter);
 				AICast_ApplySurvivalAttributes(ent, cs);
 				ent->r.contents = CONTENTS_BODY;

@@ -1021,6 +1021,7 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 void G_VRX_AddGoreBits( gentity_t *body, int bits );
 void G_VRX_Decap_f( gentity_t *ent );
 void G_VRX_TestDecap( gentity_t *ent );
+void G_VRX_Revive( gentity_t *ent );
 void G_VR_OnFire( gentity_t *ent );
 void G_VR_Reset( void );
 float G_VR_SpreadScale( gentity_t *ent );

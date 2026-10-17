@@ -87,9 +87,9 @@ itemDef_t *Menu_SetNextCursorItem( menuDef_t *menu );
 static qboolean Menu_OverActiveItem( menuDef_t *menu, float x, float y );
 
 #ifdef CGAME
-#define MEM_POOL_SIZE  128 * 1024
+#define MEM_POOL_SIZE  1024 * 1024
 #else
-#define MEM_POOL_SIZE  2048 * 1024
+#define MEM_POOL_SIZE  16 * 1024 * 1024    // Enemy Territory SP's menus need far more than 2 MB
 #endif
 
 static char memoryPool[MEM_POOL_SIZE];
@@ -4891,9 +4891,15 @@ void Item_ValidateTypeData( itemDef_t *item ) {
 
 	if ( item->type == ITEM_TYPE_LISTBOX ) {
 		item->typeData = UI_Alloc( sizeof( listBoxDef_t ) );
+		if ( !item->typeData ) {
+			return;     // the pool is full: no crash through a NULL pointer
+		}
 		memset( item->typeData, 0, sizeof( listBoxDef_t ) );
 	} else if ( item->type == ITEM_TYPE_EDITFIELD || item->type == ITEM_TYPE_NUMERICFIELD || item->type == ITEM_TYPE_VALIDFILEFIELD || item->type == ITEM_TYPE_YESNO || item->type == ITEM_TYPE_BIND || item->type == ITEM_TYPE_SLIDER || item->type == ITEM_TYPE_TEXT ) {
 		item->typeData = UI_Alloc( sizeof( editFieldDef_t ) );
+		if ( !item->typeData ) {
+			return;     // the pool is full: no crash through a NULL pointer
+		}
 		memset( item->typeData, 0, sizeof( editFieldDef_t ) );
 		if ( item->type == ITEM_TYPE_EDITFIELD || item->type == ITEM_TYPE_VALIDFILEFIELD ) {
 			if ( !( (editFieldDef_t *) item->typeData )->maxPaintChars ) {

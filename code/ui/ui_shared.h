@@ -80,9 +80,9 @@ If you have questions concerning this license or the applicable additional terms
 #define CURSOR_SIZER            0x00000004
 
 #ifdef CGAME
-#define STRING_POOL_SIZE    128 * 1024
+#define STRING_POOL_SIZE    512 * 1024
 #else
-#define STRING_POOL_SIZE    384 * 1024
+#define STRING_POOL_SIZE    4 * 1024 * 1024
 #endif
 
 #define MAX_STRING_HANDLES  4096

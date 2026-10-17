@@ -573,6 +573,7 @@ void AICast_Think( int client, float thinktime ) {
 			}
 
 			if ( numTouch == 0 && !inPVS ) {    // ok to spawn
+				G_VRX_Revive( ent );     // RealRTCW-VR: back armed, with no gore on them
 
 				// give them health when they start reviving, so we won't gib after
 				// just a couple shots while reviving

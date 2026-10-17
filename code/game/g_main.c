@@ -2840,6 +2840,7 @@ void G_RunFrame( int levelTime ) {
 	if (g_gametype.integer == GT_SURVIVAL)
 	{
 		AICast_TickSurvivalWave();
+		AICast_SurvivalEnemyStatus();
 	}
 
 	// playerstart's script has now run (see AICast_StartServerFrame above), safe to checkpoint

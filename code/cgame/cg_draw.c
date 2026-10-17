@@ -4170,6 +4170,85 @@ static void CG_ScreenFade( void ) {
 
 /*
 =================
+CG_DrawSurvivalEnemies
+
+RealRTCW-VR: Survival's enemies left in the wave (the server's "svenemies"), and once only
+three or fewer are left, a compass under it with an arrow to each of them (ahead is up).
+=================
+*/
+#define SV_COMPASS_ENEMIES  3
+
+static int svEnemiesLeft, svEnemiesShown, svEnemiesTime;
+static vec3_t svEnemyPos[SV_COMPASS_ENEMIES];
+
+void CG_ParseSurvivalEnemies( void ) {
+	int k, j;
+
+	svEnemiesLeft = atoi( CG_Argv( 1 ) );
+	svEnemiesShown = atoi( CG_Argv( 2 ) );
+	if ( svEnemiesShown < 0 ) {
+		svEnemiesShown = 0;
+	} else if ( svEnemiesShown > SV_COMPASS_ENEMIES ) {
+		svEnemiesShown = SV_COMPASS_ENEMIES;
+	}
+	for ( k = 0; k < svEnemiesShown; k++ ) {
+		for ( j = 0; j < 3; j++ ) {
+			svEnemyPos[k][j] = atof( CG_Argv( 3 + k * 3 + j ) );
+		}
+	}
+	svEnemiesTime = cg.time;
+}
+
+static void CG_DrawSurvivalEnemies( void ) {
+	static const vec4_t ringColor = { 1.0f, 1.0f, 1.0f, 0.35f };
+	static const vec4_t arrowColor = { 1.0f, 0.15f, 0.1f, 0.9f };
+	static const vec4_t textColor = { 1.0f, 1.0f, 1.0f, 0.9f };
+	const float cx = 320, cy = 64, radius = 20;
+	char *s;
+	int k, i;
+
+	if ( cgs.gametype != GT_SURVIVAL || !svEnemiesTime || svEnemiesLeft <= 0 || cg.time < svEnemiesTime ||
+		 cg.time > svEnemiesTime + 5000 ) {
+		return;
+	}
+	if ( cg_fixedAspect.integer == 2 ) {
+		CG_SetScreenPlacement( PLACE_CENTER, PLACE_TOP );
+	}
+	s = va( "ENEMIES LEFT: %i", svEnemiesLeft );
+	CG_DrawStringExt( cx - CG_DrawStrlen( s ) * 5, 24, s, textColor, qfalse, qtrue, 10, 14, 0 );
+	if ( svEnemiesLeft > SV_COMPASS_ENEMIES || !svEnemiesShown ) {
+		return;
+	}
+	// the compass ring
+	for ( i = 0; i < 16; i++ ) {
+		float a = i * ( 2.0f * M_PI / 16.0f );
+		CG_FillRect( cx + sin( a ) * radius - 1, cy - cos( a ) * radius - 1, 2, 2, ringColor );
+	}
+	CG_FillRect( cx - 1, cy - radius - 5, 2, 3, textColor );     // ahead
+	// an arrow from the middle to each enemy, the way they are from where you look
+	for ( k = 0; k < svEnemiesShown; k++ ) {
+		vec3_t d;
+		float yaw, rel, sx, sy, t;
+		VectorSubtract( svEnemyPos[k], cg.refdef.vieworg, d );
+		if ( d[0] == 0 && d[1] == 0 ) {
+			continue;
+		}
+		yaw = RAD2DEG( atan2( d[1], d[0] ) );
+		rel = DEG2RAD( AngleNormalize180( yaw - cg.refdefViewAngles[YAW] ) );
+		sx = -sin( rel );
+		sy = -cos( rel );
+		for ( t = 0.25f; t < 1.0f; t += 0.125f ) {
+			CG_FillRect( cx + sx * radius * t - 1.5f, cy + sy * radius * t - 1.5f, 3, 3, arrowColor );
+		}
+		CG_FillRect( cx + sx * radius - 3, cy + sy * radius - 3, 6, 6, arrowColor );     // the head
+		s = va( "%im", (int)( sqrt( d[0] * d[0] + d[1] * d[1] + d[2] * d[2] ) / 40.0f ) );
+		CG_DrawStringExt( cx + sx * ( radius + 12 ) - CG_DrawStrlen( s ) * 3, cy + sy * ( radius + 12 ) - 4, s, textColor,
+						  qfalse, qtrue, 6, 8, 0 );
+	}
+}
+
+/*
+=================
 CG_Draw2D
 =================
 */
@@ -4263,6 +4342,7 @@ static void CG_Draw2D(stereoFrame_t stereoFrame) {
 			CG_DrawGameSavedString();
 			CG_DrawReward();
 			CG_DrawHitMarker();
+			CG_DrawSurvivalEnemies();     // RealRTCW-VR
 		}
 	}
 

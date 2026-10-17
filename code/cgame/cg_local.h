@@ -2602,6 +2602,7 @@ void CG_InitConsoleCommands( void );
 // cg_servercmds.c
 //
 void CG_ExecuteNewServerCommands( int latestSequence );
+void CG_ParseSurvivalEnemies( void );     // RealRTCW-VR: cg_draw.c, "svenemies"
 void CG_ParseServerinfo( void );
 void CG_SetConfigValues( void );
 void CG_ShaderStateChanged( void );
