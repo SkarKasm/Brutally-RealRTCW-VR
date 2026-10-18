@@ -190,11 +190,6 @@ static void G_VRX_Dismember( gentity_t *targ, gentity_t *inflictor, const vec3_t
 	if ( !G_VRX_Gore( VRX_DISMEMBER ) || !targ->client || !targ->aiCharacter || targ->health > 0 ) {
 		return;
 	}
-	// only the men the stumps and torn pieces are made for (VRX_HUMAN_MALE), as with the
-	// rest of the heavy gore: an elite guard's limbs stayed on with the stumps drawn over them
-	if ( !VRX_HUMAN_MALE( targ->aiCharacter ) ) {
-		return;
-	}
 	if ( !blast && !( G_VRX( VRX_DISMEMBER ) >= 2 && ( mod == MOD_VENOM || damage >= 45 ) ) ) {
 		return;
 	}

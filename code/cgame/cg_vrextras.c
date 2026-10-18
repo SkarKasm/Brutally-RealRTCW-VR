@@ -427,12 +427,6 @@ void CG_VRX_GoreEvent( entityState_t *es ) {
 	case VRG_LIMBS:
 		{
 			int b;
-			// only the men the stumps are made for (as the server): never a stump over a limb
-			// that stays on (elite guards and the other special ones)
-			if ( es->otherEntityNum < 0 || es->otherEntityNum >= MAX_CLIENTS ||
-				 !VRX_HUMAN_MALE( cg_entities[es->otherEntityNum].currentState.aiChar ) ) {
-				break;
-			}
 			for ( b = VRX_GB_LARM; b <= VRX_GB_RLEG; b <<= 1 ) {
 				if ( !( es->density & b ) ) {
 					continue;
@@ -2958,9 +2952,6 @@ void CG_VRX_Dismember( centity_t *cent, refEntity_t *body ) {
 		return;
 	}
 	bits = CG_VRX_GoreBits( cent ) & ( VRX_GB_LARM | VRX_GB_RARM | VRX_GB_LLEG | VRX_GB_RLEG );
-	if ( !VRX_HUMAN_MALE( cent->currentState.aiChar ) ) {
-		bits = 0;     // (as the server: their limbs never come off)
-	}
 	if ( !( cent->currentState.eFlags & EF_DEAD ) ) {
 		bits &= VRX_GB_LARM | VRX_GB_RARM;      // the living only ever lose an arm (crippled)
 	}
