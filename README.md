@@ -33,7 +33,7 @@ Download it below or from ModDB. This repository also holds the full source.
 
 ## Download
 
-**[Download the latest version (October 10 update)](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_SP_2026-10-10.zip)** · [What's new](download/CHANGES_2026-10-10.md)
+**[Download the latest version (October 18 update)](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_SP_2026-10-18.zip)** · [What's new](download/CHANGES_2026-10-18.md)
 
 Also on ModDB.
 
