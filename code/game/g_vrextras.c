@@ -1632,6 +1632,27 @@ static void G_VRX_SurvivalTest( void ) {
 	float d, bestDist = 1e9f;
 	vec3_t fwd, p, ang;
 
+	if ( want == -100 && g_cheats.integer && g_gametype.integer == GT_SURVIVAL && player->inuse && player->client ) {
+		// vr_testSurvival -100: a tour of the gore on the first enemies of wave 1, a screenshot each
+		player->flags |= FL_GODMODE | FL_NOTARGET;
+		if ( step || !svParams.waveInProgress || level.time < nextTime ) {
+			if ( !svParams.waveInProgress ) {
+				nextTime = level.time + 4000;     // (the first ones a few seconds to spawn)
+			}
+			return;
+		}
+		step = 1;
+		G_Printf( "VR goretour: start\n" );
+		trap_SendConsoleCommand( EXEC_APPEND,
+			"vrtestbody down 3; wait 150; screenshotJPEG; wait 20;"
+			"vrtestbody; wait 120; screenshotJPEG; wait 20;"
+			"vrtestdecap; wait 100; screenshotJPEG; wait 20;"
+			"vrtestbody throat; wait 120; screenshotJPEG; wait 20;"
+			"vrtestbody belly; wait 120; screenshotJPEG; wait 20;"
+			"vrtestaim; wait 5; +activate; wait 40; screenshotJPEG; wait 5; +attack; wait 3; -attack; -activate; wait 50; screenshotJPEG; wait 30;"
+			"quit\n" );
+		return;
+	}
 	if ( want < 0 && g_cheats.integer && g_gametype.integer == GT_SURVIVAL && player->inuse && player->client ) {
 		// vr_testSurvival -N: shoot the nearest living enemy N times, a short burst each, with a screenshot
 		// of the wounds after each (and stand him up close in front first)
