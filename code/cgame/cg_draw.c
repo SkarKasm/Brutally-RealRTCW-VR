@@ -1926,6 +1926,12 @@ void CG_SubtitlePrint( const char *str, int y, int charWidth ) {
         return;
     }
 
+    // RealRTCW-VR: a sound with no subtitle text (addons' dialogue) used to show its file name
+    if ( translated == str && ( strchr( str, '/' ) || strchr( str, '\\' ) || Q_stristr( str, ".wav" ) ||
+		 Q_stristr( str, ".mp3" ) || Q_stristr( str, ".ogg" ) ) ) {
+        return;
+    }
+
     // Copy the translated string to cg.subtitlePrint
     Q_strncpyz(cg.subtitlePrint, translated, sizeof(cg.subtitlePrint));
 

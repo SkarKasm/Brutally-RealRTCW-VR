@@ -606,6 +606,22 @@ cvarTable_t cvarTable[] = {
 int cvarTableSize = ARRAY_LEN( cvarTable );
 void CG_setClientFlags( void );
 
+// RealRTCW-VR: as ui_main.c UI_VR_FixedAspect: on the monitor, RealRTCW's 4:3 layout, not the
+// headset panel's stretched one that cl_vr.c saves in cg_fixedAspect
+static int VR_RenderWidth( void ) {
+	char buf[16];
+
+	trap_Cvar_VariableStringBuffer( "vr_renderWidth", buf, sizeof( buf ) );
+	return atoi( buf );     // set only while a headset is running
+}
+
+static void CG_VR_FixedAspect( void ) {
+	if ( cg_fixedAspect.integer == 0 && !VR_RenderWidth() ) {
+		cg_fixedAspect.integer = 2;
+		cg_fixedAspect.value = 2;
+	}
+}
+
 /*
 =================
 CG_RegisterCvars
@@ -632,6 +648,7 @@ void CG_RegisterCvars( void ) {
 
 	trap_Cvar_Register( NULL, "model", DEFAULT_MODEL, CVAR_USERINFO | CVAR_ARCHIVE );
 	trap_Cvar_Register( NULL, "head", DEFAULT_HEAD, CVAR_USERINFO | CVAR_ARCHIVE );
+	CG_VR_FixedAspect();
 
 
 }
@@ -682,6 +699,7 @@ void CG_UpdateCvars( void ) {
 */
 
 }
+	CG_VR_FixedAspect();
 	// Send any relevent updates
 	if ( fSetFlags ) {
 		CG_setClientFlags();

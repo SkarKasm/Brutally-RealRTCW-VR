@@ -7997,6 +7997,24 @@ static int		cvarTableSize = ARRAY_LEN( cvarTable );
 UI_RegisterCvars
 =================
 */
+// RealRTCW-VR: the headset (cl_vr.c) sets cg_fixedAspect 0 for its 4:3 panel and the setting is
+// saved, so on the monitor the menus and loading screens came out stretched across the whole
+// screen. Without the headset running, RealRTCW's own layout: 4:3, between black bars.
+static int VR_RenderWidth( void ) {
+	char buf[16];
+
+	trap_Cvar_VariableStringBuffer( "vr_renderWidth", buf, sizeof( buf ) );
+	return atoi( buf );     // set only while a headset is running
+}
+
+static void UI_VR_FixedAspect( void ) {
+	if ( ui_fixedAspect.integer == 0 && !VR_RenderWidth() ) {
+		ui_fixedAspect.integer = 2;
+		ui_fixedAspect.value = 2;
+		trap_Cvar_Set( "cg_fixedAspect", "2" );     // (latched: saved for next time)
+	}
+}
+
 void UI_RegisterCvars( void ) {
 	int i;
 	cvarTable_t *cv;
@@ -8004,6 +8022,7 @@ void UI_RegisterCvars( void ) {
 	for ( i = 0, cv = cvarTable ; i < cvarTableSize ; i++, cv++ ) {
 		trap_Cvar_Register( cv->vmCvar, cv->cvarName, cv->defaultString, cv->cvarFlags );
 	}
+	UI_VR_FixedAspect();
 }
 
 /*
@@ -8022,6 +8041,7 @@ void UI_UpdateCvars( void ) {
 
 		trap_Cvar_Update( cv->vmCvar );
 	}
+	UI_VR_FixedAspect();
 }
 
 // NERVE - SMF
