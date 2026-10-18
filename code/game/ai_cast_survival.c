@@ -1704,6 +1704,9 @@ void AICast_SurvivalEnemyStatus( void ) {
 		}
 	}
 	trap_SendServerCommand( player->s.number, msg );
+	if ( trap_Cvar_VariableIntegerValue( "vr_debug" ) == 8 ) {
+		G_Printf( "VR survival: wave %i, %s\n", svParams.waveCount, msg );
+	}
 	lastSent = level.time;
 	lastLeft = left;
 	lastShown = shown;

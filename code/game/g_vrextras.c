@@ -30,6 +30,7 @@ the Free Software Foundation, either version 3 of the License, or
 #include "../botlib/botai.h"
 #include "ai_cast.h"
 #include "bg_vrextras.h"
+#include "g_survival.h"
 
 static vmCvar_t vrxCvars[VRX_COUNT];
 static vmCvar_t g_vrx;
@@ -52,6 +53,7 @@ static void G_VRX_MarkersFrame( void );
 static gentity_t *G_VRX_Marker( gentity_t *body, qboolean create );
 static gentity_t *G_VRX_SpawnHead( gentity_t *body, const vec3_t pos, gentity_t *by );
 static void G_VRX_DropWeapon( gentity_t *e, cast_state_t *cs );
+static void G_VRX_SurvivalTest( void );
 
 static void G_VRX_Register( void ) {
 	char def[2] = { 0, 0 };
@@ -87,6 +89,7 @@ void G_VRX_Frame( void ) {
 
 	G_VRX_PropsFrame();
 	G_VRX_MarkersFrame();
+	G_VRX_SurvivalTest();     // (test aid, cheats only)
 }
 
 // one of the settings, for game code
@@ -1545,6 +1548,11 @@ void G_VRX_Revive( gentity_t *ent ) {
 	}
 	vrxDownedAt[n] = 0;
 	cs = AICast_GetCastState( n );
+	if ( trap_Cvar_VariableIntegerValue( "vr_debug" ) == 8 ) {     // vr_debug 8 traces Survival respawns
+		G_Printf( "VR revive: %i %s, gore marker %s, weapons %s, frozen %s\n", n, ent->aiName ? ent->aiName : "",
+				  m ? "cleared" : "none", vrxWeaponsSaved[n] ? "given back" : "kept",
+				  cs && ( cs->pauseTime > level.time || cs->noAttackTime > level.time ) ? "yes, cleared" : "no" );
+	}
 	if ( vrxWeaponsSaved[n] ) {
 		memcpy( ent->client->ps.weapons, vrxSavedWeapons[n], sizeof( ent->client->ps.weapons ) );
 		vrxWeaponsSaved[n] = qfalse;
@@ -1607,5 +1615,192 @@ static void G_VRX_HeadScare( vrxThrown_t *t, gentity_t *head ) {
 		cs->dangerDist = VRX_SCARE_DIST * 1.5f;
 		cs->dangerEntityTimestamp = level.time;
 		G_VRX_AddGoreBits( e, VRX_GB_SCARED );
+	}
+}
+
+/*
+=================
+G_VRX_SurvivalTest (test aid, cheats: vr_testSurvival 1)
+
+Plays Survival by itself so the waves can be checked without anyone at the controls: every
+couple of seconds the nearest living enemy is taken down a different way (shot down then
+kicked, made to give up then shot, blown up in front of the player, or just shot), so the
+ones that come back next wave are the ones the gore code had changed. Logs each wave, how
+many of the living are unarmed or frozen, weapons lying about, and the player's dual wield
+state; takes screenshots now and then; quits after vr_testSurvival waves (1: 8).
+=================
+*/
+static void G_VRX_SurvivalTest( void ) {
+	static int nextTime, step, pendingKill = -1, pendingTime, lastWave = -1, shots, lastShotWave = -1;
+	gentity_t *player = &g_entities[0], *e, *best = NULL;
+	int i, want = trap_Cvar_VariableIntegerValue( "vr_testSurvival" );
+	float d, bestDist = 1e9f;
+	vec3_t fwd, p, ang;
+
+	if ( want < 0 && g_cheats.integer && g_gametype.integer == GT_SURVIVAL && player->inuse && player->client ) {
+		// vr_testSurvival -N: shoot the nearest living enemy N times, a short burst each, with a screenshot
+		// of the wounds after each (and stand him up close in front first)
+		player->flags |= FL_GODMODE | FL_NOTARGET;
+		if ( level.time < nextTime || !svParams.waveInProgress ) {
+			return;
+		}
+		for ( i = 1; i < level.maxclients; i++ ) {
+			e = &g_entities[i];
+			if ( e->inuse && e->client && e->aiCharacter && e->aiTeam != 1 && !e->aiInactive && e->health > 0 && e->r.linked &&
+				 ( d = Distance( e->r.currentOrigin, player->r.currentOrigin ) ) < bestDist ) {
+				best = e;
+				bestDist = d;
+			}
+		}
+		if ( !best ) {
+			nextTime = level.time + 500;
+			return;
+		}
+		AngleVectors( player->client->ps.viewangles, fwd, NULL, NULL );
+		fwd[2] = 0;
+		VectorNormalize( fwd );
+		VectorMA( player->r.currentOrigin, 48, fwd, p );
+		G_SetOrigin( best, p );
+		VectorCopy( p, best->client->ps.origin );
+		VectorSet( ang, 0, player->client->ps.viewangles[YAW] + 180, 0 );
+		SetClientViewAngle( best, ang );
+		trap_LinkEntity( best );
+		{
+			cast_state_t *bcs = AICast_GetCastState( best->s.number );
+			if ( bcs ) {
+				bcs->pauseTime = level.time + 2500;     // stands still to be shot
+			}
+			VectorClear( best->client->ps.velocity );
+		}
+		if ( best->health < 300 ) {
+			best->health = best->client->ps.stats[STAT_HEALTH] = 300;     // (survives the bursts, to show the holes)
+		}
+		VectorSubtract( p, player->r.currentOrigin, fwd );
+		fwd[2] = 30 + ( step % 3 ) * 14 - player->client->ps.viewheight;     // legs, belly, chest
+		step++;
+		G_Printf( "VR woundtest: burst %i at %i (%s)\n", step, best->s.number, best->aiName ? best->aiName : "" );
+		trap_SendConsoleCommand( EXEC_APPEND, step > -want ? "wait 30; quit\n" : "wait 10; vrtestaim head; wait 3; +lookdown; wait 14; -lookdown; wait 2; +attack; wait 2; -attack; wait 40; screenshotJPEG\n" );
+		nextTime = level.time + 3000;
+		return;
+	}
+	if ( want <= 0 || !g_cheats.integer || g_gametype.integer != GT_SURVIVAL || !player->inuse || !player->client ) {
+		return;
+	}
+	if ( want == 1 ) {
+		want = 8;
+	}
+	if ( level.time < nextTime - 60000 ) {
+		nextTime = 0;   // a new level
+	}
+	player->flags |= FL_GODMODE | FL_NOTARGET;
+	if ( svParams.waveCount != lastWave ) {
+		int unarmed = 0, frozen = 0, alive = 0, items = 0;
+		for ( i = 1; i < level.num_entities; i++ ) {
+			e = &g_entities[i];
+			if ( !e->inuse ) {
+				continue;
+			}
+			if ( e->s.eType == ET_ITEM && e->item && e->item->giType == IT_WEAPON ) {
+				items++;
+			}
+			if ( i < level.maxclients && e->client && e->aiCharacter && e->aiTeam != 1 && !e->aiInactive && e->health > 0 ) {
+				cast_state_t *cs = AICast_GetCastState( i );
+				alive++;
+				if ( e->client->ps.weapon == WP_NONE && !( e->client->ps.weapons[0] | e->client->ps.weapons[1] ) &&
+					 e->aiCharacter != AICHAR_ZOMBIE_SURV && e->aiCharacter != AICHAR_FLESH ) {
+					unarmed++;
+				}
+				if ( cs && ( cs->pauseTime > level.time + 60000 || cs->noAttackTime > level.time + 60000 ) ) {
+					frozen++;
+				}
+			}
+		}
+		G_Printf( "VR survtest: wave %i started (need %i kills), %i enemies up, %i unarmed, %i frozen, %i weapons on the ground, player dual %i\n",
+				  svParams.waveCount, svParams.killCountRequirement, alive, unarmed, frozen, items, player->client->ps.persistant[PERS_DUAL] );
+		lastWave = svParams.waveCount;
+		if ( svParams.waveCount > want ) {
+			G_Printf( "VR survtest: done, reached wave %i\n", svParams.waveCount );
+			trap_SendConsoleCommand( EXEC_APPEND, "wait 30; quit\n" );
+			trap_Cvar_Set( "vr_testSurvival", "0" );
+			return;
+		}
+	}
+	// the second half of a two part kill
+	if ( pendingKill >= 0 && level.time >= pendingTime ) {
+		e = &g_entities[pendingKill];
+		if ( e->inuse && e->client && e->health > 0 ) {
+			AngleVectors( player->client->ps.viewangles, fwd, NULL, NULL );
+			G_Damage( e, player, player, fwd, e->r.currentOrigin, 10000, DAMAGE_NO_PROTECTION, step % 4 == 1 ? MOD_KICKED : MOD_MP40 );
+			G_Printf( "VR survtest: wave %i, finished %i (%s) %s\n", svParams.waveCount, pendingKill, e->aiName ? e->aiName : "",
+					  e->health > 0 ? "but they LIVED" : "dead" );
+		}
+		pendingKill = -1;
+		nextTime = level.time + 1500;
+	}
+	if ( pendingKill >= 0 || level.time < nextTime || !svParams.waveInProgress || svParams.wavePending ) {
+		return;
+	}
+	// a screenshot of the HUD with 3 or fewer left (the compass), once a wave for the first few
+	if ( svParams.killCountRequirement - svParams.waveKillCount <= 3 && lastShotWave != svParams.waveCount && shots < 6 ) {
+		trap_SendConsoleCommand( EXEC_APPEND, "screenshotJPEG\n" );
+		G_Printf( "VR survtest: wave %i, %i left, screenshot of the compass\n", svParams.waveCount,
+				  svParams.killCountRequirement - svParams.waveKillCount );
+		lastShotWave = svParams.waveCount;
+		shots++;
+		nextTime = level.time + 400;
+		return;
+	}
+	for ( i = 1; i < level.maxclients; i++ ) {
+		e = &g_entities[i];
+		if ( e->inuse && e->client && e->aiCharacter && e->aiTeam != 1 && !e->aiInactive && e->health > 0 &&
+			 e->r.linked && e->takedamage && ( d = Distance( e->r.currentOrigin, player->r.currentOrigin ) ) < bestDist ) {
+			best = e;
+			bestDist = d;
+		}
+	}
+	if ( !best ) {
+		nextTime = level.time + 500;
+		return;
+	}
+	step++;
+	AngleVectors( player->client->ps.viewangles, fwd, NULL, NULL );
+	switch ( step % 4 ) {
+	case 1:     // shot down (writhing, gun dropped), then finished with a kick
+		G_VRX_KnockDown( best, player, VRH_BELLY );
+		pendingKill = best->s.number;
+		pendingTime = level.time + 1200;
+		G_Printf( "VR survtest: wave %i, %i (%s) shot down\n", svParams.waveCount, best->s.number, best->aiName ? best->aiName : "" );
+		break;
+	case 2:     // gives up (hands up, gun dropped), then shot
+		if ( best->client->ps.weapon > WP_NONE || G_VRX_Scareable( best ) ) {
+			G_VRX_Surrender( best, AICast_GetCastState( best->s.number ) );
+			pendingKill = best->s.number;
+			pendingTime = level.time + 1200;
+			G_Printf( "VR survtest: wave %i, %i (%s) surrendered\n", svParams.waveCount, best->s.number, best->aiName ? best->aiName : "" );
+			break;
+		}
+		// (fall through: a zombie can't give up)
+	case 3:     // blown up in front of the player, with a screenshot of what's left of him
+		fwd[2] = 0;
+		VectorNormalize( fwd );
+		VectorMA( player->r.currentOrigin, 80, fwd, p );
+		G_SetOrigin( best, p );
+		VectorCopy( p, best->client->ps.origin );
+		VectorSet( ang, 0, player->client->ps.viewangles[YAW] + 180, 0 );
+		SetClientViewAngle( best, ang );
+		trap_LinkEntity( best );
+		G_Damage( best, player, player, fwd, NULL, 10000, DAMAGE_NO_PROTECTION, MOD_ROCKET_SPLASH );
+		G_Printf( "VR survtest: wave %i, %i (%s, char %i) blown up\n", svParams.waveCount, best->s.number, best->aiName ? best->aiName : "", best->aiCharacter );
+		if ( shots < 60 ) {
+			trap_SendConsoleCommand( EXEC_APPEND, "wait 70; screenshotJPEG\n" );
+			shots++;
+		}
+		nextTime = level.time + 2500;
+		break;
+	default:    // just shot
+		G_Damage( best, player, player, fwd, best->r.currentOrigin, 10000, DAMAGE_NO_PROTECTION, MOD_MP40 );
+		G_Printf( "VR survtest: wave %i, %i (%s) shot\n", svParams.waveCount, best->s.number, best->aiName ? best->aiName : "" );
+		nextTime = level.time + 1500;
+		break;
 	}
 }
