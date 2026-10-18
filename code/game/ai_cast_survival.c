@@ -53,6 +53,31 @@ If you have questions concerning this license or the applicable additional terms
 
 /*
 ============
+AICast_SurvivalPace
+
+RealRTCW-VR: g_survivalPace (default 2) speeds Survival up: that many times as many enemies
+up at once (up to each type's cap), the caps grow that much faster each wave, and the
+ordinary ones come back that much sooner. 1 is RealRTCW's own pace.
+============
+*/
+static float AICast_SurvivalPace( void ) {
+	static vmCvar_t pace;
+	static qboolean registered;
+
+	if ( !registered ) {
+		trap_Cvar_Register( &pace, "g_survivalPace", "2", CVAR_ARCHIVE );
+		registered = qtrue;
+	}
+	trap_Cvar_Update( &pace );
+	return pace.value < 1.0f ? 1.0f : ( pace.value > 4.0f ? 4.0f : pace.value );
+}
+
+static int AICast_SurvivalPaced( int n ) {
+	return (int)( n * AICast_SurvivalPace() + 0.5f );
+}
+
+/*
+============
 AICast_InitSurvival
 ============
 */
@@ -69,21 +94,21 @@ void AICast_InitSurvival(void) {
     svParams.specialWaveActive    = qfalse;
     svParams.lastSpecialWave      = 0;
 
-	svParams.maxActiveAI[AICHAR_SOLDIER] = svParams.initialSoldiersCount;
-	svParams.maxActiveAI[AICHAR_MERCENARY] = svParams.initialMercsCount;
-	svParams.maxActiveAI[AICHAR_TRENCH] = svParams.initialTrenchCount;
+	svParams.maxActiveAI[AICHAR_SOLDIER] = AICast_SurvivalPaced( svParams.initialSoldiersCount );
+	svParams.maxActiveAI[AICHAR_MERCENARY] = AICast_SurvivalPaced( svParams.initialMercsCount );
+	svParams.maxActiveAI[AICHAR_TRENCH] = AICast_SurvivalPaced( svParams.initialTrenchCount );
 	svParams.maxActiveAI[AICHAR_XSHEPHERD] = svParams.initialXdogCount;
-	svParams.maxActiveAI[AICHAR_ZOMBIE_SURV] = svParams.initialZombiesCount;
-	svParams.maxActiveAI[AICHAR_FLESH] = svParams.initialFleshCount;
-	svParams.maxActiveAI[AICHAR_ZOMBIE_GHOST] = svParams.initialGhostsCount;
+	svParams.maxActiveAI[AICHAR_ZOMBIE_SURV] = AICast_SurvivalPaced( svParams.initialZombiesCount );
+	svParams.maxActiveAI[AICHAR_FLESH] = AICast_SurvivalPaced( svParams.initialFleshCount );
+	svParams.maxActiveAI[AICHAR_ZOMBIE_GHOST] = AICast_SurvivalPaced( svParams.initialGhostsCount );
 	svParams.maxActiveAI[AICHAR_ZOMBIE_FLAME] = svParams.initialFlamersCount;
-	svParams.maxActiveAI[AICHAR_WARZOMBIE] = svParams.initialWarriorsCount;
+	svParams.maxActiveAI[AICHAR_WARZOMBIE] = AICast_SurvivalPaced( svParams.initialWarriorsCount );
 	svParams.maxActiveAI[AICHAR_PROTOSOLDIER] = svParams.initialProtosCount;
 	svParams.maxActiveAI[AICHAR_PARTISAN] = svParams.initialPartisansCount;
 	svParams.maxActiveAI[AICHAR_PRIEST] = svParams.initialPriestsCount;
-	svParams.maxActiveAI[AICHAR_ELITEGUARD] = svParams.initialEliteGuardsCount;
-	svParams.maxActiveAI[AICHAR_BLACKGUARD] = svParams.initialBlackGuardsCount;
-	svParams.maxActiveAI[AICHAR_VENOM] = svParams.initialVenomsCount;
+	svParams.maxActiveAI[AICHAR_ELITEGUARD] = AICast_SurvivalPaced( svParams.initialEliteGuardsCount );
+	svParams.maxActiveAI[AICHAR_BLACKGUARD] = AICast_SurvivalPaced( svParams.initialBlackGuardsCount );
+	svParams.maxActiveAI[AICHAR_VENOM] = AICast_SurvivalPaced( svParams.initialVenomsCount );
 	svParams.maxActiveAI[AICHAR_LOPER] = svParams.initialLopersCount;
 	svParams.maxActiveAI[AICHAR_HELGA] = svParams.initialHelgaCount;
 	svParams.maxActiveAI[AICHAR_SUPERSOLDIER_LAB] = svParams.initialssCount;
@@ -376,7 +401,10 @@ void AICast_SetRebirthTimeSurvival(gentity_t *ent, cast_state_t *cs) {
 				break;
 		}
 
-		baseTime += rand() % 2000; // slight randomness
+		if ( baseTime <= 30000 ) {
+			baseTime = (int)( baseTime / AICast_SurvivalPace() );     // RealRTCW-VR: g_survivalPace, the ordinary ones back sooner
+		}
+		baseTime += rand() % (int)( 2000 / AICast_SurvivalPace() ); // slight randomness
 
 		cs->rebirthTime = level.time + baseTime;
 	}
@@ -674,20 +702,20 @@ AICast_UpdateMaxActiveAI
 void AICast_UpdateMaxActiveAI(void)
 {
     // Normal soldiers
-    svParams.maxActiveAI[AICHAR_SOLDIER] += svParams.soldiersIncrease;
+    svParams.maxActiveAI[AICHAR_SOLDIER] += AICast_SurvivalPaced( svParams.soldiersIncrease );
     if (svParams.maxActiveAI[AICHAR_SOLDIER] > svParams.maxSoldiers) {
         svParams.maxActiveAI[AICHAR_SOLDIER] = svParams.maxSoldiers;
     }
 
     // Mercs
-    svParams.maxActiveAI[AICHAR_MERCENARY] += svParams.mercsIncrease;
+    svParams.maxActiveAI[AICHAR_MERCENARY] += AICast_SurvivalPaced( svParams.mercsIncrease );
     if (svParams.maxActiveAI[AICHAR_MERCENARY] > svParams.maxMercs) {
         svParams.maxActiveAI[AICHAR_MERCENARY] = svParams.maxMercs;
     }
 
     // Elite Guards
     if (svParams.waveCount >= svParams.waveEg) {
-        svParams.maxActiveAI[AICHAR_ELITEGUARD] += svParams.eliteGuardsIncrease;
+        svParams.maxActiveAI[AICHAR_ELITEGUARD] += AICast_SurvivalPaced( svParams.eliteGuardsIncrease );
         if (svParams.maxActiveAI[AICHAR_ELITEGUARD] > svParams.maxEliteGuards) {
             svParams.maxActiveAI[AICHAR_ELITEGUARD] = svParams.maxEliteGuards;
         }
@@ -696,7 +724,7 @@ void AICast_UpdateMaxActiveAI(void)
 		
     // Trench
 	 if (svParams.waveCount >= svParams.waveTrench) {
-    svParams.maxActiveAI[AICHAR_TRENCH] += svParams.trenchIncrease;
+    svParams.maxActiveAI[AICHAR_TRENCH] += AICast_SurvivalPaced( svParams.trenchIncrease );
     if (svParams.maxActiveAI[AICHAR_TRENCH] > svParams.maxTrench) {
         svParams.maxActiveAI[AICHAR_TRENCH] = svParams.maxTrench;
     }
@@ -757,7 +785,7 @@ void AICast_UpdateMaxActiveAI(void)
 
     // Black Guards
     if (svParams.waveCount >= svParams.waveBg) {
-        svParams.maxActiveAI[AICHAR_BLACKGUARD] += svParams.blackGuardsIncrease;
+        svParams.maxActiveAI[AICHAR_BLACKGUARD] += AICast_SurvivalPaced( svParams.blackGuardsIncrease );
         if (svParams.maxActiveAI[AICHAR_BLACKGUARD] > svParams.maxBlackGuards) {
             svParams.maxActiveAI[AICHAR_BLACKGUARD] = svParams.maxBlackGuards;
         }
@@ -765,27 +793,27 @@ void AICast_UpdateMaxActiveAI(void)
 
     // Venoms
     if (svParams.waveCount >= svParams.waveV) {
-        svParams.maxActiveAI[AICHAR_VENOM] += svParams.venomsIncrease;
+        svParams.maxActiveAI[AICHAR_VENOM] += AICast_SurvivalPaced( svParams.venomsIncrease );
         if (svParams.maxActiveAI[AICHAR_VENOM] > svParams.maxVenoms) {
             svParams.maxActiveAI[AICHAR_VENOM] = svParams.maxVenoms;
         }
     }
 
     // Default Zombies
-    svParams.maxActiveAI[AICHAR_ZOMBIE_SURV] += svParams.zombiesIncrease;
+    svParams.maxActiveAI[AICHAR_ZOMBIE_SURV] += AICast_SurvivalPaced( svParams.zombiesIncrease );
     if (svParams.maxActiveAI[AICHAR_ZOMBIE_SURV] > svParams.maxZombies) {
         svParams.maxActiveAI[AICHAR_ZOMBIE_SURV] = svParams.maxZombies;
     }
 
     // Default Zombies (flesh variant)
-    svParams.maxActiveAI[AICHAR_FLESH] += svParams.fleshIncrease;
+    svParams.maxActiveAI[AICHAR_FLESH] += AICast_SurvivalPaced( svParams.fleshIncrease );
     if (svParams.maxActiveAI[AICHAR_FLESH] > svParams.maxFlesh) {
         svParams.maxActiveAI[AICHAR_FLESH] = svParams.maxFlesh;
     }
 
     // Warriors
     if (svParams.waveCount >= svParams.waveWarz) {
-        svParams.maxActiveAI[AICHAR_WARZOMBIE] += svParams.warriorsIncrease;
+        svParams.maxActiveAI[AICHAR_WARZOMBIE] += AICast_SurvivalPaced( svParams.warriorsIncrease );
         if (svParams.maxActiveAI[AICHAR_WARZOMBIE] > svParams.maxWarriors) {
             svParams.maxActiveAI[AICHAR_WARZOMBIE] = svParams.maxWarriors;
         }
@@ -801,7 +829,7 @@ void AICast_UpdateMaxActiveAI(void)
 
     // Ghost Zombies
     if (svParams.waveCount >= svParams.waveGhosts) {
-        svParams.maxActiveAI[AICHAR_ZOMBIE_GHOST] += svParams.ghostsIncrease;
+        svParams.maxActiveAI[AICHAR_ZOMBIE_GHOST] += AICast_SurvivalPaced( svParams.ghostsIncrease );
         if (svParams.maxActiveAI[AICHAR_ZOMBIE_GHOST] > svParams.maxGhosts) {
             svParams.maxActiveAI[AICHAR_ZOMBIE_GHOST] = svParams.maxGhosts;
         }
@@ -1760,6 +1788,18 @@ void AICast_SurvivalRespawn(gentity_t *ent, cast_state_t *cs) {
 					if ( player->r.svFlags & SVF_CASTAI ) {
 						continue;
 					}
+				}
+			}
+
+			// RealRTCW-VR: a body the player can see stays a while (up to 20 s) instead of getting up
+			// somewhere else at once; out of sight it goes as soon as it's due. (The kill already counted:
+			// with g_survivalPace there are more of them up, so the wave keeps going meanwhile.)
+			if ( ent->aiTeam != 1 && cs->deathTime && level.time < cs->deathTime + 20000 && ent->r.contents && ent->s.eType != ET_INVISIBLE ) {
+				gentity_t *pl = &g_entities[0];
+				if ( pl->inuse && pl->client && Distance( pl->r.currentOrigin, ent->r.currentOrigin ) < 1600.0f &&
+					 trap_InPVS( pl->r.currentOrigin, ent->r.currentOrigin ) ) {
+					cs->rebirthTime = level.time + 1000;
+					return;
 				}
 			}
 
