@@ -165,6 +165,7 @@ vmCvar_t g_ironchallenge;
 vmCvar_t g_nohudchallenge;
 vmCvar_t g_nopickupchallenge;
 vmCvar_t g_decaychallenge;
+vmCvar_t g_spCoop;           // RealRTCW-VR: single player co-op, number of other players
 vmCvar_t g_airespawn;
 vmCvar_t g_reinforce;
 vmCvar_t g_fullarsenal;
@@ -222,6 +223,7 @@ cvarTable_t gameCvarTable[] = {
 	{&g_nohudchallenge, "g_nohudchallenge", "0", CVAR_SERVERINFO | CVAR_ROM, 0, qfalse},
 	{&g_nopickupchallenge, "g_nopickupchallenge", "0", CVAR_SERVERINFO | CVAR_ROM, 0, qfalse},
 	{&g_decaychallenge, "g_decaychallenge", "0", CVAR_SERVERINFO | CVAR_ROM, 0, qfalse},
+	{&g_spCoop, "g_spCoop", "0", CVAR_SERVERINFO | CVAR_LATCH, 0, qfalse},
 
 	{&g_airespawn, "g_airespawn", "0", CVAR_ARCHIVE | CVAR_LATCH, 0, qfalse},
 	{&g_reinforce, "g_reinforce", "0", CVAR_ARCHIVE | CVAR_LATCH, 0, qfalse},

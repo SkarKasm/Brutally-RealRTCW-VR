@@ -709,7 +709,7 @@ static void CG_MapRestart( void ) {
 	// always clear the weapon selection
 	cg.weaponSelect = WP_NONE;
 	// clear out the player weapon info
-	memset( &cg_entities[0].pe.weap, 0, sizeof( cg_entities[0].pe.weap ) );
+	memset( &cg_entities[cg.clientNum].pe.weap, 0, sizeof( cg_entities[cg.clientNum].pe.weap ) );     // RealRTCW-VR: co-op players aren't client 0
 	// check for server set weapons we might not know about
 	// (FIXME: this is a hack for the time being since a scripted "selectweapon" does
 	// not hit the first snap, the server weapon set in cg_playerstate.c line 219 doesn't

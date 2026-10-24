@@ -1046,6 +1046,12 @@ void ClientRespawn(gentity_t *ent);
 void BeginIntermission( void );
 void InitBodyQue( void );
 void ClientSpawn( gentity_t *ent );
+// RealRTCW-VR: single player co-op (g_spCoop)
+qboolean G_CoopHuman( gentity_t *ent );
+qboolean G_CoopGuest( gentity_t *ent );
+gentity_t *G_CoopLivingPartner( gentity_t *self );
+gentity_t *G_CoopNearestHuman( vec3_t org );
+void G_CoopServerCommand( int host, const char *cmd );
 void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int mod );
 void player_die_secondchance( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int mod );
 void AddScore( gentity_t *ent, int score );
@@ -1212,6 +1218,7 @@ extern vmCvar_t g_ironchallenge;
 extern vmCvar_t g_nohudchallenge;
 extern vmCvar_t g_nopickupchallenge;
 extern vmCvar_t g_decaychallenge;
+extern vmCvar_t g_spCoop;
 
 extern vmCvar_t g_airespawn;
 extern vmCvar_t g_reinforce;

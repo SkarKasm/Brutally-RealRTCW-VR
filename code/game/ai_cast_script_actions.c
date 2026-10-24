@@ -4512,7 +4512,7 @@ qboolean ScriptStartCam( cast_state_t *cs, char *params, qboolean black ) {
 	ent->r.svFlags &= ~SVF_NOCLIENT;
 
 	// issue a start camera command to the client
-	trap_SendServerCommand( cs->entityNum, va( "startCam %s %d", token, (int)black ) );
+	G_CoopServerCommand( cs->entityNum, va( "startCam %s %d", token, (int)black ) );     // RealRTCW-VR: co-op players too
 
 	return qtrue;
 }
@@ -4525,7 +4525,7 @@ qboolean AICast_ScriptAction_StartCamBlack( cast_state_t *cs, char *params ) {
 }
 
 qboolean AICast_ScriptAction_StopCamBlack( cast_state_t *cs, char *params ) {
-	trap_SendServerCommand( cs->entityNum, "stopCamblack" );
+	G_CoopServerCommand( cs->entityNum, "stopCamblack" );
 	return qtrue;
 }
 
@@ -4704,7 +4704,7 @@ qboolean AICast_ScriptAction_CinPlay( cast_state_t *cs, char *params ) {
 	if ( !params || !params[0] ) {
 		G_Error( "AI_Scripting: syntax: cin_play <videoFileName>\n" );
 	}
-	trap_SendServerCommand( cs->entityNum, va( "cin_play %s", params ) );
+	G_CoopServerCommand( cs->entityNum, va( "cin_play %s", params ) );     // RealRTCW-VR: co-op players too
     return qtrue;
 }
 
@@ -4716,7 +4716,7 @@ AICast_ScriptAction_CinStop
 ==================
 */
 qboolean AICast_ScriptAction_CinStop( cast_state_t *cs, char *params ) {
-    trap_SendServerCommand( cs->entityNum, "cin_stop" );
+    G_CoopServerCommand( cs->entityNum, "cin_stop" );
     return qtrue;
 }
 
@@ -4755,7 +4755,7 @@ qboolean AICast_ScriptAction_MusicStart( cast_state_t *cs, char *params ) {
 		fadeupTime = atoi( token );
 	}
 
-	trap_SendServerCommand( cs->entityNum, va( "mu_start %s %d", cvarName, fadeupTime ) );
+	G_CoopServerCommand( cs->entityNum, va( "mu_start %s %d", cvarName, fadeupTime ) );
 
 	return qtrue;
 }
@@ -4779,7 +4779,7 @@ qboolean AICast_ScriptAction_MusicPlay( cast_state_t *cs, char *params ) {
 	}
 	Q_strncpyz( cvarName, token, sizeof( cvarName ) );
 
-	trap_SendServerCommand( cs->entityNum, va( "mu_play %s %d", cvarName, fadeupTime ) );
+	G_CoopServerCommand( cs->entityNum, va( "mu_play %s %d", cvarName, fadeupTime ) );
 
 	return qtrue;
 }
@@ -4802,7 +4802,7 @@ qboolean AICast_ScriptAction_MusicStop( cast_state_t *cs, char *params ) {
 		fadeoutTime = atoi( token );
 	}
 
-	trap_SendServerCommand( cs->entityNum, va( "mu_stop %i", fadeoutTime ) );
+	G_CoopServerCommand( cs->entityNum, va( "mu_stop %i", fadeoutTime ) );
 
 	return qtrue;
 }
@@ -4833,7 +4833,7 @@ qboolean AICast_ScriptAction_MusicFade( cast_state_t *cs, char *params ) {
 	}
 	fadetime = atoi( token );
 
-	trap_SendServerCommand( cs->entityNum, va( "mu_fade %f %i", targetvol, fadetime ) );
+	G_CoopServerCommand( cs->entityNum, va( "mu_fade %f %i", targetvol, fadetime ) );
 
 	return qtrue;
 }

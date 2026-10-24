@@ -1579,7 +1579,7 @@ qboolean G_ScriptStartCam( gentity_t *ent, char *params, qboolean black ) {
 	if ( !player ) {
 		G_Error( "player not found, perhaps you should give them more time to spawn in" );
 	}
-	trap_SendServerCommand( player->s.number, va( "startCam %s %d", token, (int)black ) );
+	G_CoopServerCommand( player->s.number, va( "startCam %s %d", token, (int)black ) );     // RealRTCW-VR: co-op players too
 
 	return qtrue;
 }

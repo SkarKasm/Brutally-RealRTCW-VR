@@ -535,7 +535,13 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 
 	// don't allow respawn until the death anim is done
 	// g_forcerespawn may force spawning at some later time
-	if (g_gametype.integer == GT_SURVIVAL)
+	if ( G_CoopLivingPartner( self ) )
+	{
+		// RealRTCW-VR: co-op, back in a moment next to whoever is still alive
+		self->client->respawnTime = level.time + 5000;
+		trap_SendServerCommand( self - g_entities, "cp \"You're down. Back in a few seconds\"" );
+	}
+	else if (g_gametype.integer == GT_SURVIVAL)
 	{
 		self->client->respawnTime = level.time + 12000;
 

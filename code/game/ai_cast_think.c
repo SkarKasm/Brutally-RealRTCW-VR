@@ -958,10 +958,18 @@ void AICast_StartFrame( int time ) {
 	// update the player's area, only update if it's valid
 	for ( i = 0; i < 2; i++ ) {
 		trap_AAS_SetCurrentWorld( i );
-		castcount = BotPointAreaNum( g_entities[0].s.pos.trBase );
-		if ( castcount ) {
-			caststates[0].lastValidAreaNum[i] = castcount;
-			caststates[0].lastValidAreaTime[i] = level.time;
+		int pl;
+
+		// RealRTCW-VR: every co-op player
+		for ( pl = 0; pl <= g_spCoop.integer && pl < MAX_CLIENTS; pl++ ) {
+			if ( pl > 0 && !G_CoopHuman( &g_entities[pl] ) ) {
+				continue;
+			}
+			castcount = BotPointAreaNum( g_entities[pl].s.pos.trBase );
+			if ( castcount ) {
+				caststates[pl].lastValidAreaNum[i] = castcount;
+				caststates[pl].lastValidAreaTime[i] = level.time;
+			}
 		}
 	}
 	//
@@ -1035,6 +1043,27 @@ void AICast_StartFrame( int time ) {
 	}
 	//
 	lasttime = time;
+}
+
+/*
+============
+AICast_InPlayersPVS
+
+RealRTCW-VR: in the PVS of the player, or of any co-op player
+============
+*/
+static qboolean AICast_InPlayersPVS( vec3_t org ) {
+	int i;
+
+	if ( trap_InPVS( org, g_entities[0].s.pos.trBase ) ) {
+		return qtrue;
+	}
+	for ( i = 1; i <= g_spCoop.integer && i < MAX_CLIENTS; i++ ) {
+		if ( G_CoopHuman( &g_entities[i] ) && trap_InPVS( org, g_entities[i].s.pos.trBase ) ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
 }
 
 /*
@@ -1150,7 +1179,7 @@ void AICast_StartServerFrame( int time ) {
 							||  ( VectorLength( ent->client->ps.velocity ) > 0 )
 							||  ( highPriority && ( cs->lastucmd.forwardmove || cs->lastucmd.rightmove || cs->lastucmd.upmove > 0 || cs->lastucmd.buttons || cs->lastucmd.wbuttons ) )
 							// !!NOTE: always allow thinking if in PVS, otherwise bosses won't gib, and dead guys might not push away from clipped walls
-							||  ( trap_InPVS( cs->bs->origin, g_entities[0].s.pos.trBase ) ) ) { // do pvs check last, since it's the most expensive to call
+							||  ( AICast_InPlayersPVS( cs->bs->origin ) ) ) { // do pvs check last, since it's the most expensive to call
 						oldLegsTimer = ent->client->ps.legsTimer;
 						//
 						// send it's movement commands

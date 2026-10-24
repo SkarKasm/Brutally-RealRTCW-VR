@@ -59,7 +59,8 @@ int SV_BotAllocateClient( void ) {
 	// find a client slot
 	for ( i = 0, cl = svs.clients; i < sv_maxclients->integer; i++, cl++ ) {
 		// Wolfenstein, never use the first slot, otherwise if a bot connects before the first client on a listen server, game won't start
-		if ( i < 1 ) {
+		// RealRTCW-VR: single player co-op keeps the next g_spCoop slots for the other players
+		if ( i < 1 + Com_Clamp( 0, 3, Cvar_VariableIntegerValue( "g_spCoop" ) ) ) {
 			continue;
 		}
 		// done.

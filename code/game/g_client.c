@@ -524,7 +524,136 @@ void reinforce( gentity_t *ent ) {
 ClientRespawn
 ================
 */
+/*
+===========
+RealRTCW-VR: single player co-op (g_spCoop)
+
+The host is client 0 ("player", the one the map scripts and saves follow). The other
+players take the next g_spCoop client slots, which the engine keeps free of AI. They
+fight on the allies' side, spawn next to a living player and come back after dying as
+long as someone is still alive; the game only reloads once everyone is down.
+============
+*/
+qboolean G_CoopHuman( gentity_t *ent ) {
+	return ent && ent->inuse && ent->client && !( ent->r.svFlags & SVF_CASTAI ) &&
+		   ent - g_entities < MAX_CLIENTS && ent->client->pers.connected == CON_CONNECTED;
+}
+
+qboolean G_CoopGuest( gentity_t *ent ) {
+	return g_spCoop.integer > 0 && ent != g_entities && G_CoopHuman( ent );
+}
+
+gentity_t *G_CoopLivingPartner( gentity_t *self ) {
+	int i;
+
+	if ( g_spCoop.integer <= 0 ) {
+		return NULL;
+	}
+	for ( i = 0; i <= g_spCoop.integer && i < level.maxclients; i++ ) {
+		gentity_t *e = &g_entities[i];
+
+		if ( e != self && G_CoopHuman( e ) && e->health > 0 && !( e->client->ps.pm_flags & PMF_LIMBO ) ) {
+			return e;
+		}
+	}
+	return NULL;
+}
+
+// the living player nearest to org (the host when co-op is off)
+gentity_t *G_CoopNearestHuman( vec3_t org ) {
+	gentity_t *best = &g_entities[0];
+	float bestDist = -1;
+	int i;
+
+	for ( i = 0; i <= g_spCoop.integer && i < level.maxclients; i++ ) {
+		gentity_t *e = &g_entities[i];
+		float d;
+
+		if ( !G_CoopHuman( e ) || e->health <= 0 ) {
+			continue;
+		}
+		d = DistanceSquared( org, e->r.currentOrigin );
+		if ( bestDist < 0 || d < bestDist ) {
+			best = e;
+			bestDist = d;
+		}
+	}
+	return best;
+}
+
+// a free spot next to a living partner, facing the way they look
+static qboolean G_CoopSpawnNearPartner( gentity_t *ent, vec3_t origin, vec3_t angles ) {
+	static const float offsets[][2] = { { -48, 0 }, { 0, 48 }, { 0, -48 }, { 48, 0 }, { -48, 48 }, { -48, -48 }, { -96, 0 }, { 0, 96 }, { 0, -96 } };
+	gentity_t *p = G_CoopLivingPartner( ent );
+	vec3_t yaw, fwd, right, spot;
+	trace_t tr;
+	int i;
+
+	if ( !p ) {
+		return qfalse;
+	}
+	VectorSet( yaw, 0, p->client->ps.viewangles[YAW], 0 );
+	AngleVectors( yaw, fwd, right, NULL );
+	for ( i = 0; i < (int)( sizeof( offsets ) / sizeof( offsets[0] ) ); i++ ) {
+		VectorMA( p->r.currentOrigin, offsets[i][0], fwd, spot );
+		VectorMA( spot, offsets[i][1], right, spot );
+		spot[2] += 1;
+		trap_Trace( &tr, spot, playerMins, playerMaxs, spot, ent->s.number, MASK_PLAYERSOLID );
+		if ( tr.startsolid || tr.allsolid ) {
+			continue;
+		}
+		// not through a wall from them
+		trap_Trace( &tr, p->r.currentOrigin, NULL, NULL, spot, p->s.number, MASK_SOLID );
+		if ( tr.fraction < 1.0f ) {
+			continue;
+		}
+		VectorCopy( spot, origin );
+		VectorCopy( yaw, angles );
+		return qtrue;
+	}
+	return qfalse;
+}
+
+// to the host and every co-op guest (to just that client when it isn't the host)
+void G_CoopServerCommand( int host, const char *cmd ) {
+	int i;
+
+	trap_SendServerCommand( host, cmd );
+	if ( host != 0 ) {
+		return;
+	}
+	for ( i = 1; i <= g_spCoop.integer && i < MAX_CLIENTS; i++ ) {
+		if ( i != host && G_CoopGuest( &g_entities[i] ) ) {
+			trap_SendServerCommand( i, cmd );
+		}
+	}
+}
+
+// a player joining or coming back gets what their partner carries
+static void G_CoopCopyLoadout( gentity_t *ent, gentity_t *from ) {
+	gclient_t *c = ent->client, *f = from->client;
+
+	memcpy( c->ps.weapons, f->ps.weapons, sizeof( c->ps.weapons ) );
+	memcpy( c->ps.ammo, f->ps.ammo, sizeof( c->ps.ammo ) );
+	memcpy( c->ps.ammoclip, f->ps.ammoclip, sizeof( c->ps.ammoclip ) );
+	memcpy( c->ps.holdable, f->ps.holdable, sizeof( c->ps.holdable ) );
+	c->ps.holding = f->ps.holding;
+	c->ps.stats[STAT_KEYS] = f->ps.stats[STAT_KEYS];
+	if ( f->ps.weapon != WP_NONE ) {
+		c->ps.weapon = f->ps.weapon;
+		c->ps.weaponstate = WEAPON_READY;
+	}
+}
+
 void ClientRespawn( gentity_t *ent ) {
+	// RealRTCW-VR: in co-op, back next to whoever is still alive
+	if ( !( ent->r.svFlags & SVF_CASTAI ) && !g_reloading.integer && !saveGamePending && G_CoopLivingPartner( ent ) ) {
+		ent->client->ps.pm_flags &= ~PMF_LIMBO;
+		CopyToBodyQue( ent );
+		ClientSpawn( ent );
+		return;
+	}
+
 	// In Survival mode, just restart the map instead of reloading save
 	if ( g_gametype.integer == GT_SURVIVAL ) {
 		trap_SendConsoleCommand( EXEC_APPEND, "map_restart 0\n" );
@@ -1123,6 +1252,11 @@ char *ClientConnect( int clientNum, qboolean firstTime, qboolean isBot ) {
 		}
 	}
 
+	// RealRTCW-VR: other players only in a single player co-op game, in its reserved slots
+	if ( !isBot && !( ent->r.svFlags & SVF_BOT ) && clientNum > g_spCoop.integer ) {
+		return g_spCoop.integer > 0 ? "The co-op game is full" : "This game isn't a co-op game";
+	}
+
 	// if a player reconnects quickly after a disconnect, the client disconnect may never be called, thus flag can get lost in the ether
 	if (ent->inuse) {
 		G_LogPrintf("Forcing disconnect on active client: %i\n", clientNum);
@@ -1287,13 +1421,23 @@ void ClientSpawn( gentity_t *ent ) {
 		VectorCopy( ent->s.angles, spawn_angles );
 	} else
 	{
-		ent->aiName = "player";  // needed for script AI
+		static char *coopNames[] = { "player", "player2", "player3", "player4" };
+
 		ent->aiTeam = 1;        // member of allies
 		ent->client->ps.teamNum = ent->aiTeam;
-		AICast_ScriptParse( AICast_GetCastState( ent->s.number ) );
+		if ( G_CoopGuest( ent ) ) {
+			// RealRTCW-VR: the other co-op players; map scripts keep following the host
+			ent->aiName = coopNames[index & 3];
+		} else {
+			ent->aiName = "player";  // needed for script AI
+			AICast_ScriptParse( AICast_GetCastState( ent->s.number ) );
+		}
 		// done.
 
-		if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
+		if ( ( G_CoopGuest( ent ) || client->pers.initialSpawn ) && G_CoopSpawnNearPartner( ent, spawn_origin, spawn_angles ) ) {
+			spawnPoint = NULL;
+			client->pers.initialSpawn = qtrue;
+		} else if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
 			spawnPoint = SelectSpectatorSpawnPoint(
 				spawn_origin, spawn_angles );
 		} else {
@@ -1437,6 +1581,15 @@ void ClientSpawn( gentity_t *ent ) {
 	}
 
 	ent->health = client->ps.stats[STAT_HEALTH] = client->ps.stats[STAT_MAX_HEALTH];
+
+	// RealRTCW-VR: co-op players joining or coming back carry what their partner does
+	if ( !( ent->r.svFlags & SVF_CASTAI ) ) {
+		gentity_t *partner = G_CoopLivingPartner( ent );
+
+		if ( partner ) {
+			G_CoopCopyLoadout( ent, partner );
+		}
+	}
 
 	if (g_decaychallenge.integer){
 	ent->health = client->ps.stats[STAT_HEALTH]	= 999;

@@ -1245,10 +1245,28 @@ void Cmd_SetViewpos_f( gentity_t *ent ) {
 Cmd_StartCamera_f
 =================
 */
+// RealRTCW-VR: each co-op guest watches through a camera portal of their own, so the host's
+// stays where the host is (the portal decides which entities the server sends)
+static gentity_t *G_CoopCamera( gentity_t *ent ) {
+	static gentity_t *cams[MAX_CLIENTS];
+	gentity_t **cam = &cams[ent - g_entities];
+
+	if ( !*cam || !( *cam )->inuse || !( *cam )->classname || Q_stricmp( ( *cam )->classname, "coop_camera" ) ) {
+		*cam = G_Spawn();
+		( *cam )->classname = "coop_camera";
+		( *cam )->s.eType = ET_CAMERA;
+		( *cam )->s.apos.trType = TR_STATIONARY;
+		( *cam )->r.svFlags |= SVF_NOCLIENT;
+	}
+	return *cam;
+}
+
 void Cmd_StartCamera_f( gentity_t *ent ) {
-	g_camEnt->r.svFlags |= SVF_PORTAL;
-	g_camEnt->r.svFlags &= ~SVF_NOCLIENT;
-	ent->client->cameraPortal = g_camEnt;
+	gentity_t *cam = G_CoopGuest( ent ) ? G_CoopCamera( ent ) : g_camEnt;
+
+	cam->r.svFlags |= SVF_PORTAL;
+	cam->r.svFlags &= ~SVF_NOCLIENT;
+	ent->client->cameraPortal = cam;
 	ent->client->ps.eFlags |= EF_VIEWING_CAMERA;
 	ent->s.eFlags |= EF_VIEWING_CAMERA;
 
@@ -1265,7 +1283,28 @@ Cmd_StopCamera_f
 void Cmd_StopCamera_f( gentity_t *ent ) {
 	gentity_t *sp;
 
+	// RealRTCW-VR: a co-op guest's cutscene only ends their own view; the host's drives the scripts
+	if ( G_CoopGuest( ent ) ) {
+		if ( ent->client->cameraPortal ) {
+			ent->client->cameraPortal->r.svFlags |= SVF_NOCLIENT;
+			ent->client->cameraPortal->r.svFlags &= ~SVF_PORTAL;
+			ent->client->cameraPortal = NULL;
+			ent->s.eFlags &= ~EF_VIEWING_CAMERA;
+			ent->client->ps.eFlags &= ~EF_VIEWING_CAMERA;
+		}
+		return;
+	}
+
 	if ( ent->client->cameraPortal ) {
+		int i;
+
+		// RealRTCW-VR: the host's cutscene is over (or skipped): over for everyone
+		for ( i = 1; i <= g_spCoop.integer && i < MAX_CLIENTS; i++ ) {
+			if ( G_CoopGuest( &g_entities[i] ) && g_entities[i].client->cameraPortal ) {
+				trap_SendServerCommand( i, "stopCam" );
+			}
+		}
+
 		// send a script event
 		G_Script_ScriptEvent( ent->client->cameraPortal, "stopcam", "" );
 		// go back into noclient mode
@@ -1319,6 +1358,9 @@ Cmd_InterruptCamera_f
 ==============
 */
 void Cmd_InterruptCamera_f( gentity_t *ent ) {
+	if ( G_CoopGuest( ent ) ) {
+		return;     // RealRTCW-VR: only the host skips cutscenes
+	}
 	AICast_ScriptEvent( AICast_GetCastState( ent->s.number ), "trigger", "cameraInterrupt" );
 }
 

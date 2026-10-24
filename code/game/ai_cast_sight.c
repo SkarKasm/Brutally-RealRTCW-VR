@@ -631,7 +631,7 @@ void AICast_SightUpdate( int numchecks ) {
 
 		for (   destcount = 0, dest = 0, destent = g_entities;
 				//dest < aicast_maxclients && destcount < level.numPlayingClients;
-				destent == g_entities;  // only check the player
+				dest <= g_spCoop.integer && dest < MAX_CLIENTS;  // only check the players (RealRTCW-VR: all co-op players)
 				dest++, destent++ )
 		{
 			if ( !destent->inuse ) {

@@ -398,6 +398,9 @@ qboolean NET_CompareBaseAdrMask(netadr_t a, netadr_t b, int netmask)
 	if (a.type == NA_LOOPBACK)
 		return qtrue;
 
+	if (a.type == NA_STEAM)
+		return !memcmp(a.ip6, b.ip6, 8);
+
 	if(a.type == NA_IP)
 	{
 		addra = (byte *) &a.ip;
@@ -461,6 +464,12 @@ const char	*NET_AdrToString (netadr_t a)
 		Com_sprintf (s, sizeof(s), "loopback");
 	else if (a.type == NA_BOT)
 		Com_sprintf (s, sizeof(s), "bot");
+	else if (a.type == NA_STEAM)
+	{
+		unsigned long long id;
+		memcpy(&id, a.ip6, sizeof(id));
+		Com_sprintf (s, sizeof(s), "steam:%llu", id);
+	}
 	else if (a.type == NA_IP || a.type == NA_IP6)
 	{
 		struct sockaddr_storage sadr;
@@ -485,6 +494,8 @@ const char	*NET_AdrToStringwPort (netadr_t a)
 		Com_sprintf(s, sizeof(s), "%s:%hu", NET_AdrToString(a), ntohs(a.port));
 	else if(a.type == NA_IP6)
 		Com_sprintf(s, sizeof(s), "[%s]:%hu", NET_AdrToString(a), ntohs(a.port));
+	else if(a.type == NA_STEAM)
+		Com_sprintf(s, sizeof(s), "%s", NET_AdrToString(a));
 
 	return s;
 }
@@ -644,6 +655,11 @@ void Sys_SendPacket( int length, const void *data, netadr_t to ) {
 	int				ret = SOCKET_ERROR;
 	struct sockaddr_storage	addr;
 
+	if( to.type == NA_STEAM ) {
+		NET_Steam_Send( length, data, to );
+		return;
+	}
+
 	if( to.type != NA_BROADCAST && to.type != NA_IP && to.type != NA_IP6 && to.type != NA_MULTICAST6)
 	{
 		Com_Error( ERR_FATAL, "Sys_SendPacket: bad address type" );
@@ -711,6 +727,11 @@ qboolean Sys_IsLANAddress( netadr_t adr ) {
 	byte *compareadr, *comparemask, *compareip;
 
 	if( adr.type == NA_LOOPBACK ) {
+		return qtrue;
+	}
+
+	// RealRTCW-VR: Steam friends get the full rate, like a LAN
+	if( adr.type == NA_STEAM ) {
 		return qtrue;
 	}
 
@@ -1588,6 +1609,8 @@ void NET_Init( void ) {
 	
 	Cmd_AddCommand ("net_restart", NET_Restart_f);
 	Cmd_AddCommand ("net_stop", NET_Shutdown);
+
+	NET_Steam_Startup();	// RealRTCW-VR
 }
 
 
@@ -1597,6 +1620,8 @@ NET_Shutdown
 ====================
 */
 void NET_Shutdown( void ) {
+	NET_Steam_Shutdown();	// RealRTCW-VR
+
 	if ( !networkingEnabled ) {
 		return;
 	}
@@ -1629,6 +1654,8 @@ void NET_Event(fd_set *fdr)
 
 		if(NET_GetPacket(&from, &netmsg, fdr))
 		{
+			NET_Steam_FakeReceive(&from, &netmsg);	// RealRTCW-VR: net_steamFake testing
+
 			if(net_dropsim->value > 0.0f && net_dropsim->value <= 100.0f)
 			{
 				// com_dropsim->value percent of incoming packets get dropped.
@@ -1662,6 +1689,11 @@ void NET_Sleep(int msec)
 
 	if(msec < 0)
 		msec = 0;
+
+	// RealRTCW-VR: Steam packets aren't on our sockets, look for them often
+	NET_Steam_Frame();
+	if(NET_Steam_Active() && msec > 2)
+		msec = 2;
 
 	FD_ZERO(&fdr);
 
