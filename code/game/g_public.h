@@ -428,6 +428,8 @@ typedef enum {
 
 	G_FS_COPY_FILE,  //DAJ
 
+	G_GET_VRCMD,    // ( int clientNum, short *vrCmd ) RealRTCW-VR: VRC_NUM shorts
+
 	// New in IORTCW
 	G_ALLOC = 900
 } gameImport_t;

@@ -419,6 +419,11 @@ intptr_t SV_GameSystemCalls( intptr_t *args ) {
 	case G_GET_USERCMD:
 		SV_GetUsercmd( args[1], VMA( 2 ) );
 		return 0;
+	case G_GET_VRCMD:       // RealRTCW-VR
+		if ( args[1] >= 0 && args[1] < sv_maxclients->integer ) {
+			Com_Memcpy( VMA( 2 ), svs.clients[args[1]].vrCmd, sizeof( svs.clients[0].vrCmd ) );
+		}
+		return 0;
 	case G_GET_ENTITY_TOKEN:
 	{
 		const char  *s;

@@ -101,9 +101,14 @@ previous command to where it is now, plus along its length.
 #define VR_KNIFE_COOLDOWN   350     // msec between hits
 
 void G_VR_KnifeStab( gentity_t *ent ) {
-	static vec3_t lastTip;
-	static int lastTime, nextHitTime;
-	static qboolean lastValid;
+	static vec3_t lastTips[MAX_CLIENTS];        // per player (single player co-op)
+	static int lastTimes[MAX_CLIENTS], nextHitTimes[MAX_CLIENTS];
+	static qboolean lastValids[MAX_CLIENTS];
+	int cn = ent->s.number < MAX_CLIENTS ? ent->s.number : 0;
+	float *lastTip = lastTips[cn];
+	int *lastTime = &lastTimes[cn], *nextHitTime = &nextHitTimes[cn];
+	qboolean *lastValid = &lastValids[cn];
+	vrShared_t *gVR = G_VR_Shared( ent );
 	vec3_t hand, fwd, tip, base;
 	trace_t tr;
 	float dist, speed;
@@ -112,26 +117,26 @@ void G_VR_KnifeStab( gentity_t *ent ) {
 
 	if ( ent->client->ps.weapon != WP_KNIFE || ent->client->ps.stats[STAT_HEALTH] <= 0 ||
 		 !G_VR_WeaponOrigin( ent, hand ) ) {
-		lastValid = qfalse;
+		*lastValid = qfalse;
 		return;
 	}
 
 	AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
 	VectorMA( hand, VR_KNIFE_BLADE, fwd, tip );
 
-	dt = now - lastTime;
-	if ( !lastValid || dt <= 0 || dt > 200 ) {
+	dt = now - *lastTime;
+	if ( !*lastValid || dt <= 0 || dt > 200 ) {
 		// first sample, or the frame came from a different timeline
 		VectorCopy( tip, lastTip );
-		lastTime = now;
-		lastValid = qtrue;
+		*lastTime = now;
+		*lastValid = qtrue;
 		return;
 	}
 
 	dist = Distance( tip, lastTip );
 	speed = ( dist / gVR->worldScale ) / ( dt * 0.001f );
 
-	if ( speed >= VR_KNIFE_SPEED && now >= nextHitTime ) {
+	if ( speed >= VR_KNIFE_SPEED && now >= *nextHitTime ) {
 		// the swept path of the tip, then the blade itself
 		trap_Trace( &tr, lastTip, NULL, NULL, tip, ent->s.number, MASK_SHOT );
 		if ( tr.fraction == 1.0f ) {
@@ -140,7 +145,7 @@ void G_VR_KnifeStab( gentity_t *ent ) {
 		}
 		if ( tr.fraction < 1.0f && !( tr.surfaceFlags & SURF_NOIMPACT ) ) {
 			G_KnifeHit( ent, &tr );
-			nextHitTime = now + VR_KNIFE_COOLDOWN;
+			*nextHitTime = now + VR_KNIFE_COOLDOWN;
 
 			dom = gVR->rightHanded ? VR_HAND_RIGHT : VR_HAND_LEFT;
 			gVR->hapticAmplitude[dom] = tr.entityNum == ENTITYNUM_WORLD ? 0.5f : 1.0f;
@@ -149,7 +154,7 @@ void G_VR_KnifeStab( gentity_t *ent ) {
 	}
 
 	VectorCopy( tip, lastTip );
-	lastTime = now;
+	*lastTime = now;
 }
 
 /*
@@ -1906,12 +1911,13 @@ or use things on the other side.
 ===============
 */
 qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out ) {
+	vrShared_t *gVR = G_VR_Shared( ent );     // RealRTCW-VR: this player's (single player co-op)
 	vec3_t offset, eye, end;
 	float yaw, s, c;
 	int dom;
 	trace_t tr;
 
-	if ( !gVR || !gVR->active || !ent->client || ent->aiCharacter || ent->s.number != 0 ) {
+	if ( !gVR || !gVR->active || !ent->client || ent->aiCharacter || !( ent->s.number == 0 || G_CoopGuest( ent ) ) ) {
 		return qfalse;
 	}
 	dom = gVR->rightHanded ? VR_HAND_RIGHT : VR_HAND_LEFT;

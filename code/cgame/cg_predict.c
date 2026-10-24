@@ -617,9 +617,7 @@ void CG_PredictPlayerState( void ) {
 	}
 
 	cg_pmove.pmove_fixed = pmove_fixed.integer; // | cg_pmove_fixed.integer;
-	// RealRTCW-VR, must match the server: its hand code only follows the host so far, so a co-op
-	// guest predicts like a player on the monitor (the gun still aims where the hand points)
-	cg_pmove.vrAim = CG_VR_Active() && cg.clientNum == 0;
+	cg_pmove.vrAim = CG_VR_Active();      // RealRTCW-VR, must match the server
 	cg_pmove.vrNoAttack = !cg_pmove.vrAim && cgVR && cgVR->flatGrabbed;
 	if ( cg_pmove.vrAim ) {
 		cg_pmove.vrManualReload = cgVR->manualReload;

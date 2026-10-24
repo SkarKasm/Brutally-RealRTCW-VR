@@ -807,6 +807,34 @@ static void CG_ServerCommand( void ) {
 		return;
 	}
 
+	// RealRTCW-VR single player co-op: the host's game runs this player's hands and says
+	// what it decided (g_vr.c G_VR_SendState); the host's own game writes it directly
+	if ( !strcmp( cmd, "vrst" ) ) {
+		if ( cgVR && cg.clientNum != 0 ) {
+			cgVR->manualReload = atoi( CG_Argv( 1 ) );
+			cgVR->chambered = atoi( CG_Argv( 2 ) );
+			cgVR->magOut = atoi( CG_Argv( 3 ) );
+			cgVR->heldItem = atoi( CG_Argv( 4 ) );
+			cgVR->chargeHeld = atoi( CG_Argv( 5 ) );
+			cgVR->magDropCount = atoi( CG_Argv( 6 ) );
+			cgVR->grabbedEntity = atoi( CG_Argv( 7 ) );
+			cgVR->flatGrabbed = atoi( CG_Argv( 8 ) );
+			cgVR->canGrab = atoi( CG_Argv( 9 ) );
+			cgVR->chargePull = atoi( CG_Argv( 10 ) ) / 255.0f;
+		}
+		return;
+	}
+	if ( !strcmp( cmd, "vrhap" ) ) {
+		int h = atoi( CG_Argv( 1 ) ) & 1;
+		float amp = atoi( CG_Argv( 2 ) ) * 0.01f;
+
+		if ( cgVR && cg.clientNum != 0 && amp > cgVR->hapticAmplitude[h] ) {
+			cgVR->hapticAmplitude[h] = amp;
+			cgVR->hapticDuration[h] = atoi( CG_Argv( 3 ) );
+		}
+		return;
+	}
+
 	if ( !strcmp( cmd, "mvspd" ) ) {
 		CG_RequestMoveSpeed( CG_Argv( 1 ) );
 		return;

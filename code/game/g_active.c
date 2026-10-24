@@ -1229,17 +1229,21 @@ void ClientThink_real( gentity_t *ent ) {
 	pm.noFootsteps = ( g_dmflags.integer & DF_NO_FOOTSTEPS ) > 0;
 
 	pm.pmove_fixed = pmove_fixed.integer | client->pers.pmoveFixed;
-	pm.vrAim = gVR && gVR->active && ent->s.number == 0 && !ent->aiCharacter;   // RealRTCW-VR
-	pm.vrNoAttack = gVR && !pm.vrAim && ent->s.number == 0 && gVR->flatGrabbed;
+	// RealRTCW-VR: the host's headset, or a single player co-op guest's from their packets
+	G_VR_FromCmd( ent );
+	pm.vrAim = G_VR_Player( ent );
+	pm.vrNoAttack = !pm.vrAim && ( ent->s.number == 0 || G_CoopGuest( ent ) ) && G_VR_Shared( ent ) && G_VR_Shared( ent )->flatGrabbed;
 	if ( pm.vrAim ) {
+		vrShared_t *vrs = G_VR_Shared( ent );
+
 		G_VR_UpdateWeaponState( ent );
-		pm.vrManualReload = gVR->manualReload;
-		pm.vrChambered = gVR->chambered;
-		pm.vrAkimbo = gVR->akimboLeft ? 2 : 1;
-		pm.vrAkimboBoth = gVR->akimboBoth;
-		pm.vrHandsLow = BG_VR_HandsLow( gVR );
-		pm.vrLadderHead[0] = AngleSubtract( gVR->hmdAngles[PITCH], gVR->weaponAngles[PITCH] );
-		pm.vrLadderHead[1] = AngleSubtract( gVR->hmdAngles[YAW], gVR->weaponAngles[YAW] );
+		pm.vrManualReload = vrs->manualReload;
+		pm.vrChambered = vrs->chambered;
+		pm.vrAkimbo = vrs->akimboLeft ? 2 : 1;
+		pm.vrAkimboBoth = vrs->akimboBoth;
+		pm.vrHandsLow = BG_VR_HandsLow( vrs );
+		pm.vrLadderHead[0] = AngleSubtract( vrs->hmdAngles[PITCH], vrs->weaponAngles[PITCH] );
+		pm.vrLadderHead[1] = AngleSubtract( vrs->hmdAngles[YAW], vrs->weaponAngles[YAW] );
 	}
 	pm.pmove_msec = pmove_msec.integer;
 	pm.pmext = &client->pmext;
@@ -1485,6 +1489,7 @@ void ClientThink_real( gentity_t *ent ) {
 	// server cursor hints
 	G_CheckForCursorHints( ent ); //----(SA)	added
 	G_VR_GrabHint( ent );       // RealRTCW-VR: something the hand can take
+	G_VR_SendState( ent );      // RealRTCW-VR: a co-op guest's hands, back to their game
 
 	// get this for the clients
 	ent->s.animMovetype = BG_GetConditionValue( ent->s.number, ANIM_COND_MOVETYPE, qtrue );

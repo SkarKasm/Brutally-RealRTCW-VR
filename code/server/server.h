@@ -153,6 +153,7 @@ typedef struct netchan_buffer_s {
 
 typedef struct client_s {
 	clientState_t state;
+	short vrCmd[VRC_NUM];                   // RealRTCW-VR: the headset in this client's latest packet
 	char userinfo[MAX_INFO_STRING];                 // name, etc
 
 	//char			reliableCommands[MAX_RELIABLE_COMMANDS][MAX_STRING_CHARS];

@@ -1600,6 +1600,22 @@ extern translateTextString_t translateTextStrings[MAX_TRANSLATETEXTSTRINGS];
 										// then BUTTON_WALKING should be set
 
 
+// RealRTCW-VR: a headset player's head, hands and buttons, sent after the usercmds of every
+// client packet (not in usercmd_t: savegames store that), so a server on another machine
+// (single player co-op) runs their hands like the host's. trap_GetVRCmd reads it.
+#define VRC_FLAGS       0       // VRCF_* (vr_shared.h)
+#define VRC_EJECT       1       // magazine release counters: the gun hand's, the off hand's
+#define VRC_EJECTOFF    2
+#define VRC_EYE         3       // eye height above the origin the view used, 1/8 units
+#define VRC_SCALE       4       // guns and hands drawn this size, 1/256
+#define VRC_HEAD        5       // head pitch, yaw (ANGLE2SHORT, play space)
+#define VRC_AIM         7       // the gun's pitch, yaw, roll (ANGLE2SHORT, play space)
+#define VRC_HAND        10      // hands relative to the head, play space, 1/8 units (2 x 3)
+#define VRC_GUN         16      // where the gun is held relative to the head (3)
+#define VRC_MUZZLE      19      // the muzzle from the gun hand, in the aim frame, 1/8 units (3)
+#define VRC_LEAN        22      // the head out over the body as the view used it, world x y (2)
+#define VRC_NUM         24
+
 // usercmd_t is sent to the server each client frame
 typedef struct usercmd_s {
 	int serverTime;

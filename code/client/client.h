@@ -765,6 +765,7 @@ void CL_VR_BeginFrame( void );
 void CL_VR_EndFrame( void );
 void CL_VR_ProcessInput( void );
 void CL_VR_CreateCmd( usercmd_t *cmd );
+void CL_VR_PoseCmd( short *c );
 void CL_VR_MouseMoved( int dx, int dy );
 qboolean CL_VR_RenderFrame( void );
 qboolean CL_VR_Active( void );

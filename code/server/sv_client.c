@@ -1535,6 +1535,15 @@ static void SV_UserMove( client_t *cl, msg_t *msg, qboolean delta ) {
 		oldcmd = cmd;
 	}
 
+	// RealRTCW-VR: the headset (single player co-op)
+	if ( MSG_ReadBits( msg, 1 ) ) {
+		for ( i = 0; i < VRC_NUM; i++ ) {
+			cl->vrCmd[i] = MSG_ReadShort( msg );
+		}
+	} else {
+		Com_Memset( cl->vrCmd, 0, sizeof( cl->vrCmd ) );
+	}
+
 	// save time for ping calculation
 	cl->frames[ cl->messageAcknowledge & PACKET_MASK ].messageAcked = svs.time;
 

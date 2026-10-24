@@ -1501,6 +1501,21 @@ void CL_WritePacket( void ) {
 			MSG_WriteDeltaUsercmdKey( &buf, key, oldcmd, cmd );
 			oldcmd = cmd;
 		}
+
+		// RealRTCW-VR: the headset, for a server on another machine (single player co-op)
+		{
+			short pose[VRC_NUM];
+
+			CL_VR_PoseCmd( pose );
+			if ( pose[VRC_FLAGS] ) {
+				MSG_WriteBits( &buf, 1, 1 );
+				for ( i = 0; i < VRC_NUM; i++ ) {
+					MSG_WriteShort( &buf, pose[i] );
+				}
+			} else {
+				MSG_WriteBits( &buf, 0, 1 );
+			}
+		}
 	}
 
 	//

@@ -273,7 +273,7 @@ PROTOCOL
 ==============================================================
 */
 
-#define	PROTOCOL_VERSION	50
+#define	PROTOCOL_VERSION	51	// RealRTCW-VR: 51, usercmds carry the headset (single player co-op)
 #define PROTOCOL_LEGACY_VERSION	49
 //#define	PROTOCOL_VERSION	43	// (SA) bump this up
 

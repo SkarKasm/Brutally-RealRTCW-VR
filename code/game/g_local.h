@@ -985,6 +985,9 @@ void CalcMuzzlePoint( gentity_t *ent, int weapon, vec3_t forward, vec3_t right, 
 qboolean G_VR_WeaponOrigin( gentity_t *ent, vec3_t out );
 qboolean G_VR_Aiming( gentity_t *ent );
 qboolean G_VR_Player( gentity_t *ent );   // RealRTCW-VR: the headset player
+vrShared_t *G_VR_Shared( gentity_t *ent );    // RealRTCW-VR: that player's headset (single player co-op)
+void G_VR_FromCmd( gentity_t *ent );
+void G_VR_SendState( gentity_t *ent );
 extern qboolean g_vrHandUse;            // RealRTCW-VR: Cmd_Activate_f from a hand (g_vr.c)
 extern vec3_t g_vrHandFrom, g_vrHandTo;
 qboolean G_VR_LookRay( gentity_t *ent, float dist, vec3_t from, vec3_t to );   // RealRTCW-VR
@@ -1393,6 +1396,7 @@ qboolean trap_EntityContactCapsule( const vec3_t mins, const vec3_t maxs, const 
 int     trap_BotAllocateClient( void );
 void    trap_BotFreeClient( int clientNum );
 void    trap_GetUsercmd( int clientNum, usercmd_t *cmd );
+void    trap_GetVRCmd( int clientNum, short *vrCmd );   // RealRTCW-VR
 qboolean    trap_GetEntityToken( char *buffer, int bufferSize );
 qboolean trap_GetTag( int clientNum, char *tagName, orientation_t * or );
 

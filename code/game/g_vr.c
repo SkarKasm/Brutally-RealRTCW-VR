@@ -81,7 +81,90 @@ typedef struct {
 	int         thrownTime;
 } vrPlayer_t;
 
-static vrPlayer_t vrp;
+// RealRTCW-VR single player co-op: hands for every player. The host's come straight from
+// the engine (gVR); a co-op guest's arrive in their usercmds (vrCmd, G_VR_FromCmd) and are
+// kept in vrRemote. Every entry point picks its player with G_VR_Select, and the code below
+// keeps using "vrp" and "gVR" for that player.
+static vrPlayer_t vrps[MAX_CLIENTS];
+static vrShared_t vrRemote[MAX_CLIENTS];
+static qboolean vrRemoteManual[MAX_CLIENTS];
+static vrPlayer_t *vrpCur = &vrps[0];
+static vrShared_t *gVRCur;
+
+vrShared_t *G_VR_Shared( gentity_t *ent ) {
+	int n = ent ? (int)( ent - g_entities ) : 0;
+
+	if ( n > 0 && n < MAX_CLIENTS && G_CoopGuest( ent ) ) {
+		return &vrRemote[n];
+	}
+	return gVR;
+}
+
+static void G_VR_Select( gentity_t *ent ) {
+	int n = ent ? (int)( ent - g_entities ) : 0;
+
+	if ( n < 0 || n >= MAX_CLIENTS ) {
+		n = 0;
+	}
+	vrpCur = &vrps[n];
+	gVRCur = G_VR_Shared( ent );
+}
+
+// a co-op guest's headset, from their latest packet (the game's own fields are kept)
+void G_VR_FromCmd( gentity_t *ent ) {
+	int n = (int)( ent - g_entities ), h, i;
+	short c[VRC_NUM];
+	vrShared_t *vr;
+	int flags;
+
+	if ( n <= 0 || n >= MAX_CLIENTS || !G_CoopGuest( ent ) ) {
+		return;
+	}
+	vr = &vrRemote[n];
+	trap_GetVRCmd( n, c );
+	flags = (unsigned short)c[VRC_FLAGS];
+	vr->active = ( flags & VRCF_ACTIVE ) != 0;
+	if ( !vr->active ) {
+		return;
+	}
+	vr->worldScale = gVR && gVR->worldScale > 0 ? gVR->worldScale : 32.0f;
+	vr->rightHanded = ( flags & VRCF_RIGHTHANDED ) != 0;
+	vr->handValid[VR_HAND_LEFT] = ( flags & VRCF_HAND_LEFT ) != 0;
+	vr->handValid[VR_HAND_RIGHT] = ( flags & VRCF_HAND_RIGHT ) != 0;
+	vr->gripDown[VR_HAND_LEFT] = ( flags & VRCF_GRIP_LEFT ) != 0;
+	vr->gripDown[VR_HAND_RIGHT] = ( flags & VRCF_GRIP_RIGHT ) != 0;
+	vr->triggerDown[VR_HAND_LEFT] = ( flags & VRCF_TRIG_LEFT ) != 0;
+	vr->triggerDown[VR_HAND_RIGHT] = ( flags & VRCF_TRIG_RIGHT ) != 0;
+	vr->muzzleValid = ( flags & VRCF_MUZZLE ) != 0;
+	vr->gunInOffHand = ( flags & VRCF_GUN_IN_OFF ) != 0;
+	vr->ironSights = ( flags & VRCF_IRONSIGHTS ) != 0;
+	vr->dualWield = ( flags & VRCF_DUAL ) != 0;
+	vr->akimboLeft = ( flags & VRCF_AKIMBO_LEFT ) != 0;
+	vr->akimboBoth = ( flags & VRCF_AKIMBO_BOTH ) != 0;
+	vrRemoteManual[n] = ( flags & VRCF_MANUAL ) != 0;
+	vr->ejectCount = c[VRC_EJECT];
+	vr->ejectOffCount = c[VRC_EJECTOFF];
+	vr->eyeHeight = c[VRC_EYE] * 0.125f;
+	vr->weaponScale = c[VRC_SCALE] > 0 ? c[VRC_SCALE] / 256.0f : 1.0f;
+	VectorClear( vr->hmdOrigin );       // the hands come relative to the head
+	vr->hmdAngles[PITCH] = SHORT2ANGLE( c[VRC_HEAD + 0] );
+	vr->hmdAngles[YAW] = SHORT2ANGLE( c[VRC_HEAD + 1] );
+	vr->hmdAngles[ROLL] = 0;
+	for ( i = 0; i < 3; i++ ) {
+		vr->weaponAngles[i] = SHORT2ANGLE( c[VRC_AIM + i] );
+		for ( h = 0; h < 2; h++ ) {
+			vr->handOrigin[h][i] = c[VRC_HAND + h * 3 + i] * 0.125f;
+		}
+		vr->gunOrigin[i] = c[VRC_GUN + i] * 0.125f;
+		vr->muzzleOffset[i] = c[VRC_MUZZLE + i] * 0.125f;
+	}
+	vr->leanUsed[0] = c[VRC_LEAN + 0] * 0.125f;
+	vr->leanUsed[1] = c[VRC_LEAN + 1] * 0.125f;
+}
+
+#define vrp ( *vrpCur )
+#define gVR gVRCur
+
 static vmCvar_t vr_manualReload;
 static vmCvar_t vr_aimSpread;
 static vmCvar_t g_flatGrab;         // without a headset: hold use on a body to pick it up
@@ -99,6 +182,7 @@ Multiplier for the player's bullet spread when aiming with a tracked controller.
 =================
 */
 float G_VR_SpreadScale( gentity_t *ent ) {
+	G_VR_Select( ent );
 	if ( !G_VR_IsPlayer( ent ) ) {
 		return 1.0f;
 	}
@@ -109,11 +193,21 @@ float G_VR_SpreadScale( gentity_t *ent ) {
 }
 
 void G_VR_Reset( void ) {
-	vrp.initialised = qfalse;
+	int i;
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		vrps[i].initialised = qfalse;
+		memset( &vrRemote[i], 0, sizeof( vrRemote[i] ) );
+		vrRemote[i].grabbedEntity = -1;
+		vrRemote[i].chambered = qtrue;
+	}
 }
 
+// the host in a headset, or a co-op guest in one
 static qboolean G_VR_IsPlayer( gentity_t *ent ) {
-	return gVR && gVR->active && ent->client && ent->s.number == 0 && !ent->aiCharacter;
+	vrShared_t *vr = G_VR_Shared( ent );
+
+	return vr && vr->active && ent->client && !ent->aiCharacter && ( ent->s.number == 0 || G_CoopGuest( ent ) );
 }
 
 qboolean G_VR_Player( gentity_t *ent ) {
@@ -196,6 +290,7 @@ current weapon is reloaded by hand and whether it can fire.
 void G_VR_UpdateWeaponState( gentity_t *ent ) {
 	int weapon = ent->client->ps.weapon;
 
+	G_VR_Select( ent );
 	if ( !G_VR_IsPlayer( ent ) ) {
 		return;
 	}
@@ -212,7 +307,8 @@ void G_VR_UpdateWeaponState( gentity_t *ent ) {
 		weapon = 0;
 	}
 
-	gVR->manualReload = vr_manualReload.integer && BG_VR_ReloadClass( weapon ) != VRR_NONE &&
+	gVR->manualReload = ( vrpCur == &vrps[0] ? vr_manualReload.integer : vrRemoteManual[vrpCur - vrps] ) &&
+						BG_VR_ReloadClass( weapon ) != VRR_NONE &&
 						!BG_DualActive( &ent->client->ps );     // two guns: reloaded at the waist
 	gVR->chambered = vrp.chambered[weapon];
 	gVR->magOut = gVR->manualReload && vrp.magOut[weapon];
@@ -230,6 +326,7 @@ A shot left the player's gun.
 void G_VR_OnFire( gentity_t *ent ) {
 	int weapon, clip;
 
+	G_VR_Select( ent );
 	if ( !G_VR_IsPlayer( ent ) || !gVR->manualReload ) {
 		return;
 	}
@@ -989,6 +1086,7 @@ static void G_VR_HandUse( gentity_t *ent, const vec3_t hand ) {
 
 // the use button in VR: from the eyes along the head's look (false without a headset)
 qboolean G_VR_LookRay( gentity_t *ent, float dist, vec3_t from, vec3_t to ) {
+	G_VR_Select( ent );     // RealRTCW-VR: this player's hands (single player co-op)
 	vec3_t angles, fwd;
 
 	if ( !G_VR_IsPlayer( ent ) ) {
@@ -1030,9 +1128,12 @@ static qboolean G_VR_Touchable( gentity_t *e ) {
 }
 
 static void G_VR_PushDoors( gentity_t *ent ) {
-	static vec3_t last[2];
-	static int touching[2], nextUse[2];
-	static qboolean valid;
+	static vec3_t lastAll[MAX_CLIENTS][2];      // per player (single player co-op)
+	static int touchingAll[MAX_CLIENTS][2], nextUseAll[MAX_CLIENTS][2];
+	static qboolean validAll[MAX_CLIENTS];
+	int cn = ent->s.number < MAX_CLIENTS ? ent->s.number : 0;
+	vec3_t *last = lastAll[cn];
+	int *touching = touchingAll[cn], *nextUse = nextUseAll[cn];
 	vec3_t hand, mins, maxs, dir;
 	trace_t tr;
 	gentity_t *e;
@@ -1043,7 +1144,7 @@ static void G_VR_PushDoors( gentity_t *ent ) {
 	for ( h = 0; h < 2; h++ ) {
 		G_VR_HandWorld( ent, h, hand );
 		e = NULL;
-		if ( valid && gVR->handValid[h] && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
+		if ( validAll[cn] && gVR->handValid[h] && ent->client->ps.stats[STAT_HEALTH] > 0 ) {
 			trap_Trace( &tr, last[h], mins, maxs, hand, ent->s.number,
 						CONTENTS_SOLID | CONTENTS_TRIGGER | CONTENTS_PLAYERCLIP );
 			if ( ( tr.fraction < 1.0f || tr.startsolid ) && tr.entityNum < ENTITYNUM_WORLD ) {
@@ -1068,7 +1169,7 @@ static void G_VR_PushDoors( gentity_t *ent ) {
 		touching[h] = e ? tr.entityNum : -1;
 		VectorCopy( hand, last[h] );
 	}
-	valid = qtrue;
+	validAll[cn] = qtrue;
 }
 
 /*
@@ -1271,9 +1372,10 @@ and shows it, vr_grabHint).
 =================
 */
 void G_VR_GrabHint( gentity_t *ent ) {
+	G_VR_Select( ent );     // RealRTCW-VR: this player's hands (single player co-op)
 	vec3_t eye, fwd, at, hand;
 
-	if ( !gVR || !ent->client || ent->aiCharacter || ent->s.number != 0 ) {
+	if ( !gVR || !ent->client || ent->aiCharacter || !( ent->s.number == 0 || G_CoopGuest( ent ) ) ) {
 		return;
 	}
 	gVR->canGrab = 0;
@@ -1304,13 +1406,14 @@ After every pmove of the headset player.
 =================
 */
 void G_VR_PlayerThink( gentity_t *ent ) {
+	G_VR_Select( ent );     // RealRTCW-VR: this player's hands (single player co-op)
 	int dom, off, now;
 	vec3_t offHand;
 	qboolean down, pressed, released, used;
 	float dt;
 
 	if ( !G_VR_IsPlayer( ent ) ) {
-		if ( gVR && ent->client && !ent->aiCharacter && ent->s.number == 0 ) {
+		if ( gVR && ent->client && !ent->aiCharacter && ( ent->s.number == 0 || G_CoopGuest( ent ) ) ) {
 			G_VR_FlatGrab( ent );       // RealRTCW-VR: bodies picked up without a headset
 		}
 		return;
@@ -1448,6 +1551,7 @@ void G_VR_PlayerThink( gentity_t *ent ) {
 
 // a headset player: their gun is aimed by their hands, not the flat game's view
 qboolean G_VR_Aiming( gentity_t *ent ) {
+	G_VR_Select( ent );     // RealRTCW-VR: this player's hands (single player co-op)
 	return G_VR_IsPlayer( ent );
 }
 
@@ -1461,6 +1565,7 @@ longest throw that way. qfalse if not a VR player or vr_throwAim is off.
 =================
 */
 qboolean G_VR_LobAt( gentity_t *ent, const vec3_t start, float speed, float gravity, vec3_t vel ) {
+	G_VR_Select( ent );     // RealRTCW-VR: this player's hands (single player co-op)
 	vec3_t fwd, end, flat;
 	trace_t tr;
 	float x, y, v2, disc, th;
@@ -1499,6 +1604,7 @@ when the trigger was let go: a real throw carries, a gentle release just drops i
 #define VR_GRENADE_MAX      1100.0f
 
 void G_VR_GrenadeThrow( gentity_t *ent, int weapon, vec3_t start, vec3_t dir ) {
+	G_VR_Select( ent );     // RealRTCW-VR: this player's hands (single player co-op)
 	vec3_t eye, hand, vel;
 	trace_t tr;
 	float speed, top;
@@ -1550,6 +1656,7 @@ rounds its magazine held back with the rest.
 =================
 */
 void G_DualToggle( gentity_t *ent ) {
+	G_VR_Select( ent );     // RealRTCW-VR: this player's hands (single player co-op)
 	playerState_t *ps;
 	int w, clip, max;
 
@@ -1583,4 +1690,49 @@ void G_DualToggle( gentity_t *ent ) {
 		ps->weapAnim = ( ( ps->weapAnim & ANIM_TOGGLEBIT ) ^ ANIM_TOGGLEBIT ) | WEAP_RAISE;
 	}
 	trap_SendServerCommand( ent - g_entities, ps->persistant[PERS_DUAL] ? "cp \"Dual wielding\"" : "cp \"One gun\"" );
+}
+
+/*
+=================
+G_VR_SendState
+
+RealRTCW-VR single player co-op: what the game decided about a guest's hands (hand
+reloading, what the off hand holds, grabbing, haptics) goes back to their game, which draws
+it and predicts with it like the host's game does from the shared struct. Sent when it
+changes; the slide / bolt pull at most 20 times a second.
+=================
+*/
+void G_VR_SendState( gentity_t *ent ) {
+	static char lastSent[MAX_CLIENTS][96];
+	static int lastPullTime[MAX_CLIENTS];
+	int n = (int)( ent - g_entities );
+	vrShared_t *vr;
+	char state[96];
+	int h;
+
+	if ( n <= 0 || n >= MAX_CLIENTS || !G_CoopGuest( ent ) ) {
+		return;
+	}
+	vr = &vrRemote[n];
+	Com_sprintf( state, sizeof( state ), "%i %i %i %i %i %i %i %i %i %i", vr->manualReload, vr->chambered, vr->magOut,
+				 vr->heldItem, vr->chargeHeld, vr->magDropCount, vr->grabbedEntity, vr->flatGrabbed, vr->canGrab,
+				 (int)( vr->chargePull * 255.0f ) );
+	for ( h = 0; h < 2; h++ ) {
+		if ( vr->hapticDuration[h] > 0 ) {
+			trap_SendServerCommand( n, va( "vrhap %i %i %i", h, (int)( vr->hapticAmplitude[h] * 100.0f ), vr->hapticDuration[h] ) );
+			vr->hapticAmplitude[h] = 0;
+			vr->hapticDuration[h] = 0;
+		}
+	}
+	if ( !strcmp( state, lastSent[n] ) ) {
+		return;
+	}
+	// only the pull changed: not every frame
+	if ( lastSent[n][0] && !strncmp( state, lastSent[n], strrchr( state, ' ' ) - state ) &&
+		 level.time - lastPullTime[n] < 50 && level.time >= lastPullTime[n] ) {
+		return;
+	}
+	lastPullTime[n] = level.time;
+	Q_strncpyz( lastSent[n], state, sizeof( lastSent[n] ) );
+	trap_SendServerCommand( n, va( "vrst %s", state ) );
 }

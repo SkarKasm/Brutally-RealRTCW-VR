@@ -2486,6 +2486,91 @@ void CL_VR_CreateCmd( usercmd_t *cmd ) {
 }
 
 /*
+=================
+CL_VR_PoseCmd
+
+RealRTCW-VR: the head, hands and buttons (VRC_*), sent with every client packet, so a
+server on another machine (single player co-op) runs this player's hands like the host's.
+All zero without a headset.
+=================
+*/
+static short VR_CmdUnits( float v ) {
+	v *= 8.0f;
+	return (short)( v > 32767 ? 32767 : v < -32767 ? -32767 : v );
+}
+
+void CL_VR_PoseCmd( short *c ) {
+	vrShared_t *vr = &com_vr;
+	int flags, h, i;
+
+	Com_Memset( c, 0, VRC_NUM * sizeof( *c ) );
+	if ( !vr->active || !xr.headValid ) {
+		return;
+	}
+
+	flags = VRCF_ACTIVE;
+	if ( vr->rightHanded ) {
+		flags |= VRCF_RIGHTHANDED;
+	}
+	if ( vr->handValid[VR_HAND_LEFT] ) {
+		flags |= VRCF_HAND_LEFT;
+	}
+	if ( vr->handValid[VR_HAND_RIGHT] ) {
+		flags |= VRCF_HAND_RIGHT;
+	}
+	if ( vr->gripDown[VR_HAND_LEFT] ) {
+		flags |= VRCF_GRIP_LEFT;
+	}
+	if ( vr->gripDown[VR_HAND_RIGHT] ) {
+		flags |= VRCF_GRIP_RIGHT;
+	}
+	if ( vr->triggerDown[VR_HAND_LEFT] ) {
+		flags |= VRCF_TRIG_LEFT;
+	}
+	if ( vr->triggerDown[VR_HAND_RIGHT] ) {
+		flags |= VRCF_TRIG_RIGHT;
+	}
+	if ( vr->muzzleValid ) {
+		flags |= VRCF_MUZZLE;
+	}
+	if ( vr->gunInOffHand ) {
+		flags |= VRCF_GUN_IN_OFF;
+	}
+	if ( vr->ironSights ) {
+		flags |= VRCF_IRONSIGHTS;
+	}
+	if ( vr->dualWield ) {
+		flags |= VRCF_DUAL;
+	}
+	if ( vr->akimboLeft ) {
+		flags |= VRCF_AKIMBO_LEFT;
+	}
+	if ( vr->akimboBoth ) {
+		flags |= VRCF_AKIMBO_BOTH;
+	}
+	if ( Cvar_VariableIntegerValue( "vr_manualReload" ) ) {
+		flags |= VRCF_MANUAL;
+	}
+	c[VRC_FLAGS] = (short)flags;
+	c[VRC_EJECT] = (short)( vr->ejectCount & 0x7fff );
+	c[VRC_EJECTOFF] = (short)( vr->ejectOffCount & 0x7fff );
+	c[VRC_EYE] = VR_CmdUnits( vr->eyeHeight );
+	c[VRC_SCALE] = (short)( vr->weaponScale * 256.0f );
+	c[VRC_HEAD + 0] = ANGLE2SHORT( vr->hmdAngles[PITCH] );
+	c[VRC_HEAD + 1] = ANGLE2SHORT( vr->hmdAngles[YAW] );
+	for ( i = 0; i < 3; i++ ) {
+		c[VRC_AIM + i] = ANGLE2SHORT( vr->weaponAngles[i] );
+		for ( h = 0; h < 2; h++ ) {
+			c[VRC_HAND + h * 3 + i] = VR_CmdUnits( vr->handOrigin[h][i] - vr->hmdOrigin[i] );
+		}
+		c[VRC_GUN + i] = VR_CmdUnits( vr->gunOrigin[i] - vr->hmdOrigin[i] );
+		c[VRC_MUZZLE + i] = VR_CmdUnits( vr->muzzleOffset[i] );
+	}
+	c[VRC_LEAN + 0] = VR_CmdUnits( vr->leanUsed[0] );
+	c[VRC_LEAN + 1] = VR_CmdUnits( vr->leanUsed[1] );
+}
+
+/*
 ==============================================================================
 
 Menus: world locked panel and laser pointer
@@ -3072,6 +3157,7 @@ void CL_VR_BeginFrame( void ) {}
 void CL_VR_EndFrame( void ) {}
 void CL_VR_ProcessInput( void ) {}
 void CL_VR_CreateCmd( usercmd_t *cmd ) {}
+void CL_VR_PoseCmd( short *c ) { Com_Memset( c, 0, VRC_NUM * sizeof( *c ) ); }
 void CL_VR_MouseMoved( int dx, int dy ) {}
 qboolean CL_VR_RenderFrame( void ) { return qfalse; }
 qboolean CL_VR_Active( void ) { return qfalse; }

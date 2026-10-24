@@ -226,6 +226,11 @@ void trap_GetUsercmd( int clientNum, usercmd_t *cmd ) {
 	syscall( G_GET_USERCMD, clientNum, cmd );
 }
 
+// RealRTCW-VR: the client's headset (VRC_NUM shorts)
+void trap_GetVRCmd( int clientNum, short *vrCmd ) {
+	syscall( G_GET_VRCMD, clientNum, vrCmd );
+}
+
 qboolean trap_GetEntityToken( char *buffer, int bufferSize ) {
 	return syscall( G_GET_ENTITY_TOKEN, buffer, bufferSize );
 }

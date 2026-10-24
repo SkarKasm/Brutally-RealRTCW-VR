@@ -44,6 +44,23 @@ the Free Software Foundation, either version 3 of the License, or
 #define VRF_SCALE_SHIFT 13
 #define VRF_SCALE_MASK  ( 3 << VRF_SCALE_SHIFT )
 
+// usercmd_t.vrCmd[VRC_FLAGS] (single player co-op)
+#define VRCF_ACTIVE         0x0001  // in a headset: the rest of vrCmd is valid
+#define VRCF_RIGHTHANDED    0x0002
+#define VRCF_HAND_LEFT      0x0004  // that hand is tracked
+#define VRCF_HAND_RIGHT     0x0008
+#define VRCF_GRIP_LEFT      0x0010
+#define VRCF_GRIP_RIGHT     0x0020
+#define VRCF_TRIG_LEFT      0x0040
+#define VRCF_TRIG_RIGHT     0x0080
+#define VRCF_MUZZLE         0x0100
+#define VRCF_GUN_IN_OFF     0x0200
+#define VRCF_IRONSIGHTS     0x0400
+#define VRCF_DUAL           0x0800
+#define VRCF_AKIMBO_LEFT    0x1000
+#define VRCF_AKIMBO_BOTH    0x2000
+#define VRCF_MANUAL         0x4000  // vr_manualReload
+
 // refEntity renderfx: don't draw hand / arm / sleeve / glove surfaces (first person weapon in VR)
 #define RF_VR_NOHANDS   ( 1 << 12 )
 // refEntity renderfx: don't draw arm / sleeve surfaces, keep the hand (VR hands on a full body)
