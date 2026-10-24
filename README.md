@@ -35,6 +35,8 @@ Download it below or from ModDB. This repository also holds the full source.
 
 **[Download the latest version (October 18 update)](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_SP_2026-10-18.zip)** · [What's new](download/CHANGES_2026-10-18.md)
 
+Test build, not played yet: **[October 24, single player co-op](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_Complete_2026-10-24_SP-coop-test.zip)** (single player and both co-op modes in one zip) · [What's new](download/CHANGES_2026-10-24.md)
+
 Also on ModDB.
 
 ---
