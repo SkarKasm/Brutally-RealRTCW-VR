@@ -1302,6 +1302,9 @@ qboolean G_SaveGame( char *username ) {
 		if ( !ent->inuse || ent->s.number == ENTITYNUM_WORLD ) {
 			continue;
 		}
+		if ( G_CoopGuest( ent ) ) {
+			continue;   // RealRTCW-VR: saves keep the host only, co-op guests join again
+		}
 		if ( !G_SaveWrite( &i, sizeof( i ), f ) ) {
 			G_SaveWriteError();
 		}
@@ -1325,7 +1328,7 @@ qboolean G_SaveGame( char *username ) {
 	for ( i = 0 ; i < MAX_CLIENTS ; i++ )
 	{
 		cl = &level.clients[i];
-		if ( cl->pers.connected != CON_CONNECTED ) {
+		if ( cl->pers.connected != CON_CONNECTED || G_CoopGuest( &g_entities[i] ) ) {
 			continue;
 		}
 		if ( !G_SaveWrite( &i, sizeof( i ), f ) ) {
@@ -1346,7 +1349,7 @@ qboolean G_SaveGame( char *username ) {
 	for ( i = 0 ; i < level.numConnectedClients ; i++ )
 	{
 		cs = &caststates[i];
-		if ( !g_entities[i].inuse ) {
+		if ( !g_entities[i].inuse || G_CoopGuest( &g_entities[i] ) ) {
 			continue;
 		}
 		if ( !G_SaveWrite( &i, sizeof( i ), f ) ) {
@@ -1582,6 +1585,11 @@ void G_LoadGame( char *filename ) {
 				trap_FS_FCloseFile( f );
 				G_Error( "G_LoadGame: entitynum out of range (%i, MAX = %i)\n", i, MAX_GENTITIES );
 			}
+			if ( g_spCoop.integer > 0 && i >= 1 && i <= g_spCoop.integer ) {
+				// RealRTCW-VR: a single player save has enemies in the co-op players' slots
+				trap_FS_FCloseFile( f );
+				G_Error( "This save was made in single player, so co-op can't load it. Start co-op with NEW GAME (or load a save made in co-op)." );
+			}
 			if ( i >= level.num_entities ) {  // notify server
 				level.num_entities = i;
 				serverEntityUpdate = qtrue;
@@ -1590,7 +1598,7 @@ void G_LoadGame( char *filename ) {
 			ReadEntity( f, ent, size );
 			// free all entities that we skipped
 			for ( ; last < i; last++ ) {
-				if ( g_entities[last].inuse && i != ENTITYNUM_WORLD ) {
+				if ( g_entities[last].inuse && i != ENTITYNUM_WORLD && !G_CoopGuest( &g_entities[last] ) ) {
 					if ( last < MAX_CLIENTS ) {
 						trap_DropClient( last, "" );
 					} else {
