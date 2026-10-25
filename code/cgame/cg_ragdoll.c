@@ -27,8 +27,15 @@ the Free Software Foundation, either version 3 of the License, or
 // kept within reach of the server's position for it. Carried bodies (VR grabbing) hang
 // from the hand that holds them: the server puts the grab point in origin2 and the
 // holder's client number + 1 in dl_intensity of the body's entityState.
+//
+// vr_physics 1: the same bodies as Jolt Physics rigid bodies instead (cg_physics.cpp): a
+// box for the torso and capsules for the head and limbs, joined by swing-twist joints
+// (shoulders, hips, neck, wrists, ankles) and hinges (elbows, knees), colliding with the
+// level, doors and lifts and with each other. The death pose, the hits, the grab and the
+// tether to the server's body are the same; the bones follow the bodies (RD_PhysPose).
 
 #include "cg_local.h"
+#include "cg_physics.h"
 
 #ifndef BONEFLAG_TAG
 #define BONEFLAG_TAG        1       // qfiles.h: this bone is actually a tag
@@ -157,6 +164,17 @@ typedef struct {
 
 	float       out[RD_MAX_BONES * 12];
 	vec3_t      outOrigin;
+
+	vec3_t      startVel, killPush;         // how it started falling (RD_Build)
+
+	// vr_physics 1: Jolt bodies instead of the points, one per segment
+	int         phys;                       // Jolt ragdoll, 0: the Verlet points above
+	int         numParts;
+	int         segPart[S_COUNT];           // the part each segment turns with
+	vec3_t      part0Pos[PHYS_MAX_PARTS];   // the parts at death
+	vec3_t      part0Axis[PHYS_MAX_PARTS][3];
+	vec3_t      partPos[PHYS_MAX_PARTS];    // and now
+	vec3_t      partAxis[PHYS_MAX_PARTS][3];
 } ragdoll_t;
 
 static ragdoll_t rdPool[RD_MAX_RAGDOLLS];
@@ -165,6 +183,14 @@ static void RD_ApplyPending( ragdoll_t *rd );
 static void RD_SolveLinks( ragdoll_t *rd );
 static vmCvar_t vr_ragdolls;
 static vmCvar_t vr_ragdollGravity;
+
+static void RD_Free( ragdoll_t *rd ) {
+	if ( rd->phys ) {
+		Phys_DestroyRagdoll( rd->phys );
+		rd->phys = 0;
+	}
+	rd->inUse = qfalse;
+}
 
 void CG_Ragdoll_Init( void ) {
 	memset( rdPool, 0, sizeof( rdPool ) );
@@ -958,6 +984,8 @@ static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 			VectorScale( push, RD_KILL_PUSH, push );
 		}
 	}
+	VectorCopy( vel, rd->startVel );
+	VectorCopy( push, rd->killPush );
 	for ( k = 0; k < P_COUNT; k++ ) {
 		vec3_t v;
 		float upper;
@@ -981,7 +1009,6 @@ static qboolean RD_Build( ragdoll_t *rd, centity_t *cent, refEntity_t *body ) {
 	rd->settleBy = cg.time + RD_SETTLE_MS;
 	rd->settled = qfalse;
 	rd->inUse = qtrue;
-	RD_ApplyPending( rd );
 	return qtrue;
 }
 
@@ -1237,9 +1264,28 @@ static void RD_LimbRoll( ragdoll_t *rd, int s, const vec3_t d0, const vec3_t d, 
 	memcpy( r, out, sizeof( out ) );
 }
 
+// renderer layout: matrix rows, then the translation (model space, axis = identity)
+static void RD_WriteBone( ragdoll_t *rd, int i, vec3_t m[3], const vec3_t pos ) {
+	float *o = rd->out + i * 12;
+	int k;
+
+	for ( k = 0; k < 3; k++ ) {
+		if ( rd->boneIsTag[i] ) {
+			o[k * 3 + 0] = m[k][0];
+			o[k * 3 + 1] = m[k][1];
+			o[k * 3 + 2] = m[k][2];
+		} else {
+			o[0 * 3 + k] = m[k][0];
+			o[1 * 3 + k] = m[k][1];
+			o[2 * 3 + k] = m[k][2];
+		}
+	}
+	VectorSubtract( pos, rd->outOrigin, o + 9 );
+}
+
 static void RD_Pose( ragdoll_t *rd ) {
 	vec3_t segR[S_COUNT][3], f[3], d0, d, u;
-	int s, i, k, anchor;
+	int s, i, anchor;
 
 	for ( s = 0; s < S_COUNT; s++ ) {
 		if ( s == S_TORSO ) {
@@ -1265,7 +1311,6 @@ static void RD_Pose( ragdoll_t *rd ) {
 
 	VectorCopy( rd->p[P_PELVIS], rd->outOrigin );
 	for ( i = 0; i < rd->numBones; i++ ) {
-		float *o = rd->out + i * 12;
 		vec3_t m[3], rel, pos;
 
 		s = rd->boneSeg[i];
@@ -1275,20 +1320,287 @@ static void RD_Pose( ragdoll_t *rd ) {
 		VectorSubtract( rd->bone0Pos[i], rd->p0[anchor], rel );
 		RD_MatVec( segR[s], rel, pos );
 		VectorAdd( pos, rd->p[anchor], pos );
+		RD_WriteBone( rd, i, m, pos );
+	}
+}
 
-		// renderer layout: matrix rows, then the translation (model space, axis = identity)
-		for ( k = 0; k < 3; k++ ) {
-			if ( rd->boneIsTag[i] ) {
-				o[k * 3 + 0] = m[k][0];
-				o[k * 3 + 1] = m[k][1];
-				o[k * 3 + 2] = m[k][2];
-			} else {
-				o[0 * 3 + k] = m[k][0];
-				o[1 * 3 + k] = m[k][1];
-				o[2 * 3 + k] = m[k][2];
+/*
+==============================================================================
+
+vr_physics 1: the segments as Jolt bodies
+
+==============================================================================
+*/
+
+// how thick and heavy each segment is (kg; about 70 in all)
+static const float rdSegRadius[S_COUNT] = { 6.5f, 4.5f, 3.0f, 2.6f, 2.0f, 3.0f, 2.6f, 2.0f, 4.5f, 3.5f, 2.2f, 4.5f, 3.5f, 2.2f };
+static const float rdSegMass[S_COUNT] = { 30, 5, 2.5f, 1.5f, 0.5f, 2.5f, 1.5f, 0.5f, 9, 4, 1, 9, 4, 1 };
+
+// the segment that carries each point
+static const int rdPointSeg[P_COUNT] = {
+	S_TORSO, S_TORSO, S_TORSO, S_HEAD, S_HEAD,
+	S_TORSO, S_LUPPER, S_LFORE, S_LHAND,
+	S_TORSO, S_RUPPER, S_RFORE, S_RHAND,
+	S_TORSO, S_LTHIGH, S_LCALF, S_LFOOT,
+	S_TORSO, S_RTHIGH, S_RCALF, S_RFOOT,
+};
+
+static void RD_Dir( const vec3_t from, const vec3_t to, vec3_t out ) {
+	VectorSubtract( to, from, out );
+	if ( VectorNormalize( out ) < 1e-4f ) {
+		VectorSet( out, 0, 0, 1 );
+	}
+}
+
+// a ball joint: the limb swings round centre (planeHalf about plane, normalHalf across it) and twists
+static void RD_SwingJoint( physPart_t *pp, const vec3_t pivot, const vec3_t centre, const vec3_t dir, const vec3_t plane,
+						   float planeHalf, float normalHalf, float twist ) {
+	pp->joint = PHYS_JOINT_SWINGTWIST;
+	VectorCopy( pivot, pp->pivot );
+	VectorCopy( centre, pp->twist1 );
+	VectorCopy( dir, pp->twist2 );
+	VectorCopy( plane, pp->plane );
+	pp->planeHalf = planeHalf;
+	pp->normalHalf = normalHalf;
+	pp->twistMin = -twist;
+	pp->twistMax = twist;
+}
+
+// an elbow or knee: a-b the upper part, b-c the lower, bending one way only (defAxis: about
+// which a straight limb bends) from straight to maxBend degrees
+static void RD_HingeJoint( ragdoll_t *rd, physPart_t *pp, int a, int b, int c, const vec3_t defAxis, float maxBend ) {
+	vec3_t u, v, cr, axis;
+	float s, bend0;
+
+	RD_Dir( rd->p0[a], rd->p0[b], u );
+	RD_Dir( rd->p0[b], rd->p0[c], v );
+	VectorMA( defAxis, -DotProduct( defAxis, u ), u, axis );
+	if ( VectorNormalize( axis ) < 1e-3f ) {
+		PerpendicularVector( axis, u );
+	}
+	CrossProduct( u, v, cr );
+	s = VectorLength( cr );
+	if ( s > 0.3f && DotProduct( cr, axis ) > 0 ) {
+		VectorScale( cr, 1.0f / s, axis );      // clearly bent the right way: exactly the plane it bends in
+	}
+	bend0 = RAD2DEG( atan2( DotProduct( cr, axis ), DotProduct( u, v ) ) );
+	pp->joint = PHYS_JOINT_HINGE;
+	VectorCopy( rd->p0[b], pp->pivot );
+	VectorCopy( axis, pp->hingeAxis );
+	pp->hingeMin = -bend0 - 3.0f;
+	pp->hingeMax = maxBend - bend0;
+	if ( pp->hingeMax < pp->hingeMin + 1.0f ) {
+		pp->hingeMax = pp->hingeMin + 1.0f;
+	}
+}
+
+static qboolean RD_PhysBuild( ragdoll_t *rd ) {
+	physPart_t parts[PHYS_MAX_PARTS];
+	unsigned char noCollide[PHYS_MAX_PARTS * PHYS_MAX_PARTS];
+	vec3_t f[3], up, down, left, fwd;
+	int s, n = 0, i, j;
+
+	if ( !CG_Physics_Ready() ) {
+		return qfalse;
+	}
+	RD_TorsoFrame( rd->p0, f );         // up, left, back
+	VectorCopy( f[0], up );
+	VectorNegate( f[0], down );
+	VectorCopy( f[1], left );
+	VectorNegate( f[2], fwd );
+	memset( parts, 0, sizeof( parts ) );
+
+	for ( s = 0; s < S_COUNT; s++ ) {     // (parents come before their children)
+		physPart_t *pp;
+		int from = rdSegments[s].from, to = rdSegments[s].to;
+		float side = ( s == S_LUPPER || s == S_LTHIGH ) ? 1 : -1, upper;
+		vec3_t centre, dir, out, mid, v;
+
+		if ( !rd->segValid[s] || n >= PHYS_MAX_PARTS ) {
+			rd->segPart[s] = s == S_TORSO ? 0 : rd->segPart[rdSegments[s].parent];     // turns with its parent
+			continue;
+		}
+		pp = &parts[n];
+		rd->segPart[s] = n;
+		pp->parent = s == S_TORSO ? -1 : rd->segPart[rdSegments[s].parent];
+		pp->mass = rdSegMass[s];
+		pp->radius = rdSegRadius[s];
+		VectorScale( left, side, out );
+
+		if ( s == S_TORSO ) {
+			// a box from the pelvis to the neck, a little narrower than the shoulders (the arms hang beside it)
+			float shoulders = Distance( rd->p0[P_LSHOULDER], rd->p0[P_RSHOULDER] );
+			pp->shape = PHYS_SHAPE_BOX;
+			VectorCopy( rd->p0[P_PELVIS], pp->a );
+			VectorCopy( rd->p0[P_NECK], pp->b );
+			VectorCopy( left, pp->boxAxis + 0 );
+			VectorCopy( up, pp->boxAxis + 3 );
+			VectorCopy( fwd, pp->boxAxis + 6 );
+			pp->boxHalf[0] = shoulders * 0.375f > 4.0f ? shoulders * 0.375f : 4.0f;
+			pp->boxHalf[1] = Distance( rd->p0[P_PELVIS], rd->p0[P_NECK] ) * 0.5f + 2.0f;
+			pp->boxHalf[2] = 4.0f;
+		} else {
+			pp->shape = PHYS_SHAPE_CAPSULE;
+			VectorCopy( rd->p0[from], pp->a );
+			VectorCopy( rd->p0[to], pp->b );
+		}
+
+		RD_Dir( rd->p0[from], rd->p0[to], dir );
+		switch ( s ) {
+		case S_HEAD:            // on the neck: nods further than it tilts
+			RD_SwingJoint( pp, rd->p0[P_NECK], up, dir, left, 50, 40, 50 );
+			pp->toneMs = RD_TONE_BODY_MS;
+			break;
+		case S_LUPPER:
+		case S_RUPPER:          // shoulders: almost anywhere, round a point out, down and a bit forward
+			VectorScale( down, 0.7f, centre );
+			VectorMA( centre, 0.7f, out, centre );
+			VectorMA( centre, 0.3f, fwd, centre );
+			VectorNormalize( centre );
+			RD_SwingJoint( pp, rd->p0[from], centre, dir, fwd, 85, 85, 70 );
+			pp->toneMs = RD_TONE_BODY_MS * 0.7f;
+			break;
+		case S_LFORE:           // elbows bend forwards: about the body's right, a knee about its left
+			VectorNegate( left, v );
+			RD_HingeJoint( rd, pp, P_LSHOULDER, P_LELBOW, P_LWRIST, v, 150 );
+			pp->toneMs = RD_TONE_BODY_MS * 0.7f;
+			break;
+		case S_RFORE:
+			VectorNegate( left, v );
+			RD_HingeJoint( rd, pp, P_RSHOULDER, P_RELBOW, P_RWRIST, v, 150 );
+			pp->toneMs = RD_TONE_BODY_MS * 0.7f;
+			break;
+		case S_LHAND:
+		case S_RHAND:
+			RD_Dir( rd->p0[rdSegments[rdSegments[s].parent].from], rd->p0[from], centre );
+			RD_SwingJoint( pp, rd->p0[from], centre, dir, left, 60, 35, 35 );
+			pp->toneMs = RD_TONE_BODY_MS * 0.7f;
+			break;
+		case S_LTHIGH:
+		case S_RTHIGH:          // hips: well forward, a little back, a little across, further out
+			VectorScale( down, 0.707f, centre );
+			VectorMA( centre, 0.707f, fwd, centre );
+			VectorMA( centre, 0.2f, out, centre );
+			VectorNormalize( centre );
+			RD_SwingJoint( pp, rd->p0[from], centre, dir, left, 70, 33, 30 );
+			pp->toneMs = RD_TONE_LEGS_MS;
+			break;
+		case S_LCALF:           // knees bend backwards
+			RD_HingeJoint( rd, pp, P_LHIP, P_LKNEE, P_LANKLE, left, 140 );
+			pp->toneMs = RD_TONE_LEGS_MS;
+			break;
+		case S_RCALF:
+			RD_HingeJoint( rd, pp, P_RHIP, P_RKNEE, P_RANKLE, left, 140 );
+			pp->toneMs = RD_TONE_LEGS_MS;
+			break;
+		case S_LFOOT:
+		case S_RFOOT:
+			RD_SwingJoint( pp, rd->p0[from], dir, dir, left, 30, 15, 10 );
+			pp->toneMs = RD_TONE_LEGS_MS;
+			break;
+		}
+
+		// starting motion, as RD_Build gives the points: the upper body pushed harder, so it tips over
+		VectorAdd( pp->a, pp->b, mid );
+		VectorScale( mid, 0.5f, mid );
+		upper = ( mid[2] - rd->p0[P_PELVIS][2] ) / 40.0f;
+		upper = upper < 0 ? 0.3f : ( upper > 1 ? 1.3f : 0.3f + upper );
+		VectorMA( rd->startVel, upper, rd->killPush, pp->vel );
+		n++;
+	}
+
+	// parts that were already inside each other at death (an arm through the chest) don't collide
+	memset( noCollide, 0, sizeof( noCollide ) );
+	for ( i = 0; i < n; i++ ) {
+		for ( j = i + 1; j < n; j++ ) {
+			float st, tt, ri = parts[i].shape == PHYS_SHAPE_BOX ? 6.5f : parts[i].radius;
+			if ( RD_SegmentDist( parts[i].a, parts[i].b, parts[j].a, parts[j].b, &st, &tt ) < ri + parts[j].radius ) {
+				noCollide[i * n + j] = 1;
 			}
 		}
-		VectorSubtract( pos, rd->outOrigin, o + 9 );
+	}
+
+	rd->phys = Phys_CreateRagdoll( parts, n, noCollide );
+	if ( !rd->phys ) {
+		return qfalse;
+	}
+	rd->numParts = n;
+	Phys_RagdollPose( rd->phys, rd->part0Pos[0], rd->part0Axis[0][0] );
+	memcpy( rd->partPos, rd->part0Pos, sizeof( rd->partPos ) );
+	memcpy( rd->partAxis, rd->part0Axis, sizeof( rd->partAxis ) );
+	return qtrue;
+}
+
+// where the bodies are now -> the points and the bones
+static void RD_PhysPose( ragdoll_t *rd ) {
+	vec3_t rot[PHYS_MAX_PARTS][3];
+	int i, j, k;
+
+	Phys_RagdollPose( rd->phys, rd->partPos[0], rd->partAxis[0][0] );
+	for ( j = 0; j < rd->numParts; j++ ) {
+		RD_FrameRotation( rd->partAxis[j], rd->part0Axis[j], rot[j] );
+	}
+	for ( k = 0; k < P_COUNT; k++ ) {
+		vec3_t rel;
+		if ( !rd->hasPoint[k] ) {
+			continue;
+		}
+		j = rd->segPart[rdPointSeg[k]];
+		VectorSubtract( rd->p0[k], rd->part0Pos[j], rel );
+		RD_MatVec( rot[j], rel, rd->p[k] );
+		VectorAdd( rd->p[k], rd->partPos[j], rd->p[k] );
+		VectorCopy( rd->p[k], rd->old[k] );
+	}
+	VectorCopy( rd->p[P_PELVIS], rd->outOrigin );
+	for ( i = 0; i < rd->numBones; i++ ) {
+		vec3_t m[3], rel, pos;
+
+		j = rd->segPart[rd->boneSeg[i]];
+		RD_MatMul( rot[j], rd->bone0Axis[i], m );
+		VectorSubtract( rd->bone0Pos[i], rd->part0Pos[j], rel );
+		RD_MatVec( rot[j], rel, pos );
+		VectorAdd( pos, rd->partPos[j], pos );
+		RD_WriteBone( rd, i, m, pos );
+	}
+}
+
+// stay with the server's body, as RD_Step does for the points
+static void RD_PhysAnchor( ragdoll_t *rd, centity_t *cent ) {
+	vec3_t target, err;
+	qboolean originMoved;
+	float d;
+
+	originMoved = Distance( cent->lerpOrigin, rd->lastOrigin ) > 0.25f;
+	VectorCopy( cent->lerpOrigin, rd->lastOrigin );
+	VectorAdd( cent->lerpOrigin, rd->anchorOffset, target );
+	VectorSubtract( target, rd->p[P_PELVIS], err );
+	err[2] = 0;
+	d = VectorLength( err );
+	if ( d > ( originMoved ? RD_ANCHOR_SLACK : RD_ANCHOR_SLACK * 3 ) ) {
+		VectorScale( err, 0.25f * ( d - RD_ANCHOR_SLACK ) / d, err );
+		Phys_RagdollMove( rd->phys, err );
+	}
+	d = target[2] - rd->p[P_PELVIS][2];
+	if ( d > 40.0f && originMoved ) {
+		VectorSet( err, 0, 0, 0.25f * ( d - 40.0f ) );
+		Phys_RagdollMove( rd->phys, err );
+	}
+}
+
+/*
+=================
+CG_Ragdoll_PhysicsOff
+
+vr_physics turned off: the bodies start over as the old ragdolls
+=================
+*/
+void CG_Ragdoll_PhysicsOff( void ) {
+	int i;
+
+	for ( i = 0; i < RD_MAX_RAGDOLLS; i++ ) {
+		if ( rdPool[i].inUse && rdPool[i].phys ) {
+			RD_Free( &rdPool[i] );
+		}
 	}
 }
 
@@ -1330,7 +1642,7 @@ static ragdoll_t *RD_Alloc( void ) {
 	if ( cg.time - oldest->lastSeen < 250 ) {
 		return NULL;
 	}
-	oldest->inUse = qfalse;
+	RD_Free( oldest );
 	return oldest;
 }
 
@@ -1361,6 +1673,9 @@ static rdPending_t rdPending[RD_MAX_PENDING];
 static void RD_Wake( ragdoll_t *rd ) {
 	rd->asleep = qfalse;
 	rd->stillSteps = 0;
+	if ( rd->phys ) {
+		Phys_RagdollWake( rd->phys );
+	}
 }
 
 // a kick or a blast: moving again, and it settles again a little after
@@ -1380,6 +1695,28 @@ static void RD_PushPoints( ragdoll_t *rd, const vec3_t point, const vec3_t vel )
 	float w;
 	int k;
 
+	if ( rd->phys ) {
+		// the whole body a little, and the part hit, where it was hit
+		vec3_t v;
+		float best = 1e9f, d;
+		int j, part = -1;
+
+		VectorScale( vel, RD_HIT_BODY, v );
+		Phys_RagdollAddVelocity( rd->phys, -1, v );
+		for ( j = 0; j < rd->numParts; j++ ) {
+			if ( ( d = Distance( rd->partPos[j], point ) ) < best ) {
+				best = d;
+				part = j;
+			}
+		}
+		if ( part >= 0 && best < RD_HIT_RADIUS * 1.5f ) {
+			VectorScale( vel, 1.0f - RD_HIT_BODY, v );
+			Phys_RagdollAddVelocityAt( rd->phys, part, v, point );
+		}
+		RD_Wake( rd );
+		return;
+	}
+
 	for ( k = 0; k < P_COUNT; k++ ) {
 		if ( !rd->hasPoint[k] ) {
 			continue;
@@ -1397,6 +1734,23 @@ static void RD_Blast( ragdoll_t *rd, const vec3_t origin, float radius, float st
 	int k;
 
 	if ( Distance( rd->p[P_PELVIS], origin ) > radius ) {
+		return;
+	}
+	if ( rd->phys ) {
+		for ( k = 0; k < rd->numParts; k++ ) {
+			vec3_t v;
+			VectorSubtract( rd->partPos[k], origin, dir );
+			dist = VectorNormalize( dir );
+			w = 1.0f - ( 0.7f * Distance( rd->p[P_PELVIS], origin ) + 0.3f * dist ) / radius;
+			if ( w <= 0 ) {
+				continue;
+			}
+			dir[2] += 0.6f;
+			VectorNormalize( dir );
+			VectorScale( dir, w * strength, v );
+			Phys_RagdollAddVelocity( rd->phys, k, v );
+		}
+		RD_Unsettle( rd );
 		return;
 	}
 	for ( k = 0; k < P_COUNT; k++ ) {
@@ -1549,13 +1903,13 @@ void CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body ) {
 	if ( !( cent->currentState.eFlags & EF_DEAD ) || !vr_ragdolls.integer || !body->hModel ||
 		 cent->currentState.eType != ET_PLAYER ) {
 		if ( rd ) {
-			rd->inUse = qfalse;     // alive again (respawned, revived) or ragdolls off
+			RD_Free( rd );          // alive again (respawned, revived) or ragdolls off
 		}
 		return;
 	}
 
 	if ( rd && rd->model != body->hModel ) {
-		rd->inUse = qfalse;
+		RD_Free( rd );
 		rd = NULL;
 	}
 	if ( !rd && cent->currentState.clientNum != cent->currentState.number &&
@@ -1602,17 +1956,27 @@ void CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body ) {
 		ok = RD_Build( rd, cent, &start );
 		rdStartPose = NULL;
 		if ( !ok ) {
-			rd->inUse = qfalse;
+			RD_Free( rd );
 			return;
 		}
+		RD_PhysBuild( rd );     // vr_physics 1: Jolt bodies (otherwise, or if that fails, the points)
+		RD_ApplyPending( rd );
 		if ( vr_ragdolls.integer > 1 ) {    // 2: report each one (testing)
 			int k, points = 0;
 			for ( k = 0; k < P_COUNT; k++ ) {
 				points += rd->hasPoint[k];
 			}
-			CG_Printf( "ragdoll: entity %d, %d bones, %d points, %d links\n", rd->entityNum, rd->numBones, points, rd->numLinks );
+			if ( rd->phys ) {
+				CG_Printf( "ragdoll: entity %d, %d bones, %d Jolt bodies\n", rd->entityNum, rd->numBones, rd->numParts );
+			} else {
+				CG_Printf( "ragdoll: entity %d, %d bones, %d points, %d links\n", rd->entityNum, rd->numBones, points, rd->numLinks );
+			}
 		}
-		RD_Pose( rd );
+		if ( rd->phys ) {
+			RD_PhysPose( rd );
+		} else {
+			RD_Pose( rd );
+		}
 	}
 	rd->lastSeen = cg.time;
 
@@ -1635,10 +1999,16 @@ void CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body ) {
 				}
 			}
 		}
+		if ( rd->phys && rd->pinned >= 0 ) {
+			Phys_RagdollGrab( rd->phys, rd->segPart[rdPointSeg[rd->pinned]], rd->p[rd->pinned] );
+		}
 	} else if ( !grabbed && rd->grabber ) {
 		// let go: the body keeps the hand's motion, and stays with the server's body
 		rd->pinned = -1;
 		VectorSubtract( rd->p[P_PELVIS], cent->lerpOrigin, rd->anchorOffset );
+		if ( rd->phys ) {
+			Phys_RagdollRelease( rd->phys );
+		}
 	}
 	rd->grabber = grabbed ? cent->currentState.dl_intensity : 0;
 	if ( grabbed ) {
@@ -1656,6 +2026,9 @@ void CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body ) {
 		if ( tr.fraction < 1.0f ) {
 			rd->settled = qtrue;
 			rd->asleep = qtrue;
+			if ( rd->phys ) {
+				Phys_RagdollSleep( rd->phys );
+			}
 		} else {
 			rd->settleBy = cg.time + 500;
 		}
@@ -1670,20 +2043,36 @@ void CG_Ragdoll_Apply( centity_t *cent, refEntity_t *body ) {
 		}
 	}
 
-	// fixed steps (the same on every machine); one simulation per frame however many
-	// views draw it (both eyes and the HUD layer in VR)
-	if ( rd->simTime > cg.time || cg.time - rd->simTime > 1000 ) {
-		rd->simTime = cg.time;      // time went backwards (map restart) or a long pause
-	}
-	while ( rd->simTime + RD_STEP_MS <= cg.time ) {
-		rd->simTime += RD_STEP_MS;
-		if ( !rd->asleep && steps < RD_MAX_STEPS ) {
-			RD_Step( rd, cent, grabPoint, grabbed );
-			steps++;
+	if ( rd->phys ) {
+		// Jolt steps every body at once (CG_Physics_Frame); here only the hand and the tether,
+		// once a frame however many views draw it
+		if ( rd->simTime != cg.time ) {
+			rd->simTime = cg.time;
+			if ( grabbed ) {
+				Phys_RagdollGrabMove( rd->phys, grabPoint, RD_GRAB_SPEED );
+			} else if ( !rd->settled ) {
+				RD_PhysAnchor( rd, cent );
+			}
+			if ( !rd->settled || Phys_RagdollAwake( rd->phys ) ) {
+				RD_PhysPose( rd );
+			}
 		}
-	}
-	if ( steps ) {
-		RD_Pose( rd );
+	} else {
+		// fixed steps (the same on every machine); one simulation per frame however many
+		// views draw it (both eyes and the HUD layer in VR)
+		if ( rd->simTime > cg.time || cg.time - rd->simTime > 1000 ) {
+			rd->simTime = cg.time;      // time went backwards (map restart) or a long pause
+		}
+		while ( rd->simTime + RD_STEP_MS <= cg.time ) {
+			rd->simTime += RD_STEP_MS;
+			if ( !rd->asleep && steps < RD_MAX_STEPS ) {
+				RD_Step( rd, cent, grabPoint, grabbed );
+				steps++;
+			}
+		}
+		if ( steps ) {
+			RD_Pose( rd );
+		}
 	}
 
 	body->ragdollBones = rd->out;

@@ -2854,6 +2854,15 @@ qboolean    CG_VR_RemoteBody( centity_t *cent );
 void        CG_VR_BodyApplyRemote( centity_t *cent, refEntity_t *body );
 #endif
 void        CG_Ragdoll_DebugHead( centity_t *cent, const vec3_t headOrigin );
+void        CG_Ragdoll_PhysicsOff( void );
+
+//
+// cg_physworld.c (vr_physics: Jolt)
+//
+void        CG_Physics_Init( void );
+void        CG_Physics_Frame( void );
+void        CG_Physics_Shutdown( void );
+qboolean    CG_Physics_Ready( void );
 void        trap_R_RemapShader( const char *oldShader, const char *newShader, const char *timeOffset );
 qboolean    trap_R_inPVS( const vec3_t p1, const vec3_t p2 );
 
