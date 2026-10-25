@@ -51,6 +51,7 @@ the Free Software Foundation, either version 3 of the License, or
 #include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
 #include <Jolt/Physics/Constraints/HingeConstraint.h>
 #include <Jolt/Physics/Constraints/PointConstraint.h>
+#include <Jolt/Physics/Collision/ContactListener.h>
 
 #include <cstdio>
 #include <cstdarg>
@@ -65,6 +66,9 @@ using namespace JPH;
 #define PHYS_WORLD_CHUNK    2048        // hulls per static body
 #define PHYS_HULL_RADIUS    0.01f       // rounded hull edges (m), so bodies slide off corners
 #define PHYS_TONE_TORQUE    220.0f      // N m a joint holds the death pose with, at first
+#define PHYS_MAX_SPEED      16.5f       // m/s (650 units/s, as the old ragdolls): nothing is flung faster
+#define PHYS_MAX_SPIN       12.0f       // rad/s (about two turns a second): no helicopters
+#define PHYS_DEEP_OVERLAP   0.04f       // m: two bodies this far inside each other pass through instead
 
 namespace {
 
@@ -171,7 +175,31 @@ struct World {
 	int                                 totalHulls, totalTris;
 };
 
+/*
+Two bodies dying on the same spot (a pile after a grenade, a squad cut down in a doorway) start
+inside each other, and pushing them apart threw both into the air. Parts of different ragdolls
+that are deep inside each other pass through until they are apart; touching ones collide as
+usual, so bodies still pile up.
+*/
+class OverlapListener : public ContactListener {
+public:
+	void Check( const Body &b1, const Body &b2, const ContactManifold &m, ContactSettings &s ) {
+		if ( b1.GetObjectLayer() == LAYER_BODY && b2.GetObjectLayer() == LAYER_BODY &&
+			 b1.GetCollisionGroup().GetGroupID() != b2.GetCollisionGroup().GetGroupID() &&
+			 m.mPenetrationDepth > PHYS_DEEP_OVERLAP ) {
+			s.mIsSensor = true;
+		}
+	}
+	void OnContactAdded( const Body &b1, const Body &b2, const ContactManifold &m, ContactSettings &s ) override {
+		Check( b1, b2, m, s );
+	}
+	void OnContactPersisted( const Body &b1, const Body &b2, const ContactManifold &m, ContactSettings &s ) override {
+		Check( b1, b2, m, s );
+	}
+};
+
 World       w;
+OverlapListener overlapListener;
 bool        initialized;
 Ragdoll     ragdolls[PHYS_MAX_RAGDOLLS];
 Mover       movers[PHYS_MAX_MOVERS];
@@ -345,6 +373,7 @@ int Phys_Init( void ( *print )( const char *msg ) ) {
 	ps.mNumPositionSteps = 4;
 	w.system->SetPhysicsSettings( ps );
 	w.system->SetGravity( Vec3( 0, 0, -9.81f ) );      // z is up, as in the game
+	w.system->SetContactListener( &overlapListener );
 
 	initialized = true;
 	return 1;
@@ -621,6 +650,8 @@ int Phys_CreateRagdoll( const physPart_t *parts, int numParts, const unsigned ch
 		bcs.mAngularDamping = 0.8f;      // limbs settle instead of swinging on and on
 		bcs.mOverrideMassProperties = EOverrideMassProperties::CalculateInertia;
 		bcs.mMassPropertiesOverride.mMass = p->mass > 0 ? p->mass : 2.0f;
+		bcs.mMaxLinearVelocity = PHYS_MAX_SPEED;
+		bcs.mMaxAngularVelocity = PHYS_MAX_SPIN;
 		bcs.mLinearVelocity = ToJolt( p->vel );
 		rd->body[i] = BI().CreateAndAddBody( bcs, EActivation::Activate );
 		if ( rd->body[i].IsInvalid() ) {

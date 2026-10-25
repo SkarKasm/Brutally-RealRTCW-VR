@@ -1564,6 +1564,8 @@ static void RD_PhysPose( ragdoll_t *rd ) {
 	}
 }
 
+#define RD_PHYS_ANCHOR_STEP 2.0f   // most a body is pulled back towards the server's per frame
+
 // stay with the server's body, as RD_Step does for the points
 static void RD_PhysAnchor( ragdoll_t *rd, centity_t *cent ) {
 	vec3_t target, err;
@@ -1576,13 +1578,16 @@ static void RD_PhysAnchor( ragdoll_t *rd, centity_t *cent ) {
 	VectorSubtract( target, rd->p[P_PELVIS], err );
 	err[2] = 0;
 	d = VectorLength( err );
+	// eased back a little each frame: pulled in one go, a body that slid away jumped back
 	if ( d > ( originMoved ? RD_ANCHOR_SLACK : RD_ANCHOR_SLACK * 3 ) ) {
-		VectorScale( err, 0.25f * ( d - RD_ANCHOR_SLACK ) / d, err );
+		float step = 0.25f * ( d - RD_ANCHOR_SLACK );
+		VectorScale( err, ( step < RD_PHYS_ANCHOR_STEP ? step : RD_PHYS_ANCHOR_STEP ) / d, err );
 		Phys_RagdollMove( rd->phys, err );
 	}
 	d = target[2] - rd->p[P_PELVIS][2];
 	if ( d > 40.0f && originMoved ) {
-		VectorSet( err, 0, 0, 0.25f * ( d - 40.0f ) );
+		float step = 0.25f * ( d - 40.0f );
+		VectorSet( err, 0, 0, step < RD_PHYS_ANCHOR_STEP ? step : RD_PHYS_ANCHOR_STEP );
 		Phys_RagdollMove( rd->phys, err );
 	}
 }
