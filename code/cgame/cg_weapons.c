@@ -3704,6 +3704,9 @@ void CG_AddPlayerFoot( refEntity_t *parent, playerState_t *ps, centity_t *cent )
 	if ( !( cg.snap->ps.persistant[PERS_WOLFKICK] ) ) {
 		return;
 	}
+	if ( cg.kickOnLegsTime == cg.time ) {
+		return;     // RealRTCW-VR: your own legs are doing the kick (CG_KickLegs)
+	}
 
 	memset( &wolfkick, 0, sizeof( wolfkick ) );
 

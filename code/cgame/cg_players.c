@@ -4447,6 +4447,79 @@ void CG_DeadSink( centity_t *cent ) {
 
 /*
 ===============
+CG_KickLegs
+
+RealRTCW-VR: your own kick plays the characters' third person kick ("kick" in wolfanim.cfg,
+the one the soldiers use) on your legs, the legs you see on flatscreen (cg_flatLegs) and in
+VR (vr_fullBody), instead of the separate first person boot. Legs only: the gun stays up.
+The player's animation script has no kick event, so it is timed here from PERS_WOLFKICK.
+===============
+*/
+#define KICK_MAX_MS     900     // the whole kick, sped up to fit (it is 1.27 s as the soldiers do it)
+#define KICK_BLEND_IN   80
+#define KICK_BLEND_OUT  150
+
+static qboolean CG_KickLegs( centity_t *cent, clientInfo_t *ci, refEntity_t *legs ) {
+	static int kickStart, lastKick;
+	static animModelInfo_t *cachedInfo;
+	static animation_t *kickAnim;
+	int i, t, total, lerp, f, now = cg.snap->ps.persistant[PERS_WOLFKICK];
+	float frac;
+
+	if ( cent->currentState.number != cg.snap->ps.clientNum ) {
+		return qfalse;
+	}
+	if ( now && !lastKick ) {
+		kickStart = cg.time;
+	}
+	lastKick = now;
+
+	if ( cachedInfo != ci->modelInfo ) {
+		cachedInfo = ci->modelInfo;
+		kickAnim = NULL;
+		for ( i = 0; cachedInfo && i < cachedInfo->numAnimations; i++ ) {
+			if ( !Q_stricmp( cachedInfo->animations[i].name, "kick" ) ) {
+				kickAnim = &cachedInfo->animations[i];
+				break;
+			}
+		}
+	}
+	if ( !kickAnim || kickAnim->numFrames < 2 || !kickStart ) {
+		return qfalse;
+	}
+	lerp = kickAnim->frameLerp > 0 ? kickAnim->frameLerp : 33;
+	if ( lerp * kickAnim->numFrames > KICK_MAX_MS ) {
+		lerp = KICK_MAX_MS / kickAnim->numFrames;
+	}
+	total = lerp * ( kickAnim->numFrames - 1 );
+	t = cg.time - kickStart;
+	if ( t < 0 || t >= total ) {
+		return qfalse;
+	}
+
+	f = t / lerp;
+	frac = (float)( t - f * lerp ) / lerp;
+	if ( t < KICK_BLEND_IN ) {          // from the step you were in
+		legs->oldframe = legs->frame;
+		legs->frame = kickAnim->firstFrame + f;
+		legs->backlerp = 1.0f - (float)t / KICK_BLEND_IN;
+	} else if ( total - t < KICK_BLEND_OUT ) {      // and back to it
+		legs->oldframe = kickAnim->firstFrame + f;
+		legs->backlerp = (float)( total - t ) / KICK_BLEND_OUT;
+	} else {
+		legs->oldframe = kickAnim->firstFrame + f;
+		legs->frame = kickAnim->firstFrame + f + 1;
+		legs->backlerp = 1.0f - frac;
+	}
+
+	if ( CG_VR_FullBody( cent ) || CG_FlatLegsShown( cent ) ) {
+		cg.kickOnLegsTime = cg.time;     // (the first person boot then stays away)
+	}
+	return qtrue;
+}
+
+/*
+===============
 CG_Player
 ===============
 */
@@ -4720,6 +4793,7 @@ void CG_Player( centity_t *cent ) {
 				legs.frame = legs.oldframe = cent->pe.legs.animation->firstFrame;
 				legs.backlerp = 0;
 			}
+			CG_KickLegs( cent, ci, &legs );
 			CG_VR_BodyApply( cent, &legs );
 		}
 #ifdef VR_NET_HANDS
@@ -4727,6 +4801,9 @@ void CG_Player( centity_t *cent ) {
 			CG_VR_BodyApplyRemote( cent, &legs );     // another VR player's arms
 		}
 #endif
+		if ( !CG_VR_FullBody( cent ) ) {
+			CG_KickLegs( cent, ci, &legs );
+		}
 		CG_VRX_Dismember( cent, &legs );    // RealRTCW-VR: limbs off, then wounds on the pose being drawn
 		CG_VRX_AddWounds( cent, &legs );
 		CG_VRX_AddCryptGore( cent, &legs );     // the crypt's torn soldier pieces

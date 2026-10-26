@@ -812,6 +812,7 @@ typedef struct {
 
 typedef struct {
 	int clientFrame;                // incremented each frame
+	int kickOnLegsTime;             // RealRTCW-VR: cg.time your own legs last showed the kick
 
 	int clientNum;
 
@@ -2819,6 +2820,7 @@ qboolean    CG_VR_BodyDrawn( void );
 void        CG_VR_BodyAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3] );
 void        CG_VR_BodyApply( centity_t *cent, refEntity_t *body );
 void        CG_FlatLegs( centity_t *cent, const refEntity_t *legs );
+qboolean    CG_FlatLegsShown( centity_t *cent );
 void        CG_VR_Geom( int weapon, vrWeaponGeom_t *g );
 float       CG_VR_WeaponScale( void );
 
