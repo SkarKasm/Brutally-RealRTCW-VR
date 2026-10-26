@@ -69,6 +69,7 @@ using namespace JPH;
 #define PHYS_MAX_SPEED      16.5f       // m/s (650 units/s, as the old ragdolls): nothing is flung faster
 #define PHYS_MAX_SPIN       12.0f       // rad/s (about two turns a second): no helicopters
 #define PHYS_DEEP_OVERLAP   0.04f       // m: two bodies this far inside each other pass through instead
+#define PHYS_OWN_OVERLAP    0.01f       // m: parts of one body that started inside each other collide from here
 
 namespace {
 
@@ -142,6 +143,7 @@ struct Ragdoll {
 	bool                toneOn[PHYS_MAX_PARTS];
 	float               age;                        // ms since it went limp
 	Ref<GroupFilterTable> group;
+	unsigned char       inside[PHYS_MAX_PARTS][PHYS_MAX_PARTS];    // started inside each other, not yet apart
 	BodyID              hand;
 	Ref<Constraint>     grab;
 	int                 grabPart;
@@ -175,19 +177,43 @@ struct World {
 	int                                 totalHulls, totalTris;
 };
 
+Ragdoll     ragdolls[PHYS_MAX_RAGDOLLS];
+
 /*
 Two bodies dying on the same spot (a pile after a grenade, a squad cut down in a doorway) start
 inside each other, and pushing them apart threw both into the air. Parts of different ragdolls
 that are deep inside each other pass through until they are apart; touching ones collide as
 usual, so bodies still pile up.
+Parts of one body that were inside each other at death (an arm through the chest) pass through
+the same way, but only until they have worked their way out: from then on they collide, so a
+limb can't swing through its own body.
 */
 class OverlapListener : public ContactListener {
 public:
 	void Check( const Body &b1, const Body &b2, const ContactManifold &m, ContactSettings &s ) {
-		if ( b1.GetObjectLayer() == LAYER_BODY && b2.GetObjectLayer() == LAYER_BODY &&
-			 b1.GetCollisionGroup().GetGroupID() != b2.GetCollisionGroup().GetGroupID() &&
-			 m.mPenetrationDepth > PHYS_DEEP_OVERLAP ) {
+		if ( b1.GetObjectLayer() != LAYER_BODY || b2.GetObjectLayer() != LAYER_BODY ) {
+			return;
+		}
+		const CollisionGroup &g1 = b1.GetCollisionGroup(), &g2 = b2.GetCollisionGroup();
+		if ( g1.GetGroupID() != g2.GetGroupID() ) {
+			if ( m.mPenetrationDepth > PHYS_DEEP_OVERLAP ) {
+				s.mIsSensor = true;
+			}
+			return;
+		}
+		unsigned h = g1.GetGroupID(), i = g1.GetSubGroupID(), j = g2.GetSubGroupID();
+		if ( h < 1 || h > PHYS_MAX_RAGDOLLS || i >= PHYS_MAX_PARTS || j >= PHYS_MAX_PARTS ) {
+			return;
+		}
+		unsigned char *inside = &ragdolls[h - 1].inside[i][j];
+		if ( !*inside ) {
+			return;
+		}
+		if ( m.mPenetrationDepth > PHYS_OWN_OVERLAP ) {
 			s.mIsSensor = true;
+		} else {
+			*inside = 0;        // (only this pair's contact writes it)
+			ragdolls[h - 1].inside[j][i] = 0;
 		}
 	}
 	void OnContactAdded( const Body &b1, const Body &b2, const ContactManifold &m, ContactSettings &s ) override {
@@ -201,7 +227,6 @@ public:
 World       w;
 OverlapListener overlapListener;
 bool        initialized;
-Ragdoll     ragdolls[PHYS_MAX_RAGDOLLS];
 Mover       movers[PHYS_MAX_MOVERS];
 
 BodyInterface &BI() {
@@ -607,16 +632,18 @@ int Phys_CreateRagdoll( const physPart_t *parts, int numParts, const unsigned ch
 	rd->hand = BodyID();
 	rd->grabPart = -1;
 
-	// parts next to each other, and parts that were already inside each other at death (an arm
-	// through the chest in the death animation), don't collide: pushing those apart spins bodies
+	// parts next to each other never collide. Parts that were already inside each other at death
+	// (an arm through the chest in the death animation) pass through until they are apart (see
+	// OverlapListener): pushing them apart at once spins bodies
 	rd->group = new GroupFilterTable( numParts );
+	memset( rd->inside, 0, sizeof( rd->inside ) );
 	for ( i = 0; i < numParts; i++ ) {
 		if ( parts[i].parent >= 0 ) {
 			rd->group->DisableCollision( i, parts[i].parent );
 		}
 		for ( j = i + 1; j < numParts; j++ ) {
 			if ( noCollide && noCollide[i * numParts + j] ) {
-				rd->group->DisableCollision( i, j );
+				rd->inside[i][j] = rd->inside[j][i] = 1;
 			}
 		}
 	}

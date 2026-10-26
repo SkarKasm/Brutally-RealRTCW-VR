@@ -1509,7 +1509,7 @@ static qboolean RD_PhysBuild( ragdoll_t *rd ) {
 		n++;
 	}
 
-	// parts that were already inside each other at death (an arm through the chest) don't collide
+	// parts that were already inside each other at death (an arm through the chest) pass through until apart
 	memset( noCollide, 0, sizeof( noCollide ) );
 	for ( i = 0; i < n; i++ ) {
 		for ( j = i + 1; j < n; j++ ) {
