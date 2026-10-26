@@ -428,7 +428,7 @@ void CG_Physics_Frame( void ) {
 }
 
 void CG_Physics_Init( void ) {
-	trap_Cvar_Register( &vr_physics, "vr_physics", "0", CVAR_ARCHIVE );
+	trap_Cvar_Register( &vr_physics, "vr_physics", "1", CVAR_ARCHIVE );
 	trap_Cvar_Register( &vr_ragdollGravityPW, "vr_ragdollGravity", "400", CVAR_ARCHIVE );
 	pwBuilt = qfalse;
 	pwReady = qfalse;
