@@ -67,6 +67,8 @@ make PLATFORM=mingw64 ARCH=x86_64 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=
      BUILD_RENDERER_OPENGL2=0 release
 ```
 
+The cgame now includes [Jolt Physics](https://github.com/jrouwe/JoltPhysics) 5.6 (`code/JoltPhysics`, C++17) for the experimental `vr_physics 1` ragdolls; it adds about a minute to a clean build and is linked statically, so no extra DLL ships with the game. `USE_JOLT=0` builds without it. `misc/physics-test/` has an offline test that drops ragdolls into real maps without running the game.
+
 The VR code lives mainly in `code/client/cl_vr.c`, `code/cgame/cg_vr.c`, `code/game/g_vr.c` and `code/game/bg_vr.c`. The scripts in `misc/vr/` build `z_vr_assets.pk3` (hand models, weapon tables, menus, wheel icons) from your own RealRTCW install, so no game assets are stored here.
 
 ---
@@ -76,6 +78,7 @@ The VR code lives mainly in `code/client/cl_vr.c`, `code/cgame/cg_vr.c`, `code/g
 - **RealRTCW** by WolfETPlayer and contributors, which this mod is built on.
 - **iortcw** and id Software's RTCW source release.
 - **RTCWQuest** by Team Beef (DrBeef), whose control layout the VR controls are based on.
+- **Jolt Physics** by Jorrit Rouwe and contributors (MIT licence, see `code/JoltPhysics/LICENSE`), used for the `vr_physics` ragdolls.
 
 ## Support
 

@@ -203,6 +203,12 @@ ifndef USE_CURL
 USE_CURL=0
 endif
 
+# RealRTCW-VR: Jolt Physics (code/JoltPhysics, MIT) in the cgame for vr_physics 1.
+# USE_JOLT=0 builds the cgame without it (vr_physics then keeps the old ragdolls).
+ifndef USE_JOLT
+USE_JOLT=1
+endif
+
 ifndef USE_CURL_DLOPEN
   ifdef MINGW
     USE_CURL_DLOPEN=0
@@ -1427,6 +1433,26 @@ define DO_CGAME_CC
 $(echo_cmd) "CGAME_CC $<"
 $(Q)$(CC) $(BASEGAME_CFLAGS) -DCGAMEDLL -DCGAME $(SHLIBCFLAGS) $(CFLAGS) $(OPTIMIZEVM) -o $@ -c $<
 $(Q)$(DO_QVM_DEP)
+endef
+
+# Jolt Physics: C++17, built with the same defines for the library and the wrapper (Jolt checks
+# they match). SSE4.2 and no AVX, so it runs on any PC that can run VR.
+JOLTDIR=$(MOUNT_DIR)/JoltPhysics
+JOLT_CXXFLAGS=-std=c++17 -I$(JOLTDIR) -DNDEBUG -DJPH_USE_SSE4_1 -DJPH_USE_SSE4_2 -msse4.2 -mpopcnt \
+  -O2 -ffp-contract=off -fno-strict-aliasing -fvisibility=hidden -w
+JOLTSRC=$(filter-out $(JOLTDIR)/Jolt/Compute/DX12/% $(JOLTDIR)/Jolt/Compute/VK/% $(JOLTDIR)/Jolt/Compute/MTL/%, \
+  $(wildcard $(JOLTDIR)/Jolt/*.cpp $(JOLTDIR)/Jolt/*/*.cpp $(JOLTDIR)/Jolt/*/*/*.cpp $(JOLTDIR)/Jolt/*/*/*/*.cpp))
+JOLTOBJ=$(patsubst $(JOLTDIR)/%.cpp,$(B)/jolt/%.o,$(JOLTSRC))
+
+define DO_JOLT_CXX
+$(echo_cmd) "JOLT_CXX $<"
+$(Q)$(MKDIR) $(dir $@)
+$(Q)$(CXX) $(JOLT_CXXFLAGS) $(SHLIBCFLAGS) -o $@ -c $<
+endef
+
+define DO_CGAME_CXX
+$(echo_cmd) "CGAME_CXX $<"
+$(Q)$(CXX) $(JOLT_CXXFLAGS) -DUSE_JOLT -DCGAMEDLL -DCGAME $(SHLIBCFLAGS) -Wall -o $@ -c $<
 endef
 
 define DO_UI_CC
@@ -2656,6 +2682,7 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_view.o \
   $(B)/$(BASEGAME)/cgame/cg_vr.o \
   $(B)/$(BASEGAME)/cgame/cg_ragdoll.o \
+  $(B)/$(BASEGAME)/cgame/cg_physworld.o \
   $(B)/$(BASEGAME)/cgame/cg_vrbody.o \
   $(B)/$(BASEGAME)/cgame/cg_vrscope.o \
   $(B)/$(BASEGAME)/cgame/cg_vrrecoil.o \
@@ -2668,13 +2695,17 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/q_math.o \
   $(B)/$(BASEGAME)/cgame/q_shared.o
 
-Q3CGOBJ = $(Q3CGOBJ_) $(B)/$(BASEGAME)/cgame/cg_syscalls.o
+Q3CGOBJ = $(Q3CGOBJ_) $(B)/$(BASEGAME)/cgame/cg_syscalls.o $(B)/$(BASEGAME)/cgame/cg_physics.o
 Q3CGVMOBJ = $(Q3CGOBJ_:%.o=%.asm)
+ifneq ($(USE_JOLT),0)
+  Q3CGOBJ += $(JOLTOBJ)
+  CGAME_LINK_CXX=-static-libstdc++ -static-libgcc
+endif
 
 ifdef MINGW
 $(B)/$(BASEGAME)/cgame_sp_$(SHLIBNAME): $(Q3CGOBJ)
 	$(echo_cmd) "LD $@"
-	$(Q)$(CC) $(CFLAGS) $(SHLIBLDFLAGS) -o $@ $(Q3CGOBJ) $(LIBS)
+	$(Q)$(CXX) $(CFLAGS) $(SHLIBLDFLAGS) $(CGAME_LINK_CXX) -o $@ $(Q3CGOBJ) $(LIBS)
 else
 $(B)/$(BASEGAME)/cgame.sp.$(SHLIBNAME): $(Q3CGOBJ)
 	$(echo_cmd) "LD $@"
@@ -3036,6 +3067,18 @@ $(B)/$(BASEGAME)/cgame/bg_%.o: $(GDIR)/bg_%.c
 
 $(B)/$(BASEGAME)/cgame/%.o: $(CGDIR)/%.c
 	$(DO_CGAME_CC)
+
+ifneq ($(USE_JOLT),0)
+$(B)/$(BASEGAME)/cgame/cg_physics.o: $(CGDIR)/cg_physics.cpp $(CGDIR)/cg_physics.h
+	$(DO_CGAME_CXX)
+else
+$(B)/$(BASEGAME)/cgame/cg_physics.o: $(CGDIR)/cg_physics.cpp $(CGDIR)/cg_physics.h
+	$(echo_cmd) "CGAME_CXX $<"
+	$(Q)$(CXX) -std=c++17 -DCGAMEDLL -DCGAME $(SHLIBCFLAGS) -O2 -Wall -o $@ -c $<
+endif
+
+$(B)/jolt/%.o: $(JOLTDIR)/%.cpp
+	$(DO_JOLT_CXX)
 
 $(B)/$(BASEGAME)/cgame/bg_%.asm: $(GDIR)/bg_%.c $(Q3LCC)
 	$(DO_CGAME_Q3LCC)

@@ -1012,12 +1012,35 @@ static qboolean VR_CreatePlaySpace( void ) {
 
 /*
 =================
+VR_FlatFrameCap
+
+A VR session turns off the frame cap and vsync (the headset paces the game) and those are
+saved. Whenever the game ends up on the monitor (VR off, no headset, the session failed or
+ended), put the flatscreen ones back, or the game runs at thousands of frames a second,
+faster than the server takes the commands ("Connection Interrupted" flashing).
+=================
+*/
+static void VR_FlatFrameCap( void ) {
+	cvar_t *flatFps = Cvar_Get( "vr_flatMaxfps", "125", CVAR_ARCHIVE );
+	cvar_t *flatSwap = Cvar_Get( "vr_flatSwapInterval", "1", CVAR_ARCHIVE );
+
+	if ( Cvar_VariableIntegerValue( "com_maxfps" ) <= 0 ) {
+		Cvar_Set( "com_maxfps", flatFps->integer > 0 ? flatFps->string : "125" );
+	}
+	if ( Cvar_VariableIntegerValue( "vr_flatSwapRestore" ) ) {
+		Cvar_Set( "r_swapInterval", flatSwap->string );
+		Cvar_Set( "vr_flatSwapRestore", "0" );
+	}
+}
+
+/*
+=================
 CL_VR_InitSession
 
 Called once the renderer has created its window and GL context.
 =================
 */
-void CL_VR_InitSession( void ) {
+static void VR_InitSession( void ) {
 	XrGraphicsRequirementsOpenGLKHR req = { XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR };
 	XrGraphicsBindingOpenGLWin32KHR binding = { XR_TYPE_GRAPHICS_BINDING_OPENGL_WIN32_KHR };
 	XrSessionCreateInfo sci;
@@ -1065,6 +1088,13 @@ void CL_VR_InitSession( void ) {
 	xr.menuPlaced = qfalse;
 	xr.lastRawHeadValid = qfalse;
 	Com_Printf( "VR: session created\n" );
+}
+
+void CL_VR_InitSession( void ) {
+	VR_InitSession();
+	if ( xr.instanceReady && xr.session == XR_NULL_HANDLE ) {
+		VR_FlatFrameCap();      // no session: the game stays on the monitor
+	}
 }
 
 /*
@@ -1143,12 +1173,14 @@ static void VR_PollEvents( void ) {
 			} else if ( sc->state == XR_SESSION_STATE_EXITING || sc->state == XR_SESSION_STATE_LOSS_PENDING ) {
 				Com_Printf( "VR: the runtime ended the session, continuing on the monitor\n" );
 				xr.sessionRunning = qfalse;
+				VR_FlatFrameCap();
 			}
 			break;
 		}
 		case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING:
 			Com_Printf( "VR: OpenXR runtime is going away\n" );
 			xr.sessionRunning = qfalse;
+			VR_FlatFrameCap();
 			break;
 		case XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING:
 			// the user recentred: reposition the menu panel too
@@ -1255,18 +1287,7 @@ void CL_VR_Init( void ) {
 	}
 
 	if ( !vr_enable->integer ) {
-		// a VR session turns off the frame cap and vsync (the headset paces the game) and
-		// those are saved: put the flatscreen ones back, or the game runs at thousands of
-		// frames a second, faster than the server takes the commands ("Connection Interrupted")
-		cvar_t *flatFps = Cvar_Get( "vr_flatMaxfps", "125", CVAR_ARCHIVE );
-		cvar_t *flatSwap = Cvar_Get( "vr_flatSwapInterval", "1", CVAR_ARCHIVE );
-		if ( Cvar_VariableIntegerValue( "com_maxfps" ) <= 0 ) {
-			Cvar_Set( "com_maxfps", flatFps->integer > 0 ? flatFps->string : "125" );
-		}
-		if ( Cvar_VariableIntegerValue( "vr_flatSwapRestore" ) ) {
-			Cvar_Set( "r_swapInterval", flatSwap->string );
-			Cvar_Set( "vr_flatSwapRestore", "0" );
-		}
+		VR_FlatFrameCap();
 		Com_Printf( "VR: disabled (vr_enable 0)\n" );
 		return;
 	}
@@ -1276,6 +1297,7 @@ void CL_VR_Init( void ) {
 			qxrDestroyInstance( xr.instance );
 			xr.instance = XR_NULL_HANDLE;
 		}
+		VR_FlatFrameCap();
 		return;
 	}
 

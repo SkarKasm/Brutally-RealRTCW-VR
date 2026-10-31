@@ -79,6 +79,7 @@ void CG_VR_Init( void ) {
 
 	memset( &cgvr, 0, sizeof( cgvr ) );
 	CG_Ragdoll_Init();
+	CG_Physics_Init();
 	CG_VR_BodyInit();
 	CG_VR_ScopeInit();
 	CG_VR_RecoilInit();

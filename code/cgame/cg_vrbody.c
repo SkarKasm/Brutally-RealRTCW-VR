@@ -434,17 +434,21 @@ weapon's arms are the only arms), its torso upright over the hips whatever the v
 pitch, its neck just behind and below the eyes.
 =================
 */
+qboolean CG_FlatLegsShown( centity_t *cent ) {
+	trap_Cvar_Update( &cg_flatLegs );
+	return cg_flatLegs.integer && !cgvr.active && cent->currentState.number == cg.snap->ps.clientNum &&
+		   !cg.renderingThirdPerson && !cg.cameraMode && cg.predictedPlayerState.stats[STAT_HEALTH] > 0 &&
+		   !( cent->currentState.eFlags & EF_DEAD ) && cg.predictedPlayerState.pm_type == PM_NORMAL;
+}
+
 void CG_FlatLegs( centity_t *cent, const refEntity_t *legs ) {
 	refEntity_t fp;
 	vec3_t yaw, fwd, neck, want;
 	int i, k;
 
-	trap_Cvar_Update( &cg_flatLegs );
 	trap_Cvar_Update( &cg_flatLegsBack );
 	trap_Cvar_Update( &cg_flatLegsCut );
-	if ( !cg_flatLegs.integer || cgvr.active || cent->currentState.number != cg.snap->ps.clientNum ||
-		 cg.renderingThirdPerson || cg.cameraMode || cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 ||
-		 ( cent->currentState.eFlags & EF_DEAD ) || cg.predictedPlayerState.pm_type != PM_NORMAL ) {
+	if ( !CG_FlatLegsShown( cent ) ) {
 		return;
 	}
 

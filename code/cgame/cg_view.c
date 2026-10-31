@@ -1739,6 +1739,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	// update cg.predictedPlayerState
 	CG_PredictPlayerState();
 
+	// vr_physics: step the Jolt world before any body is drawn
+	CG_Physics_Frame();
+
 	DEBUGTIME
 
 	// decide on third person view

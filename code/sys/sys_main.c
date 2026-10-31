@@ -691,6 +691,13 @@ void Sys_SigHandler( int signal )
 		Sys_Exit( 2 );
 }
 
+#ifdef _WIN32
+// RealRTCW-VR: run on the dedicated GPU on hybrid laptops. The headset is wired to it, and an
+// OpenGL context on the integrated GPU makes xrCreateSession fail, so VR fell back to the monitor.
+__declspec(dllexport) unsigned long NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+#endif
+
 /*
 =================
 main
