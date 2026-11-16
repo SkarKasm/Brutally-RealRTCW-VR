@@ -996,6 +996,203 @@ static void R_VRX_ClipMesh( const char *surfName, int firstVert, int numVerts, i
 
 /*
 =============
+R_VRG_Mesh
+
+RealRTCW-VR voxel gore on a head (qcommon/vr_gore.h, cgame cg_vrgore.c): ragdollMagic
+VRG_HEAD_MAGIC, ragdollBones the address of what to draw (two 32 bit halves). As for a body
+(tr_animation.c R_VRG_Skin): only the triangles left whole and the pieces round the holes,
+or, drawn with vr_goreflesh, the wound walls instead. Called before the caller counts the
+surface's vertexes in.
+=============
+*/
+#include "../qcommon/vr_gore.h"
+
+void R_VRX_Decals( const float *g, int firstVert, int numVerts, int firstIndex );     // tr_animation.c
+
+// the blood on a head (cg_vrgore.c): drawn again with a blood shader, its holes after the address
+static void R_VRG_HeadDecals( const refEntity_t *e, int firstVert, int numVertsAll, int firstIndex, int numVerts ) {
+	if ( !tess.shader || ( Q_stricmpn( tess.shader->name, "vr_bodywound", 12 ) && Q_stricmpn( tess.shader->name, "vr_goreblood", 12 ) ) ) {
+		return;
+	}
+	R_VRX_Decals( e->ragdollBones + 2, firstVert, numVertsAll, firstIndex );
+	tess.numVertexes -= numVerts;       // (the caller adds the surface's own)
+}
+
+/*
+=============
+R_VRG_Room
+
+RealRTCW-VR: the most a voxel gored surface adds to tess (its wound walls, or the pieces of its
+cut triangles), so callers can reserve it with RB_CHECKOVERFLOW and a full batch is flushed
+instead of the gore running into the end of it
+=============
+*/
+void R_VRG_Room( const vrGoreDraw_t *gd, int *verts, int *indexes ) {
+	int i, sub = 0;
+
+	*verts = *indexes = 0;
+	if ( !gd ) {
+		return;
+	}
+	for ( i = 0; i < gd->numSurfaces && i < VRG_MAX_SURFS; i++ ) {
+		if ( gd->surf[i].numSub > sub ) {
+			sub = gd->surf[i].numSub;
+		}
+	}
+	*verts = gd->numFleshVerts > sub * 3 ? gd->numFleshVerts : sub * 3;
+	*indexes = gd->numFleshIndexes > sub * 3 ? gd->numFleshIndexes : sub * 3;
+	// (never so much that the reservation itself is an error: the gore is cut short instead)
+	if ( *verts > SHADER_MAX_VERTEXES / 4 ) {
+		*verts = SHADER_MAX_VERTEXES / 4;
+	}
+	if ( *indexes > SHADER_MAX_INDEXES / 4 ) {
+		*indexes = SHADER_MAX_INDEXES / 4;
+	}
+}
+
+// a voxel gored head's drawing (cg_vrgore.c), NULL for anything else
+static const vrGoreDraw_t *R_VRG_HeadDraw( const refEntity_t *e ) {
+	union { float f; unsigned u; } bits;
+	unsigned long long addr;
+
+	if ( !e->ragdollBones || e->ragdollMagic != VRG_HEAD_MAGIC ) {
+		return NULL;
+	}
+	bits.f = e->ragdollBones[0];
+	addr = bits.u;
+	bits.f = e->ragdollBones[1];
+	addr |= (unsigned long long)bits.u << 32;
+	return (const vrGoreDraw_t *)(uintptr_t)addr;
+}
+
+static void R_VRG_Mesh( const void *surface, int firstVert, int numVerts, int firstIndex, const int *triangles, int numTriangles ) {
+	const refEntity_t *e = &backEnd.currentEntity->e;
+	const vrGoreDraw_t *gd;
+	const vrGoreSurf_t *gs;
+	unsigned long long addr;
+	union { float f; unsigned u; } bits;
+	model_t *mod;
+	int s = -1, i, j, k, n, numSub, extra;
+
+	if ( !e->ragdollBones || e->ragdollMagic != VRG_HEAD_MAGIC ) {
+		return;
+	}
+	bits.f = e->ragdollBones[0];
+	addr = bits.u;
+	bits.f = e->ragdollBones[1];
+	addr |= (unsigned long long)bits.u << 32;
+	gd = (const vrGoreDraw_t *)(uintptr_t)addr;
+	if ( !gd ) {
+		return;
+	}
+	// which of the model's surfaces (its full detail)
+	mod = R_GetModelByHandle( e->hModel );
+	if ( mod && mod->type == MOD_MESH && mod->md3[0] ) {
+		const md3Surface_t *sf = ( const md3Surface_t * )( (const byte *)mod->md3[0] + mod->md3[0]->ofsSurfaces );
+		for ( i = 0; i < mod->md3[0]->numSurfaces && i < VRG_MAX_SURFS; i++ ) {
+			if ( (const void *)sf == surface ) {
+				s = i;
+				break;
+			}
+			sf = ( const md3Surface_t * )( (const byte *)sf + sf->ofsEnd );
+		}
+	} else if ( mod && mod->type == MOD_MDC && mod->mdc[0] ) {
+		const mdcSurface_t *sf = ( const mdcSurface_t * )( (const byte *)mod->mdc[0] + mod->mdc[0]->ofsSurfaces );
+		for ( i = 0; i < mod->mdc[0]->numSurfaces && i < VRG_MAX_SURFS; i++ ) {
+			if ( (const void *)sf == surface ) {
+				s = i;
+				break;
+			}
+			sf = ( const mdcSurface_t * )( (const byte *)sf + sf->ofsEnd );
+		}
+	}
+
+	if ( tess.shader && !Q_stricmp( tess.shader->name, "vr_goreflesh" ) ) {
+		tess.numIndexes = firstIndex;       // not the head itself
+		n = gd->numFleshVerts;
+		if ( s != 0 || n <= 0 || firstVert + n > SHADER_MAX_VERTEXES - 1 || firstIndex + gd->numFleshIndexes > SHADER_MAX_INDEXES - 1 ) {
+			tess.numVertexes = firstVert - numVerts;
+			return;
+		}
+		for ( i = 0; i < n; i++ ) {
+			int v = firstVert + i;
+			for ( k = 0; k < 3; k++ ) {
+				tess.xyz[v][k] = gd->fleshXyz[i * 3 + k];
+				tess.normal[v][k] = gd->fleshNormal[i * 3 + k];
+			}
+			for ( k = 0; k < 4; k++ ) {
+				tess.vertexColors[v][k] = gd->fleshRGBA[i * 4 + k];
+			}
+			tess.texCoords[v][0][0] = tess.texCoords[v][0][1] = 0;
+			tess.texCoords[v][1][0] = tess.texCoords[v][1][1] = 0;
+		}
+		for ( i = 0; i < gd->numFleshIndexes; i++ ) {
+			int idx = gd->fleshIndexes[i];
+			tess.indexes[tess.numIndexes++] = firstVert + ( idx >= 0 && idx < n ? idx : 0 );
+		}
+		tess.numVertexes = firstVert + n - numVerts;
+		return;
+	}
+
+	if ( s < 0 || s >= gd->numSurfaces ) {
+		return;
+	}
+	gs = &gd->surf[s];
+	if ( gs->numKeep < 0 || gs->numVerts != numVerts || gs->numTriangles != numTriangles ) {
+		R_VRG_HeadDecals( e, firstVert, numVerts, firstIndex, numVerts );
+		return;
+	}
+	tess.numIndexes = firstIndex;
+	for ( i = 0; i < gs->numKeep; i++ ) {
+		int t = gs->keep[i];
+		if ( t < 0 || t >= numTriangles ) {
+			continue;
+		}
+		for ( k = 0; k < 3; k++ ) {
+			tess.indexes[tess.numIndexes++] = triangles[t * 3 + k] + firstVert;
+		}
+	}
+	numSub = gs->numSub;
+	// (never into the last slot: RB_EndSurface takes a write there for an overflow)
+	if ( firstVert + numVerts + numSub * 3 > SHADER_MAX_VERTEXES - 1 ) {
+		numSub = ( SHADER_MAX_VERTEXES - 1 - firstVert - numVerts ) / 3;
+	}
+	if ( tess.numIndexes + numSub * 3 > SHADER_MAX_INDEXES - 1 ) {
+		numSub = ( SHADER_MAX_INDEXES - 1 - tess.numIndexes ) / 3;
+	}
+	if ( numSub < 0 ) {
+		numSub = 0;
+	}
+	extra = 0;
+	for ( i = 0; i < numSub; i++ ) {
+		const float *sb = gs->sub + i * VRG_SUB_FLOATS;
+		int t = (int)sb[0], c[3];
+		if ( t < 0 || t >= numTriangles ) {
+			continue;
+		}
+		for ( k = 0; k < 3; k++ ) {
+			c[k] = triangles[t * 3 + k] + firstVert;
+		}
+		for ( k = 0; k < 3; k++ ) {
+			const float *w = sb + 1 + k * 3;
+			int v = firstVert + numVerts + extra++;
+			for ( j = 0; j < 3; j++ ) {
+				tess.xyz[v][j] = w[0] * tess.xyz[c[0]][j] + w[1] * tess.xyz[c[1]][j] + w[2] * tess.xyz[c[2]][j];
+				tess.normal[v][j] = w[0] * tess.normal[c[0]][j] + w[1] * tess.normal[c[1]][j] + w[2] * tess.normal[c[2]][j];
+			}
+			for ( j = 0; j < 2; j++ ) {
+				tess.texCoords[v][0][j] = w[0] * tess.texCoords[c[0]][0][j] + w[1] * tess.texCoords[c[1]][0][j] + w[2] * tess.texCoords[c[2]][0][j];
+				tess.texCoords[v][1][j] = 0;
+			}
+			tess.indexes[tess.numIndexes++] = v;
+		}
+	}
+	tess.numVertexes = firstVert + extra;     // (the caller adds the surface's own)
+	R_VRG_HeadDecals( e, firstVert, numVerts + extra, firstIndex, numVerts );
+}
+
+/*
+=============
 RB_SurfaceMesh
 =============
 */
@@ -1021,7 +1218,12 @@ static void RB_SurfaceMesh( md3Surface_t *surface ) {
 		backlerp = backEnd.currentEntity->e.backlerp;
 	}
 
-	RB_CHECKOVERFLOW( surface->numVerts, surface->numTriangles * 3 );
+	{
+		// RealRTCW-VR: with room for what a voxel gored head adds, so a full batch is flushed first
+		int goreVerts, goreIndexes;
+		R_VRG_Room( R_VRG_HeadDraw( &backEnd.currentEntity->e ), &goreVerts, &goreIndexes );
+		RB_CHECKOVERFLOW( surface->numVerts + goreVerts, surface->numTriangles * 3 + goreIndexes );
+	}
 
 	LerpMeshVertexes( surface, backlerp );
 	if ( backEnd.currentEntity->e.vrBendMagic == VR_BEND_MAGIC && R_VR_IsHandSurface( surface->name ) ) {
@@ -1046,6 +1248,7 @@ static void RB_SurfaceMesh( md3Surface_t *surface ) {
 		// FIXME: fill in lightmapST for completeness?
 	}
 	R_VRX_ClipMesh( surface->name, Doug, surface->numVerts, Bob );     // RealRTCW-VR: a head with its jaw shot off
+	R_VRG_Mesh( surface, Doug, surface->numVerts, Bob, triangles, surface->numTriangles );     // and voxel gore
 
 	tess.numVertexes += surface->numVerts;
 
@@ -1240,7 +1443,12 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 		backlerp = backEnd.currentEntity->e.backlerp;
 	}
 
-	RB_CHECKOVERFLOW( surface->numVerts, surface->numTriangles * 3 );
+	{
+		// RealRTCW-VR: with room for what a voxel gored head adds, so a full batch is flushed first
+		int goreVerts, goreIndexes;
+		R_VRG_Room( R_VRG_HeadDraw( &backEnd.currentEntity->e ), &goreVerts, &goreIndexes );
+		RB_CHECKOVERFLOW( surface->numVerts + goreVerts, surface->numTriangles * 3 + goreIndexes );
+	}
 
 	LerpCMeshVertexes( surface, backlerp );
 	if ( backEnd.currentEntity->e.vrBendMagic == VR_BEND_MAGIC && R_VR_IsHandSurface( surface->name ) ) {
@@ -1265,6 +1473,7 @@ void RB_SurfaceCMesh( mdcSurface_t *surface ) {
 		// FIXME: fill in lightmapST for completeness?
 	}
 	R_VRX_ClipMesh( surface->name, Doug, surface->numVerts, Bob );     // RealRTCW-VR: a head with its jaw shot off
+	R_VRG_Mesh( surface, Doug, surface->numVerts, Bob, triangles, surface->numTriangles );     // and voxel gore
 
 	tess.numVertexes += surface->numVerts;
 }

@@ -289,6 +289,13 @@ void CG_AddBloodTrails( vec3_t origin, vec3_t dir, int speed, int duration, int 
 	vec3_t velocity;
 	int i;
 
+	if ( CG_VRB_On() ) {
+		// RealRTCW-VR vr_bloodFX: a thin rope of blood that draws out and breaks into drops,
+		// not these flat sprites
+		CG_VRB_Spurt( origin, dir, speed, count, randScale );
+		return;
+	}
+
 	for ( i = 0; i < count; i++ ) {
 		le = CG_AllocLocalEntity();
 		re = &le->refEntity;
@@ -310,7 +317,7 @@ void CG_AddBloodTrails( vec3_t origin, vec3_t dir, int speed, int duration, int 
 		VectorCopy( velocity, le->pos.trDelta );
 		le->pos.trTime = cg.time;
 
-		le->bounceFactor = 0.9;
+		le->bounceFactor = 0.08;       // RealRTCW-VR: blood lands, it doesn't ricochet round the room (was 0.9)
 	}
 }
 

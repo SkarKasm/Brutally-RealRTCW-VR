@@ -19,11 +19,15 @@ Download it below or from ModDB. This repository also holds the full source.
 - Grenades and thrown knives that land on the aiming dot, or real throws if you prefer.
 - Mounted MG42s and flak guns, doors and buttons you push with your hand, and cutscenes on a flat screen in front of you.
 - Controls built off the RTCWQuest layout, remappable in `game\main\vr_controls.cfg`.
+- Hand alignment per gun, in the headset (`handtweak`), and a Hand Editor on your PC for posing the hands and fingers on each gun.
 - VR OPTIONS and GORE & EXTRAS menus, also in the pause menu.
 - Cursed Sands playable in VR.
 
 ### Gore
 - Headshots that open the skull or take the jaw off, explosions that strip bodies down, guts from knife and close-range shotgun hits, and bleeding stumps.
+- Physical hit reactions (Jolt Physics): enemies stagger, clutch wounds, get knocked down and get back up, and bleed out.
+- Blood in the air as droplets and ropes, pumping wounds, blood that runs over the skin, and real bullet holes.
+- Knife cuts, and limbs and heads cut off downed or dead bodies.
 - Heavier ragdolls that you can grab and throw.
 
 ### Flatscreen
@@ -33,9 +37,11 @@ Download it below or from ModDB. This repository also holds the full source.
 
 ## Download
 
-**[Download the latest version (October 18 update)](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_SP_2026-10-18.zip)** · [What's new](download/CHANGES_2026-10-18.md)
+**[Download the latest version (November 16 update)](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_Complete_2026-11-16.zip)** · [What's new](download/CHANGES_2026-11-16.md)
 
-Test build, not played yet: **[October 24, single player co-op](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_Complete_2026-10-24_SP-coop-test.zip)** (single player and both co-op modes in one zip) · [What's new](download/CHANGES_2026-10-24.md)
+Single player, single player co-op and the classic co-op mode in one zip. New: physical hit reactions, new blood, knife gore, a hand alignment mode in VR and a Hand Editor for posing the hands on each gun.
+
+Older builds: [October 18](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_SP_2026-10-18.zip) ([notes](download/CHANGES_2026-10-18.md)) · [October 24 co-op test](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_Complete_2026-10-24_SP-coop-test.zip) ([notes](download/CHANGES_2026-10-24.md))
 
 Also on ModDB.
 
@@ -67,7 +73,7 @@ make PLATFORM=mingw64 ARCH=x86_64 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=
      BUILD_RENDERER_OPENGL2=0 release
 ```
 
-The VR code lives mainly in `code/client/cl_vr.c`, `code/cgame/cg_vr.c`, `code/game/g_vr.c` and `code/game/bg_vr.c`. The scripts in `misc/vr/` build `z_vr_assets.pk3` (hand models, weapon tables, menus, wheel icons) from your own RealRTCW install, so no game assets are stored here.
+The VR code lives mainly in `code/client/cl_vr.c`, `code/cgame/cg_vr.c`, `code/game/g_vr.c` and `code/game/bg_vr.c`. The Hand Editor is in `misc/vr/hand-editor/`, and Jolt Physics (MIT) in `code/JoltPhysics/` (`USE_JOLT=0` builds without it). The other scripts in `misc/vr/` build `z_vr_assets.pk3` (hand models, weapon tables, menus, wheel icons) from your own RealRTCW install, so no game assets are stored here.
 
 ---
 
@@ -76,6 +82,8 @@ The VR code lives mainly in `code/client/cl_vr.c`, `code/cgame/cg_vr.c`, `code/g
 - **RealRTCW** by WolfETPlayer and contributors, which this mod is built on.
 - **iortcw** and id Software's RTCW source release.
 - **RTCWQuest** by Team Beef (DrBeef), whose control layout the VR controls are based on.
+- **Jolt Physics** by Jorrit Rouwe (MIT), for the ragdolls and hit reactions.
+- **three.js** (MIT), in the Hand Editor.
 
 ## Support
 

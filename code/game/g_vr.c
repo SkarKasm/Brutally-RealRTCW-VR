@@ -914,7 +914,7 @@ static gentity_t *G_VR_FindItem( gentity_t *ent, const vec3_t hand ) {
 
 	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
 		e = &g_entities[i];
-		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item || ( e->r.svFlags & SVF_NOCLIENT ) ) {
+		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item || !e->touch || ( e->r.svFlags & SVF_NOCLIENT ) ) {
 			continue;
 		}
 		d = G_VR_ReachDist( ent, hand, e->r.absmin, e->r.absmax );
@@ -978,7 +978,7 @@ static gentity_t *G_VR_PullItem( gentity_t *ent, const vec3_t hand ) {
 	}
 	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
 		e = &g_entities[i];
-		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item || ( e->r.svFlags & SVF_NOCLIENT ) ) {
+		if ( !e->inuse || e->s.eType != ET_ITEM || !e->r.linked || !e->item || !e->touch || ( e->r.svFlags & SVF_NOCLIENT ) ) {
 			continue;
 		}
 		for ( k = 0; k < 3; k++ ) {

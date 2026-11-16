@@ -71,6 +71,8 @@ the Free Software Foundation, either version 3 of the License, or
 #define RF_VR_MIRRORED  ( 1 << 15 )
 // refEntity renderfx: don't draw the hand itself (palm, fingers), keep the sleeve
 #define RF_VR_NOPALMS   ( 1 << 16 )
+// refEntity renderfx: draw its one sided shaders double sided (a voxel gored body, seen into)
+#define RF_VR_TWOSIDED  ( 1 << 17 )
 
 // refEntity_t.vrBendMagic: vrBend holds an elbow bend for the arm surfaces
 #define VR_BEND_MAGIC   0x56524231

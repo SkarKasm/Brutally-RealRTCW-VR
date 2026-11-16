@@ -3052,6 +3052,8 @@ Called before every level change or subsystem restart
 void CG_Shutdown( void ) {
 	// some mods may need to do cleanup work here,
 	// like closing files or archiving session data
+	CG_Physics_Shutdown();     // vr_physics: the Jolt world goes with the level
+	CG_VRGore_Shutdown();      // and the voxel gore's bodies
 }
 
 void CG_S_AddLoopingSound( int entityNum, const vec3_t origin, const vec3_t velocity, sfxHandle_t sfx, int volume ) {

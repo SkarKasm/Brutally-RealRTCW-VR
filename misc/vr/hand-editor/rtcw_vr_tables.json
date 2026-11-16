@@ -1,0 +1,737 @@
+{
+ "poses": {
+  "airstrike.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    9.2,
+    -15.4,
+    -15.6
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "akimbo.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    14.8,
+    -14.9,
+    -14.2
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "bar.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    2.9,
+    -10.3,
+    -7.4
+   ],
+   "supPiece": 2,
+   "supWrist": [
+    33.7,
+    -2.2,
+    -15.8
+   ]
+  },
+  "browning.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    -1.2,
+    -11.3,
+    -8.8
+   ],
+   "supPiece": 1,
+   "supWrist": [
+    39.2,
+    5.5,
+    -14.8
+   ]
+  },
+  "colt.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    13.4,
+    -10.4,
+    -12.4
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "dualtt33.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    16.1,
+    -13.8,
+    -13.7
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "dynamite.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    13.2,
+    -15.8,
+    -20.2
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "dynamite_eng.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    13.2,
+    -15.8,
+    -20.2
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "fg42.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    10.0,
+    -10.5,
+    -9.8
+   ],
+   "supPiece": 2,
+   "supWrist": [
+    29.0,
+    -1.9,
+    -12.8
+   ]
+  },
+  "fg42scope.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    10.0,
+    -10.5,
+    -9.8
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "flamethrower.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    -7.1,
+    -12.7,
+    -9.7
+   ],
+   "supPiece": -1,
+   "supWrist": [
+    4.0,
+    -3.9,
+    -11.9
+   ]
+  },
+  "g43.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    -4.5,
+    -5.6,
+    -3.9
+   ],
+   "supPiece": 0,
+   "supWrist": [
+    17.4,
+    -0.6,
+    -8.2
+   ]
+  },
+  "garand.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    2.4,
+    -5.8,
+    -1.9
+   ],
+   "supPiece": 0,
+   "supWrist": [
+    15.2,
+    -0.4,
+    -7.1
+   ]
+  },
+  "grenade.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    14.4,
+    -14.5,
+    -17.4
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "hdm.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    12.0,
+    -12.2,
+    -13.3
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "ithaca.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    -2.6,
+    -9.9,
+    -4.2
+   ],
+   "supPiece": 4,
+   "supWrist": [
+    34.3,
+    -0.9,
+    -14.9
+   ]
+  },
+  "knife.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    10.0,
+    -9.7,
+    -8.7
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "luger.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    14.4,
+    -10.9,
+    -12.8
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "luger_silenced.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    14.4,
+    -10.9,
+    -12.8
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "m1garand.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    -0.2,
+    -10.3,
+    -7.2
+   ],
+   "supPiece": -1,
+   "supWrist": [
+    35.7,
+    -1.6,
+    -15.7
+   ]
+  },
+  "m7.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    -0.2,
+    -10.3,
+    -7.2
+   ],
+   "supPiece": -1,
+   "supWrist": [
+    35.7,
+    -1.6,
+    -15.7
+   ]
+  },
+  "mauser.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    0.0,
+    -12.4,
+    -8.4
+   ],
+   "supPiece": -1,
+   "supWrist": [
+    36.9,
+    -3.3,
+    -17.3
+   ]
+  },
+  "mg42m.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    -11.7,
+    -11.6,
+    -18.8
+   ],
+   "supPiece": 1,
+   "supWrist": [
+    32.4,
+    2.3,
+    -18.3
+   ]
+  },
+  "mosin.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    -1.3,
+    -7.4,
+    -4.4
+   ],
+   "supPiece": -1,
+   "supWrist": [
+    19.2,
+    -2.3,
+    -10.8
+   ]
+  },
+  "mp34.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    1.1,
+    -11.9,
+    -11.8
+   ],
+   "supPiece": 2,
+   "supWrist": [
+    33.4,
+    -2.1,
+    -21.5
+   ]
+  },
+  "mp40.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    1.0,
+    -8.0,
+    -9.7
+   ],
+   "supPiece": 2,
+   "supWrist": [
+    20.7,
+    0.2,
+    -14.0
+   ]
+  },
+  "mp44.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    5.6,
+    -9.5,
+    -15.0
+   ],
+   "supPiece": 2,
+   "supWrist": [
+    27.9,
+    1.4,
+    -12.2
+   ]
+  },
+  "panzerfaust.weap": {
+   "trigPiece": 4,
+   "trigWrist": [
+    1.2,
+    -9.0,
+    -9.1
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "pineapple.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    15.4,
+    -14.7,
+    -17.1
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "poisongas.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    9.2,
+    -15.4,
+    -15.6
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "ppsh.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    -0.3,
+    -7.8,
+    -4.3
+   ],
+   "supPiece": 2,
+   "supWrist": [
+    14.7,
+    3.4,
+    -13.9
+   ]
+  },
+  "revolver.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    8.5,
+    -12.3,
+    -12.0
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "smokebomb.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    9.2,
+    -15.4,
+    -15.6
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sniperrifle.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    0.0,
+    -12.4,
+    -8.4
+   ],
+   "supPiece": -1,
+   "supWrist": [
+    36.9,
+    -3.3,
+    -17.3
+   ]
+  },
+  "snooper.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    2.4,
+    -5.8,
+    -1.9
+   ],
+   "supPiece": 0,
+   "supWrist": [
+    15.2,
+    -0.4,
+    -7.1
+   ]
+  },
+  "sten.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    -1.3,
+    -11.2,
+    -9.8
+   ],
+   "supPiece": 2,
+   "supWrist": [
+    39.2,
+    -2.4,
+    -15.7
+   ]
+  },
+  "tesla.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    -8.5,
+    -10.8,
+    -10.1
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "thompson.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    5.7,
+    -6.1,
+    -7.4
+   ],
+   "supPiece": 2,
+   "supWrist": [
+    19.6,
+    -0.3,
+    -7.5
+   ]
+  },
+  "tt33.weap": {
+   "trigPiece": -1,
+   "trigWrist": [
+    15.9,
+    -9.6,
+    -11.8
+   ],
+   "supPiece": -2,
+   "supWrist": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "venom.weap": {
+   "trigPiece": -3,
+   "trigWrist": [
+    0.2,
+    -11.7,
+    -15.0
+   ],
+   "supPiece": 4,
+   "supWrist": [
+    16.4,
+    -5.8,
+    -17.5
+   ]
+  }
+ },
+ "spans": {
+  "airstrike.weap": {
+   "trig": 15.2,
+   "sup": 0.0
+  },
+  "akimbo.weap": {
+   "trig": 17.4,
+   "sup": 0.0
+  },
+  "bar.weap": {
+   "trig": 16.7,
+   "sup": 17.9
+  },
+  "browning.weap": {
+   "trig": 0.0,
+   "sup": 21.9
+  },
+  "colt.weap": {
+   "trig": 18.6,
+   "sup": 0.0
+  },
+  "dualtt33.weap": {
+   "trig": 15.0,
+   "sup": 0.0
+  },
+  "dynamite.weap": {
+   "trig": 18.1,
+   "sup": 0.0
+  },
+  "dynamite_eng.weap": {
+   "trig": 18.1,
+   "sup": 0.0
+  },
+  "fg42.weap": {
+   "trig": 13.2,
+   "sup": 15.1
+  },
+  "fg42scope.weap": {
+   "trig": 13.2,
+   "sup": 0.0
+  },
+  "flamethrower.weap": {
+   "trig": 0.0,
+   "sup": 14.6
+  },
+  "g43.weap": {
+   "trig": 0.0,
+   "sup": 10.3
+  },
+  "garand.weap": {
+   "trig": 0.0,
+   "sup": 10.2
+  },
+  "grenade.weap": {
+   "trig": 14.8,
+   "sup": 0.0
+  },
+  "hdm.weap": {
+   "trig": 18.6,
+   "sup": 0.0
+  },
+  "ithaca.weap": {
+   "trig": 0.0,
+   "sup": 19.7
+  },
+  "knife.weap": {
+   "trig": 14.7,
+   "sup": 0.0
+  },
+  "luger.weap": {
+   "trig": 18.2,
+   "sup": 0.0
+  },
+  "luger_silenced.weap": {
+   "trig": 18.2,
+   "sup": 0.0
+  },
+  "m1garand.weap": {
+   "trig": 0.0,
+   "sup": 19.3
+  },
+  "m7.weap": {
+   "trig": 0.0,
+   "sup": 19.3
+  },
+  "mauser.weap": {
+   "trig": 0.0,
+   "sup": 21.2
+  },
+  "mg42m.weap": {
+   "trig": 0.0,
+   "sup": 24.0
+  },
+  "mosin.weap": {
+   "trig": 0.0,
+   "sup": 12.3
+  },
+  "mp34.weap": {
+   "trig": 0.0,
+   "sup": 17.2
+  },
+  "mp40.weap": {
+   "trig": 10.9,
+   "sup": 13.6
+  },
+  "mp44.weap": {
+   "trig": 0.0,
+   "sup": 16.5
+  },
+  "panzerfaust.weap": {
+   "trig": 9.6,
+   "sup": 0.0
+  },
+  "pineapple.weap": {
+   "trig": 14.8,
+   "sup": 0.0
+  },
+  "poisongas.weap": {
+   "trig": 15.2,
+   "sup": 0.0
+  },
+  "ppsh.weap": {
+   "trig": 0.0,
+   "sup": 14.0
+  },
+  "revolver.weap": {
+   "trig": 16.8,
+   "sup": 0.0
+  },
+  "smokebomb.weap": {
+   "trig": 15.2,
+   "sup": 0.0
+  },
+  "sniperrifle.weap": {
+   "trig": 0.0,
+   "sup": 21.2
+  },
+  "snooper.weap": {
+   "trig": 0.0,
+   "sup": 10.2
+  },
+  "sten.weap": {
+   "trig": 0.0,
+   "sup": 18.2
+  },
+  "tesla.weap": {
+   "trig": 0.0,
+   "sup": 13.4
+  },
+  "thompson.weap": {
+   "trig": 11.6,
+   "sup": 11.0
+  },
+  "tt33.weap": {
+   "trig": 15.0,
+   "sup": 0.0
+  },
+  "venom.weap": {
+   "trig": 0.0,
+   "sup": 13.7
+  }
+ },
+ "gunSizes": {
+  "ppsh.weap": 1.33,
+  "garand.weap": 1.3,
+  "snooper.weap": 1.3,
+  "venom.weap": 1.5,
+  "tesla.weap": 1.5,
+  "mp34.weap": 1.0,
+  "panzerfaust.weap": 1.5
+ },
+ "handBig": 1.15,
+ "handSpan": 8.0
+}

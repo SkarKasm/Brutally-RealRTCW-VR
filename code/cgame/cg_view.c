@@ -1739,6 +1739,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	// update cg.predictedPlayerState
 	CG_PredictPlayerState();
 
+	// vr_physics: step the Jolt world before any body is drawn
+	CG_Physics_Frame();
+
 	DEBUGTIME
 
 	// decide on third person view
@@ -1792,7 +1795,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 		DEBUGTIME
 
 		CG_AddLocalEntities();
+		CG_VRB_AddDrops();      // RealRTCW-VR: blood droplets
 		CG_VRX_AddLimbs();      // RealRTCW-VR: cut off limbs
+		CG_VRGore_AddPieces();  // and the voxel gore's
 
 		DEBUGTIME
 

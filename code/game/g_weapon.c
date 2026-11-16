@@ -865,6 +865,13 @@ void Bullet_Endpos( gentity_t *ent, float spread, vec3_t *end ) {
 		}
 	}
 
+	// RealRTCW-VR: the player's bullets go exactly where the gun points, in a headset or on
+	// a flat screen with the crosshair (shotguns keep their pattern)
+	if ( !( ent->r.svFlags & SVF_CASTAI ) && !ent->aiCharacter &&
+		 !( ammoTable[ent->s.weapon].weaponClass & WEAPON_CLASS_SHOTGUN ) ) {
+		randSpread = qfalse;
+	}
+
 	VectorMA( muzzleTrace, dist, forward, *end );
 
 	if ( randSpread ) {
@@ -882,6 +889,14 @@ void Bullet_Fire( gentity_t *ent, float spread, int damage ) {
 	vec3_t end;
 
 	Bullet_Endpos( ent, spread, &end );
+	if ( !( ent->r.svFlags & SVF_CASTAI ) ) {
+		// (for comparing with what the cgame drew, CG_VR_PredictBullet)
+		vec3_t d, a;
+		VectorSubtract( end, muzzleTrace, d );
+		vectoangles( d, a );
+		if ( trap_Cvar_VariableIntegerValue( "vr_log" ) ) G_Printf( "VRLOG sshot %d: from %.1f %.1f %.1f pitch %.2f yaw %.2f spread %.0f vr %d\n", level.time, muzzleTrace[0], muzzleTrace[1], muzzleTrace[2],
+				  AngleNormalize180( a[PITCH] ), a[YAW], spread, G_VR_Aiming( ent ) );
+	}
 	Bullet_Fire_Extended( ent, ent, muzzleTrace, end, spread, damage, 0 );
 }
 
@@ -1026,6 +1041,10 @@ qboolean Bullet_Fire_Extended( gentity_t *source, gentity_t *attacker, vec3_t st
 
     // perform trace with base values (the trace doesn't care about the damage multiplier)
     G_VRX_ShotTrace( &tr, start, end, source->s.number, MASK_SHOT );   // RealRTCW-VR: only where the body is
+    if ( recursion == 0 && attacker->client && !( attacker->r.svFlags & SVF_CASTAI ) ) {
+        if ( trap_Cvar_VariableIntegerValue( "vr_log" ) ) G_Printf( "VRLOG shit %d: at %.1f %.1f %.1f ent %d region %d%s\n", level.time, tr.endpos[0], tr.endpos[1], tr.endpos[2], tr.entityNum,
+                  tr.entityNum < MAX_CLIENTS ? G_VRX_HitRegion( &g_entities[tr.entityNum], tr.endpos ) : -1, tr.startsolid ? " startsolid" : "" );
+    }
 
     if ( ( g_gametype.integer == GT_SURVIVAL || g_aiCollision.integer == 0 ) && tr.startsolid && !g_entities[ tr.entityNum ].takedamage ) {
         int touch[ MAX_GENTITIES ];

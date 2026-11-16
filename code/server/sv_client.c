@@ -59,8 +59,47 @@ v4-only auth server for these new types of connections.
 */
 void SV_GetChallenge(netadr_t from)
 {
-	// ignore if we are in single player
+	int i, oldest, oldestTime;
+	int clientChallenge;
+	challenge_t *challenge;
+
+	// RealRTCW-VR: the single player game never answered, so a friend joining a single player
+	// co-op game waited at "Awaiting connection" forever. Answer when the game takes other
+	// players (g_spCoop), stay closed otherwise.
+	if ( Cvar_VariableIntegerValue( "g_spCoop" ) <= 0 ) {
 		return;
+	}
+
+	clientChallenge = atoi( Cmd_Argv( 1 ) );
+
+	// the challenge this address asked for before, or the oldest slot
+	oldest = 0;
+	oldestTime = 0x7fffffff;
+	challenge = NULL;
+	for ( i = 0 ; i < MAX_CHALLENGES ; i++ ) {
+		if ( !svs.challenges[i].connected && NET_CompareAdr( from, svs.challenges[i].adr ) ) {
+			challenge = &svs.challenges[i];
+			break;
+		}
+		if ( svs.challenges[i].time < oldestTime ) {
+			oldestTime = svs.challenges[i].time;
+			oldest = i;
+		}
+	}
+	if ( !challenge ) {
+		challenge = &svs.challenges[oldest];
+		challenge->adr = from;
+		challenge->firstTime = svs.time;
+		challenge->connected = qfalse;
+	}
+
+	challenge->clientChallenge = clientChallenge;
+	challenge->challenge = ( ( (unsigned int)rand() << 16 ) ^ (unsigned int)rand() ) ^ svs.time;
+	challenge->wasrefused = qfalse;
+	challenge->time = svs.time;
+	challenge->pingTime = svs.time;
+	NET_OutOfBandPrint( NS_SERVER, from, "challengeResponse %d %d %d",
+						challenge->challenge, clientChallenge, com_protocol->integer );
 }
 
 #ifndef STANDALONE

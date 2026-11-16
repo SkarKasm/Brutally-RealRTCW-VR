@@ -779,7 +779,7 @@ qboolean IsHeadShot( gentity_t *targ, gentity_t *attacker, vec3_t dir, vec3_t po
 
 	// RealRTCW-VR: the shot went through the body itself (tight hit boxes): it knows
 	if ( G_VRX_HitRegion( targ, point ) != VRH_NONE ) {
-		return head_shot_weapon && G_VRX_HitRegion( targ, point ) == VRH_HEAD;
+		return head_shot_weapon && G_VRX_HitHeadTop( targ, point ) == 1;    // (only eyes and up: lower, the face, is a wound)
 	}
 
 	if ( head_shot_weapon ) {
@@ -1094,11 +1094,13 @@ void G_DamageExt( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 	}
 
 	// Ridah, Cast AI's don't hurt other Cast AI's as much
-	if ( ( attacker->r.svFlags & SVF_CASTAI ) && ( targ->r.svFlags & SVF_CASTAI ) ) {
-		if ( !AICast_AIDamageOK( AICast_GetCastState( targ->s.number ), AICast_GetCastState( attacker->s.number ) ) ) {
-			return;
-		}
-		damage = (int)( ceil( (float)damage * 0.5 ) );
+	// RealRTCW-VR: a bullet is a bullet. Their stray fire hurts each other in full, whatever the
+	// map's script says (its "noaidamage" was there to keep scripted scenes safe from the old
+	// AI's careless aim); only the lopers still don't hurt each other
+	if ( ( attacker->r.svFlags & SVF_CASTAI ) && ( targ->r.svFlags & SVF_CASTAI ) &&
+		 ( ( targ->aiCharacter == AICHAR_LOPER && attacker->aiCharacter == AICHAR_LOPER ) ||
+		   ( targ->aiCharacter == AICHAR_LOPER_SPECIAL && attacker->aiCharacter == AICHAR_LOPER_SPECIAL ) ) ) {
+		return;
 	}
 	// done.
 
@@ -1197,7 +1199,9 @@ void G_DamageExt( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 
 		// if TF_NO_FRIENDLY_FIRE is set, don't do damage to the target
 		// if the attacker was on the same team
-		if ( targ != attacker && OnSameTeam( targ, attacker )  ) {
+		// (RealRTCW-VR: the enemy's own stray fire hurts them too, in every mode)
+		if ( targ != attacker && OnSameTeam( targ, attacker ) &&
+			 !( targ->aiCharacter && attacker && attacker->aiCharacter ) ) {
 			if ( !g_friendlyFire.integer ) {
 				return;
 			}

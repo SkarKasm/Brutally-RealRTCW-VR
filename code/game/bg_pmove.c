@@ -1442,6 +1442,12 @@ static void PM_CrashLand( void ) {
 	float t;
 	float a, b, c, den;
 
+	// RealRTCW-VR: the dead lie as ragdolls; a corpse box settling or jittering on a step must
+	// not thud (a footstep or land sound every time it touches down, over and over)
+	if ( pm->ps->pm_type == PM_DEAD || pm->ps->stats[STAT_HEALTH] <= 0 ) {
+		return;
+	}
+
 	// Ridah, only play this if coming down hard
 	if ( !pm->ps->legsTimer ) {
 		if ( pml.previous_velocity[2] < -220 ) {

@@ -131,6 +131,11 @@ void GL_Cull( int cullType ) {
 	// RealRTCW-VR: an entity drawn mirrored (a left hand made from a right one)
 	qboolean mirrored = backEnd.currentEntity && ( backEnd.currentEntity->e.renderfx & RF_VR_MIRRORED );
 
+	// RealRTCW-VR: a voxel gored body is seen into, so its outside faces are drawn from inside too
+	if ( cullType == CT_FRONT_SIDED && backEnd.currentEntity && ( backEnd.currentEntity->e.renderfx & RF_VR_TWOSIDED ) ) {
+		cullType = CT_TWO_SIDED;
+	}
+
 	if ( glState.faceCulling == cullType && mirrored == wasMirrored ) {
 		return;
 	}

@@ -184,12 +184,16 @@ typedef struct {
 	int         shader;
 	int         bleedEnd, nextSpurt;
 	int         limb, high;     // VRW_LIMB: which (VRX_GB_*), and cut at the shoulder / hip
+	int         bleedKind, bleedStart;  // vr_bloodFX: how a bullet wound bleeds (VRB_*), from when
+	vrbWound_t  vrb;
+	int         nextSoak;       // vr_bloodFX: when it next soaks more blood into his clothes
 } vrWound_t;
 
 typedef struct {
 	int         entityNum;
 	int         lastSeen;
 	qboolean    dead;
+	int         deadAt;         // (his heart stops soon after)
 	int         num, next;      // num 0: free
 	vrWound_t   w[VRX_MAX_WOUNDS];
 	int         parts[VRW_REGION_COUNT];    // bullet holes in each part of the body (drawn as blood soaked into it)
@@ -206,6 +210,46 @@ typedef struct {
 } vrSkel_t;
 
 static vrWounded_t vrWounded[VRX_MAX_WOUNDED];
+
+// vr_bloodFX: blood soaked into someone's clothes where it landed on him (CG_VRX_BloodOnBody),
+// or ran out of his wounds, each stain as big as the blood in it; laid on the body's own
+// surface by the renderer like the bullet holes (VRX_DrawStains)
+#define VRX_MAX_STAINED     24
+#define VRX_MAX_STAINS      32      // soaked in (a draw of their own takes 32)
+#define VRX_MAX_SPLATS      112     // marks of drops, one to each drop that landed (32 of them drawn without the atlas)
+#define VRX_MAX_STAINS_ALL  144     // both together on one body
+#define VRX_STAIN_PEND      48
+
+typedef struct {
+	int         bone;
+	vec3_t      local, localN, localD;  // in the bone's frame: where, out of the skin, and down it
+	float       amount;                 // how much blood (a drop of size s is about s*s)
+	float       shown, run;             // how far it has soaked out, how far it has run down (catching up)
+	float       flip;
+	// a splat: a drop that flew into him, marked where and the way it hit (localD: the way it
+	// was going along the skin, stretch: how drawn out, the more the shallower it came in),
+	// its picture (VRD_DROPS, VRD_STREAK..) and half its width
+	qboolean    splat;
+	float       stretch, size;
+	int         look;
+	int         time;
+} vrStain_t;
+
+typedef struct {
+	qboolean    used, dead;
+	int         entityNum, lastSeen, lastDraw;
+	int         num;
+	vrStain_t   s[VRX_MAX_STAINS_ALL];
+	int         numPend;                // landed this frame, put on his bones when he's next drawn
+	int         pendBone[VRX_STAIN_PEND];
+	vec3_t      pendP[VRX_STAIN_PEND], pendN[VRX_STAIN_PEND], pendV[VRX_STAIN_PEND];
+	float       pendAmount[VRX_STAIN_PEND];
+	int         pendLook[VRX_STAIN_PEND];   // 0: as it landed (pendV the way it flew), or a picture
+} vrStained_t;
+
+static vrStained_t vrStained[VRX_MAX_STAINED];
+static vrStained_t *VRX_Stained( int entityNum, qboolean create );
+static void VRX_StainAdd( vrStained_t *st, int bone, const vec3_t local, const vec3_t localN, const vec3_t localD, float amount );
 static int vrxDownStyle[MAX_GENTITIES];      // how each one went down (from the gore markers)
 static qboolean VRX_HeadHit( int entityNum, const vec3_t point, const vec3_t dir );
 static void VRX_AddFleshCap( const vec3_t p, const vec3_t dir, float len, float width, const vec3_t light );
@@ -349,7 +393,17 @@ static vrWound_t *VRX_NewWound( int entityNum, int kind, const vec3_t point, con
 }
 
 void CG_VRX_Wound( int entityNum, const vec3_t point, const vec3_t dir ) {
+	CG_VRX_WoundBy( entityNum, point, dir, -1 );
+}
+
+// the same, the weapon known (-1 if not): the voxel gore (cg_vrgore.c) takes body shots
+void CG_VRX_WoundBy( int entityNum, const vec3_t point, const vec3_t dir, int weapon ) {
 	char dbg[8];
+
+	if ( CG_VRX_Gore( VRX_VOXEL ) ) {
+		CG_VRGore_Shot( entityNum, point, dir, weapon );     // heads too
+		return;
+	}
 
 	trap_Cvar_VariableStringBuffer( "vr_debug", dbg, sizeof( dbg ) );
 	if ( CG_VRX_Gore( VRX_WOUNDS ) && entityNum >= 0 && entityNum < MAX_GENTITIES && cg.snap &&
@@ -404,6 +458,13 @@ void CG_VRX_GoreEvent( entityState_t *es ) {
 		if ( w ) {
 			w->size = 2.6f;
 		}
+		return;
+	}
+
+	if ( es->eventParm == VRG_LIMBS && CG_VRX_Gore( VRX_VOXEL ) ) {
+		// limbs off: cut through the body itself (cg_vrgore.c)
+		CG_VRGore_Limbs( es->otherEntityNum, es->density, es->frame, es->pos.trBase, es->origin2 );
+		CG_AddBloodTrails( es->pos.trBase, tv( 0, 0, 1 ), 160, 1000, 10, 0.8f );
 		return;
 	}
 
@@ -968,6 +1029,63 @@ static void VRX_PlaceWound( vrWound_t *w, vrSkel_t *sk, vec3_t bAxis[][3], vec3_
 	}
 	w->size = 1.4f + random() * 0.5f;     // a bullet's hole, not half the limb (was 3 to 4.2)
 	w->bone = i;
+	// how it bleeds (vr_bloodFX): the throat and the femoral pump, the trunk runs, the rest drips
+	w->bleedStart = cg.time;
+	if ( i == VRX_FindBone( sk, "Neck" ) || i == VRX_FindBone( sk, "Head" ) ) {
+		w->bleedKind = VRB_ARTERY;
+		w->bleedEnd = cg.time + 25000;
+	} else if ( ( i == VRX_FindBone( sk, "L Thigh" ) || i == VRX_FindBone( sk, "R Thigh" ) ) && random() < 0.6f ) {
+		w->bleedKind = VRB_ARTERY;
+		w->bleedEnd = cg.time + 25000;
+	} else if ( i == VRX_FindBone( sk, "Spine" ) || i == VRX_FindBone( sk, "Pelvis" ) ||
+				i == VRX_FindBone( sk, "Spine1" ) || i == VRX_FindBone( sk, "Spine2" ) ) {
+		w->bleedKind = VRB_FLOW;
+		w->bleedEnd = cg.time + 20000;
+	} else {
+		w->bleedKind = VRB_SEEP;
+		w->bleedEnd = cg.time + 10000;
+	}
+}
+
+// vr_bloodFX: a wound bleeding, until bleedEnd; dead, the heart stops in a few seconds and
+// then it only drips a while
+static void VRX_WoundBleed( vrWounded_t *wd, vrWound_t *w, int kind, const vec3_t p, const vec3_t n, const vec3_t down ) {
+	float strength;
+	int end = w->bleedEnd;
+
+	if ( !kind || !CG_VRB_On() ) {
+		return;
+	}
+	if ( wd->dead && wd->deadAt ) {
+		int since = cg.time - wd->deadAt;
+		if ( end > wd->deadAt + 15000 ) {
+			end = wd->deadAt + 15000;
+		}
+		if ( since > 4000 ) {
+			kind = VRB_SEEP;
+		}
+	}
+	if ( cg.time >= end ) {
+		return;
+	}
+	strength = ( end - cg.time ) / 15000.0f;
+	strength = strength > 1 ? 1 : strength < 0.15f ? 0.15f : strength;
+	if ( wd->dead && wd->deadAt && kind != VRB_SEEP ) {
+		float left = 1.0f - ( cg.time - wd->deadAt ) / 4000.0f;
+		strength *= left < 0 ? 0 : left;
+	}
+	w->vrb.owner = wd->entityNum;
+	CG_VRB_Wound( &w->vrb, p, n, down, kind, strength );
+	// and it soaks into his clothes round the wound and runs down them, as much as he bleeds
+	if ( w->bone >= 0 && cg.time >= w->nextSoak ) {
+		vrStained_t *st = VRX_Stained( wd->entityNum, qtrue );
+		float amount = !w->nextSoak ? 0.5f : 0.1f * strength * ( kind == VRB_ARTERY ? 1.6f : kind == VRB_FLOW ? 1.2f : 0.6f );
+		w->nextSoak = cg.time + 300;
+		if ( st ) {
+			vec3_t none = { 0, 0, 0 };      // (a cut's localT runs across it: down as he lies now)
+			VRX_StainAdd( st, w->bone, w->local, w->localN, w->kind == VRW_BULLET ? w->localT : none, amount );
+		}
+	}
 }
 
 // a throat or belly wound pumps blood for a while after the blow
@@ -1678,11 +1796,59 @@ that goes first in the buffer, then the holes (model space, 12 floats each).
 =================
 */
 #define VRX_WOUND_MAGIC     0x56525744      // "VRWD", as tr_animation.c
+
+/*
+The overlays below (bullet holes, blood stains) are the body drawn again, and go into the
+scene before the voxel gore (cg_vrgore.c) has cut this frame's body. Without its cut in their
+buffers the renderer drew them on the whole body: over a limb that's gone, a red see-through
+shape of it. So each is noted here, and CG_VRX_OverlayTrailer puts the cut in once it's known.
+*/
+#define VRX_OV_ROOM         4       // floats kept free in each overlay's buffer for it
+static struct { float *b; int o, len, ent, frame; } vrxOv[MAX_CLIENTS * 8];    // (every overlay of every body in view: one left out is drawn uncut)
+
+static void VRX_OverlayNote( float *b, int o, int len, int ent ) {
+	int i, slot = -1;
+
+	for ( i = 0; i < (int)ARRAY_LEN( vrxOv ); i++ ) {
+		if ( vrxOv[i].b == b ) {
+			slot = i;
+			break;
+		}
+		if ( slot < 0 && ( !vrxOv[i].b || vrxOv[i].frame != cg.clientFrame ) ) {
+			slot = i;
+		}
+	}
+	if ( slot < 0 ) {
+		return;
+	}
+	vrxOv[slot].b = b;
+	vrxOv[slot].o = o;
+	vrxOv[slot].len = len;
+	vrxOv[slot].ent = ent;
+	vrxOv[slot].frame = cg.clientFrame;
+}
+
+void CG_VRX_OverlayTrailer( int entityNum, const float *trailer, int n ) {
+	int i;
+
+	if ( n <= 0 || n > VRX_OV_ROOM ) {
+		return;
+	}
+	for ( i = 0; i < (int)ARRAY_LEN( vrxOv ); i++ ) {
+		if ( !vrxOv[i].b || vrxOv[i].ent != entityNum || vrxOv[i].frame != cg.clientFrame ) {
+			continue;
+		}
+		memmove( vrxOv[i].b + vrxOv[i].o + n, vrxOv[i].b + vrxOv[i].o, sizeof( float ) * vrxOv[i].len );
+		memcpy( vrxOv[i].b + vrxOv[i].o, trailer, sizeof( float ) * n );
+		vrxOv[i].b = NULL;      // (done: not twice)
+	}
+}
+
 #define VRX_BODYWOUND_SETS  4               // vr_bodywound, vr_bodywound2..4: the Soldier of Fortune 2 holes
 
 static void VRX_AddBodyWounds( centity_t *cent, refEntity_t *body, vrSkel_t *sk, const float *bones,
 							   float holes[][12], int numHoles ) {
-	static float buf[MAX_CLIENTS][VRX_BODYWOUND_SETS][VRX_MAX_BONES * 12 + VRX_CUT_FLOATS + 2 + VRX_MAX_WOUNDS * 12];
+	static float buf[MAX_CLIENTS][VRX_BODYWOUND_SETS][VRX_MAX_BONES * 12 + VRX_CUT_FLOATS + 2 + VRX_MAX_WOUNDS * 12 + VRX_OV_ROOM];
 	static qhandle_t shaders[VRX_BODYWOUND_SETS];
 	union { float f; int i; } magic;
 	refEntity_t ov;
@@ -1719,7 +1885,9 @@ static void VRX_AddBodyWounds( centity_t *cent, refEntity_t *body, vrSkel_t *sk,
 		magic.i = VRX_WOUND_MAGIC;
 		b[o] = magic.f;
 		b[o + 1] = count;
+		VRX_OverlayNote( b, o, 2 + count * 12, n );
 		ov = *body;
+		ov.reFlags |= REFLAG_FULL_LOD;      // (as the voxel gore draws him: its cut is for the whole model)
 		ov.customShader = shaders[set];
 		ov.customSkin = 0;
 		ov.ragdollBones = b;
@@ -1730,21 +1898,509 @@ static void VRX_AddBodyWounds( centity_t *cent, refEntity_t *body, vrSkel_t *sk,
 
 /*
 =================
+VRX_Stained, CG_VRX_BloodOnBody, VRX_StainAdd, VRX_DrawStains
+
+vr_bloodFX: blood on someone's clothes. A drop that flies into a body (cg_vrblood.c) lands
+where it hit, and a wound soaks the clothes round it as it bleeds; a stain grows with the blood
+in it, soaking out over a moment, and once there's enough it runs down the cloth. Drawn like
+the bullet holes, the body again with only its triangles under each stain kept
+(tr_animation.c R_VRX_Decals): vr_gorebloodsoak and vr_gorebloodrun (z_vr_voxelgore.pk3, cut
+from bodyblood.tga).
+=================
+*/
+static vrStained_t *VRX_Stained( int entityNum, qboolean create ) {
+	vrStained_t *spare = NULL;
+	int i;
+
+	if ( entityNum < 0 || entityNum >= MAX_CLIENTS ) {
+		return NULL;
+	}
+	for ( i = 0; i < VRX_MAX_STAINED; i++ ) {
+		vrStained_t *st = &vrStained[i];
+		if ( st->used && st->entityNum == entityNum ) {
+			return st;
+		}
+		if ( !spare || ( spare->used && ( !st->used || st->lastSeen < spare->lastSeen ) ) ) {
+			spare = st;
+		}
+	}
+	if ( !create || !spare ) {
+		return NULL;
+	}
+	memset( spare, 0, sizeof( *spare ) );
+	spare->used = qtrue;
+	spare->entityNum = entityNum;
+	spare->lastSeen = cg.time;
+	spare->dead = ( cg_entities[entityNum].currentState.eFlags & EF_DEAD ) != 0;
+	return spare;
+}
+
+static void VRX_BloodLanded( int entityNum, int bone, const vec3_t point, const vec3_t normal, const vec3_t dir, float amount, int look ) {
+	vrStained_t *st = VRX_Stained( entityNum, qtrue );
+	int k;
+
+	if ( !st || bone < 0 ) {
+		return;
+	}
+	if ( st->numPend >= VRX_STAIN_PEND ) {
+		return;     // (a burst: enough of it has landed this frame)
+	}
+	k = st->numPend++;
+	st->pendBone[k] = bone;
+	VectorCopy( point, st->pendP[k] );
+	VectorCopy( normal, st->pendN[k] );
+	VectorCopy( dir, st->pendV[k] );
+	st->pendAmount[k] = amount;
+	st->pendLook[k] = look;
+}
+
+// blood flying along dir landed on him at point (the world's), on the limb of bone
+void CG_VRX_BloodOnBody( int entityNum, int bone, const vec3_t point, const vec3_t normal, const vec3_t dir, float amount ) {
+	VRX_BloodLanded( entityNum, bone, point, normal, dir, amount, 0 );
+}
+
+// his own blood on his clothes under a wound (cg_vrgore.c VRG_StreamMark): a streak down the
+// skin along dir, or a scatter of drops
+void CG_VRX_BloodMark( int entityNum, int bone, const vec3_t point, const vec3_t normal, const vec3_t dir, float amount, qboolean streak ) {
+	if ( CG_VRB_On() ) {
+		VRX_BloodLanded( entityNum, bone, point, normal, dir, amount, streak ? VRD_STREAK : VRD_DROPS );
+	}
+}
+
+static float VRX_StainSize( float amount ) {
+	float s = 0.5f + 1.5f * sqrt( amount );
+	return s > 8.0f ? 8.0f : s;
+}
+
+static void VRX_StainAdd( vrStained_t *st, int bone, const vec3_t local, const vec3_t localN, const vec3_t localD, float amount ) {
+	vrStain_t *s, *least = NULL;
+	int i;
+
+	// into one already there (on the same bone, inside its edge)
+	for ( i = 0; i < st->num; i++ ) {
+		s = &st->s[i];
+		if ( s->splat ) {
+			continue;
+		}
+		if ( s->bone == bone && Distance( s->local, local ) < VRX_StainSize( s->amount ) * 0.7f + 0.6f ) {
+			s->amount += amount;
+			return;
+		}
+		if ( !least || s->amount < least->amount ) {
+			least = s;
+		}
+	}
+	if ( st->num < VRX_MAX_STAINS_ALL ) {
+		s = &st->s[st->num++];
+	} else if ( least && least->amount < amount * 4.0f ) {
+		s = least;      // (full: the smallest speck makes way)
+	} else {
+		return;
+	}
+	memset( s, 0, sizeof( *s ) );
+	s->bone = bone;
+	VectorCopy( local, s->local );
+	VectorCopy( localN, s->localN );
+	VectorCopy( localD, s->localD );
+	s->amount = amount;
+	s->shown = 0.3f;
+	s->flip = ( rand() & 1 ) ? 1.0f : -1.0f;
+}
+
+// a drop that flew into him: one droplet where it landed, as big as the blood in it soaks out
+// to on cloth, and drawn out along the way it was going as much as the angle it came in at
+// makes it (a drop hitting at angle a from the cloth leaves a mark 1 / sin a times as long as
+// it is wide), its tail the way it went. Shallower than about 25 degrees it skids into a
+// streak. A fast heavy one throws a speck or two on ahead of it. Each stays where it landed
+// (they don't run together); the oldest makes way when he's covered. look: VRD_STREAK or
+// VRD_DROPS to say, 0 to tell by graze (0 to 1: sin of the angle from straight in).
+static vrStain_t *VRX_SplatSlot( vrStained_t *st, int bone, const vec3_t local, float size ) {
+	vrStain_t *oldest = NULL;
+	int i, splats = 0;
+
+	for ( i = 0; i < st->num; i++ ) {
+		vrStain_t *o = &st->s[i];
+		if ( !o->splat ) {
+			continue;
+		}
+		// (landing all but exactly on one already there: a stream on one spot builds up drop
+		// on drop where it falls, not a pile of marks on one point)
+		if ( o->bone == bone && DistanceSquared( o->local, local ) < Square( 0.3f * ( size < o->size ? size : o->size ) ) ) {
+			o->size += 0.08f * size * ( o->size < 1.6f );
+			return NULL;
+		}
+		splats++;
+		if ( !oldest || o->time < oldest->time ) {
+			oldest = o;
+		}
+	}
+	if ( splats >= VRX_MAX_SPLATS || st->num >= VRX_MAX_STAINS_ALL ) {
+		return oldest;
+	}
+	return &st->s[st->num++];
+}
+
+static void VRX_SplatAdd( vrStained_t *st, int bone, const vec3_t local, const vec3_t localN, const vec3_t localD,
+						  float amount, float graze, int look, float speed ) {
+	vrStain_t *s;
+	float root = sqrt( amount ), size, stretch, sinA;
+	int k, n;
+
+	if ( !look ) {
+		look = graze >= 0.9f ? VRD_STREAK : VRD_DROPS;
+	}
+	if ( look == VRD_STREAK ) {
+		size = 0.25f + 0.35f * root;
+		size = size > 0.7f ? 0.7f : size;
+		stretch = 2.2f + 2.3f * graze + random();
+	} else {
+		size = 0.06f + 1.25f * root;        // (the drop's own size, soaked out about twice that on cloth)
+		size = size > 1.5f ? 1.5f : size;
+		sinA = 1.0f - graze * graze;
+		sinA = sinA < 0.18f ? 0.42f : sqrt( sinA );
+		stretch = 1.0f / sinA;
+		stretch = stretch > 2.4f ? 2.4f : stretch;
+	}
+	s = VRX_SplatSlot( st, bone, local, size );
+	if ( !s ) {
+		return;
+	}
+	memset( s, 0, sizeof( *s ) );
+	s->splat = qtrue;
+	s->bone = bone;
+	VectorCopy( local, s->local );
+	VectorCopy( localN, s->localN );
+	VectorCopy( localD, s->localD );
+	s->amount = amount;
+	s->look = look == VRD_STREAK ? ( ( rand() & 1 ) ? VRD_STREAK : VRD_STREAK2 ) : VRD_DROPS;
+	s->size = size;
+	s->stretch = stretch;
+	s->shown = 1.0f;
+	s->time = cg.time;
+	s->flip = ( rand() & 1 ) ? 1.0f : -1.0f;
+	// a fast one splashes: a speck or two thrown on ahead, the way it was going
+	if ( look != VRD_STREAK && speed > 160.0f && root > 0.25f && graze > 0.05f ) {
+		n = 1 + ( rand() % 2 ) + ( speed > 300.0f );
+		for ( k = 0; k < n; k++ ) {
+			vec3_t at;
+			vrStain_t *t;
+			float off = size * stretch * ( 1.1f + 0.9f * random() + 0.5f * k ), ts = size * ( 0.18f + 0.14f * random() );
+			VectorMA( local, off, localD, at );
+			t = VRX_SplatSlot( st, bone, at, ts );
+			if ( !t ) {
+				continue;
+			}
+			memset( t, 0, sizeof( *t ) );
+			t->splat = qtrue;
+			t->bone = bone;
+			VectorCopy( at, t->local );
+			VectorCopy( localN, t->localN );
+			VectorCopy( localD, t->localD );
+			t->amount = amount * 0.05f;
+			t->look = VRD_DROPS;
+			t->size = ts;
+			t->stretch = 1.0f + 0.3f * stretch;
+			t->shown = 1.0f;
+			t->time = cg.time;
+			t->flip = ( rand() & 1 ) ? 1.0f : -1.0f;
+		}
+	}
+}
+
+// what landed on him since he was last drawn: onto his bones as they are now
+static void VRX_StainsLand( vrStained_t *st, vrSkel_t *sk, vec3_t bAxis[][3], vec3_t bPos[] ) {
+	int i, k;
+
+	for ( i = 0; i < st->numPend; i++ ) {
+		int bn = st->pendBone[i];
+		vec3_t rel, lp, ln, ld, along, down = { 0, 0, -1 };
+		const float *n = st->pendN[i];
+		float graze = 0;
+		qboolean splat = st->pendLook[i] || VectorLengthSquared( st->pendV[i] ) > 0.01f;
+
+		if ( bn < 0 || bn >= sk->n ) {
+			continue;
+		}
+		if ( splat ) {
+			// the way it was going along the skin, and how shallow it came in
+			VectorNormalize2( st->pendV[i], along );
+			VectorMA( along, -DotProduct( along, n ), n, along );
+			graze = VectorNormalize( along );
+			if ( graze < 0.15f ) {      // straight in: round, turned any way
+				vec3_t a, b2;
+				float ang = random() * 2.0f * M_PI;
+				PerpendicularVector( a, n );
+				CrossProduct( n, a, b2 );
+				VectorScale( a, cos( ang ), along );
+				VectorMA( along, sin( ang ), b2, along );
+				graze = 0;
+			}
+		} else {
+			// soaking in: it runs the way down is
+			VectorMA( down, -DotProduct( down, n ), n, along );
+			if ( VectorNormalize( along ) < 0.2f ) {
+				VectorClear( along );       // (on top of him: no way down, it just spreads)
+			}
+		}
+		VectorSubtract( st->pendP[i], bPos[bn], rel );
+		for ( k = 0; k < 3; k++ ) {
+			lp[k] = DotProduct( rel, bAxis[bn][k] );
+			ln[k] = DotProduct( n, bAxis[bn][k] );
+			ld[k] = DotProduct( along, bAxis[bn][k] );
+		}
+		if ( splat ) {
+			VRX_SplatAdd( st, bn, lp, ln, ld, st->pendAmount[i], graze, st->pendLook[i], VectorLength( st->pendV[i] ) );
+		} else {
+			VRX_StainAdd( st, bn, lp, ln, ld, st->pendAmount[i] );
+		}
+	}
+	st->numPend = 0;
+}
+
+// the body drawn again with marks laid on its skin (12 floats each, after its pose and any cut)
+static void VRX_StainOverlay( float *b, const float *bones, vrSkel_t *sk, const refEntity_t *body, int ent,
+							  qhandle_t shader, const float *marks, int count ) {
+	union { float f; int i; } magic;
+	refEntity_t ov;
+	int o = sk->n * 12;
+
+	memcpy( b, bones, sizeof( float ) * 12 * sk->n );
+	if ( VRX_HasCut( bones + o ) ) {
+		memcpy( b + o, bones + o, sizeof( float ) * VRX_CUT_FLOATS );
+		o += VRX_CUT_FLOATS;
+	}
+	memcpy( b + o + 2, marks, sizeof( float ) * 12 * count );
+	magic.i = VRX_WOUND_MAGIC;
+	b[o] = magic.f;
+	b[o + 1] = count;
+	VRX_OverlayNote( b, o, 2 + count * 12, ent );
+	ov = *body;
+	ov.reFlags |= REFLAG_FULL_LOD;
+	ov.customShader = shader;
+	ov.customSkin = 0;
+	ov.ragdollBones = b;
+	ov.ragdollMagic = RAGDOLL_MAGIC;
+	trap_R_AddRefEntityToScene( &ov );
+}
+
+#define VRX_STAIN_SET_FLOATS    ( VRX_MAX_BONES * 12 + VRX_CUT_FLOATS + 2 + VRX_MAX_STAINS * 12 + VRX_OV_ROOM )
+#define VRX_STAIN_SETS          3       // soaked in, running down from that, marks of drops
+typedef char vrxStainRoom_t[VRX_STAIN_SETS * VRX_STAIN_SET_FLOATS >= VRX_MAX_BONES * 12 + VRX_CUT_FLOATS + 2 + VRX_STAIN_MARKS * 12 + VRX_OV_ROOM &&
+							VRX_STAIN_MARKS >= 2 * VRX_MAX_STAINS + VRX_MAX_SPLATS ? 1 : -1];
+
+static void VRX_DrawStains( vrStained_t *st, centity_t *cent, refEntity_t *body, vrSkel_t *sk, const float *bones,
+							vec3_t bAxis[][3], vec3_t bPos[] ) {
+	static float buf[MAX_CLIENTS][VRX_STAIN_SETS * VRX_STAIN_SET_FLOATS];
+	static qhandle_t shaders[VRX_STAIN_SETS];
+	static const int picture[VRX_STAIN_SETS] = { VRD_SOAK, VRD_RUN, 0 };
+	float marks[VRX_STAIN_SETS][VRX_MAX_SPLATS][12], dt;
+	int count[VRX_STAIN_SETS] = { 0, 0, 0 }, room[VRX_STAIN_SETS], i, k, set, n = cent->currentState.number;
+	qhandle_t atlas = CG_VRGore_BloodAtlas();
+
+	VRX_StainsLand( st, sk, bAxis, bPos );
+	if ( n < 0 || n >= MAX_CLIENTS || sk->n > VRX_MAX_BONES || !st->num ) {
+		return;
+	}
+	if ( !shaders[0] ) {
+		shaders[0] = trap_R_RegisterShader( "vr_gorebloodsoak" );
+		shaders[1] = trap_R_RegisterShader( "vr_gorebloodrun" );
+		// (its name has to start vr_goreblood, as the others': that is what tells the renderer
+		// to lay it on the skin. Under another name the whole body was drawn in it, the same
+		// red shapes on everyone)
+		shaders[2] = trap_R_RegisterShader( "vr_gorebloodsplat" );
+		if ( !shaders[2] ) {
+			shaders[2] = shaders[0];        // (an older z_vr_voxelgore.pk3)
+		}
+	}
+	room[0] = room[1] = VRX_MAX_STAINS;
+	room[2] = atlas ? VRX_MAX_SPLATS : VRX_MAX_STAINS;
+	dt = st->lastDraw ? ( cg.time - st->lastDraw ) * 0.001f : 0;
+	dt = dt < 0 ? 0 : dt > 0.2f ? 0.2f : dt;
+	st->lastDraw = cg.time;
+
+	for ( i = 0; i < st->num; i++ ) {
+		vrStain_t *s = &st->s[i];
+		vec3_t p, nn, down, rel;
+		float size = VRX_StainSize( s->amount ), runTo;
+
+		if ( s->bone < 0 || s->bone >= sk->n ) {
+			continue;
+		}
+		if ( !s->splat ) {
+			// soaking out (about a second), and running down once there's enough (a few seconds)
+			s->shown += ( 1.0f - s->shown ) * ( dt * 2.0f > 1 ? 1 : dt * 2.0f );
+			runTo = s->amount > 0.9f ? ( s->amount - 0.9f ) * 1.6f : 0;
+			runTo = runTo > 7.0f ? 7.0f : runTo;
+			s->run += ( runTo - s->run ) * ( dt * 0.5f > 1 ? 1 : dt * 0.5f );
+		}
+
+		// where it is now, with its bone
+		VectorCopy( bPos[s->bone], p );
+		VectorClear( nn );
+		VectorClear( down );
+		for ( k = 0; k < 3; k++ ) {
+			VectorMA( p, s->local[k], bAxis[s->bone][k], p );
+			VectorMA( nn, s->localN[k], bAxis[s->bone][k], nn );
+			VectorMA( down, s->localD[k], bAxis[s->bone][k], down );
+		}
+		if ( VectorNormalize( nn ) < 0.1f ) {
+			continue;
+		}
+		if ( VectorLength( down ) < 0.1f ) {
+			VectorSet( down, 0, 0, -1 );    // as he lies now
+		}
+		VectorMA( down, -DotProduct( down, nn ), nn, down );
+		if ( VectorNormalize( down ) < 0.1f ) {
+			PerpendicularVector( down, nn );
+		}
+		for ( set = s->splat ? 2 : 0; set < ( s->splat ? 3 : 2 ); set++ ) {
+			float *h, sz, stretch, look = picture[set];
+			vec3_t q;
+
+			VectorCopy( p, q );
+			if ( set == 2 ) {
+				sz = s->size;
+				stretch = 10.0f + s->stretch;
+				look = s->look;
+				if ( !atlas && stretch > 11.7f ) {
+					stretch = 11.7f;        // (its own texture is a splash: not drawn out into a streak)
+				}
+			} else if ( set == 1 ) {
+				if ( s->run < 0.3f ) {
+					continue;
+				}
+				sz = size * 0.45f;
+				stretch = 11.0f + s->run;       // (10 and up: stretched down the skin)
+				VectorMA( p, sz * ( s->run + 0.2f ), down, q );     // its top at the stain
+			} else {
+				sz = size * s->shown;
+				stretch = 1.0f;
+			}
+			if ( count[set] >= room[set] ) {
+				continue;
+			}
+			h = marks[set][count[set]++];
+			VectorSubtract( q, body->origin, rel );
+			for ( k = 0; k < 3; k++ ) {     // into the model's own space
+				h[k] = DotProduct( rel, body->axis[k] );
+				h[3 + k] = DotProduct( nn, body->axis[k] );
+				h[6 + k] = DotProduct( down, body->axis[k] );
+			}
+			h[9] = sz;
+			h[10] = atlas ? s->flip * ( look + 1 ) : s->flip;
+			h[11] = stretch;
+		}
+	}
+
+	if ( atlas ) {
+		// every kind in one draw: the voxel gore's, with the blood of his wounds, or one of its own
+		float all[VRX_STAIN_MARKS][12];
+		int total = 0;
+		for ( set = 0; set < VRX_STAIN_SETS; set++ ) {
+			memcpy( all[total], marks[set], sizeof( float ) * 12 * count[set] );
+			total += count[set];
+		}
+		if ( total && !CG_VRGore_TakeBlood( n, body, ( cent->currentState.eFlags & EF_DEAD ) != 0, all[0], total ) ) {
+			VRX_StainOverlay( buf[n], bones, sk, body, n, atlas, all[0], total );
+		}
+		return;
+	}
+	for ( set = 0; set < VRX_STAIN_SETS; set++ ) {
+		if ( count[set] && shaders[set] ) {
+			VRX_StainOverlay( buf[n] + set * VRX_STAIN_SET_FLOATS, bones, sk, body, n, shaders[set], marks[set][0], count[set] );
+		}
+	}
+}
+
+// the bodies near blood in the air, as capsules round their bones (cg_vrblood.c: it lands on them)
+static void VRX_BloodBody( centity_t *cent, vrSkel_t *sk, vec3_t bPos[] ) {
+	static vec3_t a[48], b[48];
+	static float r[48];
+	static int bone[48];
+	int i, num = 0;
+
+	for ( i = 0; i < sk->n && num < 48; i++ ) {
+		if ( sk->radius[i] <= 0 || sk->parents[i] < 0 ) {
+			continue;
+		}
+		VectorCopy( bPos[sk->parents[i]], a[num] );
+		VectorCopy( bPos[i], b[num] );
+		r[num] = sk->radius[i] * 1.15f + 0.5f;      // (his clothes stand off him a little)
+		bone[num] = sk->parents[i];                 // (the limb moves with the bone it hangs from)
+		num++;
+	}
+	CG_VRB_Body( cent->currentState.number, num, a, b, r, bone );
+}
+
+/*
+=================
 CG_VRX_AddWounds
 
 A skeletal body ready to draw (after the ragdoll): its wounds.
 =================
 */
+/*
+=================
+CG_VRX_NewLife
+
+Someone new in an entity (Survival brings the dead back in the same one, somewhere else): nothing
+of the last one is left on him. Told by the server's respawn event, by his being alive after
+he was last seen dead, or by his turning up far from where he was last drawn.
+=================
+*/
+static struct { int lastSeen; vec3_t origin; qboolean dead; } vrLife[MAX_CLIENTS];
+
+void CG_VRX_NewLife( int entityNum ) {
+	vrStained_t *st;
+	vrHeadWounds_t *hw;
+	int i;
+
+	if ( entityNum < 0 || entityNum >= MAX_CLIENTS ) {
+		return;
+	}
+	for ( i = 0; i < VRX_MAX_WOUNDED; i++ ) {
+		if ( vrWounded[i].num && vrWounded[i].entityNum == entityNum ) {
+			vrWounded[i].num = 0;
+		}
+	}
+	st = VRX_Stained( entityNum, qfalse );
+	if ( st ) {
+		st->used = qfalse;
+	}
+	hw = VRX_HeadWounds( entityNum, qfalse );
+	if ( hw ) {
+		hw->lastSeen = 0;
+	}
+	CG_VRGore_Clear( entityNum );
+	vrLife[entityNum].lastSeen = 0;
+}
+
 void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 	static float pose[VRX_MAX_BONES * 12];
 	static vec3_t bAxis[VRX_MAX_BONES][3], bPos[VRX_MAX_BONES];
 	vrWounded_t *wd = NULL;
+	vrStained_t *st;
 	vrSkel_t *sk;
 	const float *bones;
 	vec3_t axis[3];
-	qboolean dead = ( cent->currentState.eFlags & EF_DEAD ) != 0;
+	qboolean dead = ( cent->currentState.eFlags & EF_DEAD ) != 0, nearBlood;
 	float holes[VRX_MAX_WOUNDS][12];
 	int i, k, numHoles = 0;
+
+	if ( cent->currentState.number >= 0 && cent->currentState.number < MAX_CLIENTS ) {
+		int ln = cent->currentState.number;
+		if ( vrLife[ln].lastSeen && !dead &&
+			 ( vrLife[ln].dead || Distance( vrLife[ln].origin, cent->lerpOrigin ) > ( cg.time - vrLife[ln].lastSeen > 1000 ? 300.0f : 500.0f ) ) ) {
+			CG_VRX_NewLife( ln );
+		}
+		vrLife[ln].lastSeen = cg.time ? cg.time : 1;
+		vrLife[ln].dead = dead;
+		VectorCopy( cent->lerpOrigin, vrLife[ln].origin );
+	}
+	// (far off, none of it could be made out: the body isn't drawn again for it)
+	if ( Distance( cg.refdef.vieworg, body->origin ) > 1500.0f ) {
+		return;
+	}
 
 	for ( i = 0; i < VRX_MAX_WOUNDED; i++ ) {
 		if ( vrWounded[i].num && vrWounded[i].entityNum == cent->currentState.number ) {
@@ -1752,17 +2408,38 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 			break;
 		}
 	}
-	if ( !wd ) {
-		return;
+	if ( wd ) {
+		if ( wd->dead && !dead ) {
+			// back alive (a respawn, someone new in the slot): a clean body
+			wd->num = 0;
+			wd = NULL;
+		} else {
+			if ( dead && !wd->dead ) {
+				wd->deadAt = cg.time;
+			}
+			wd->dead = dead;
+			wd->lastSeen = cg.time;
+			if ( !CG_VRX_Gore( VRX_WOUNDS ) ) {
+				wd = NULL;
+			}
+		}
 	}
-	// back alive (a respawn, someone new in the slot): a clean body
-	if ( wd->dead && !dead ) {
-		wd->num = 0;
-		return;
+	// vr_bloodFX: the blood on his clothes, and blood flying near him that may land on him
+	st = VRX_Stained( cent->currentState.number, qfalse );
+	if ( st ) {
+		if ( st->dead && !dead ) {
+			st->used = qfalse;
+			st = NULL;
+		} else {
+			st->dead = dead;
+			st->lastSeen = cg.time;
+		}
 	}
-	wd->dead = dead;
-	wd->lastSeen = cg.time;
-	if ( !CG_VRX_Gore( VRX_WOUNDS ) ) {
+	if ( st && !CG_VRB_On() ) {
+		st = NULL;
+	}
+	nearBlood = CG_VRB_On() && cent->currentState.number < MAX_CLIENTS && CG_VRB_Near( body->origin, 110.0f );
+	if ( !wd && !st && !nearBlood ) {
 		return;
 	}
 
@@ -1782,6 +2459,15 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 	}
 	for ( i = 0; i < sk->n; i++ ) {
 		VRX_BoneWorld( bones + i * 12, ( sk->flags[i] & BONEFLAG_TAG ) != 0, axis, body->origin, bAxis[i], bPos[i] );
+	}
+	if ( nearBlood ) {
+		VRX_BloodBody( cent, sk, bPos );
+	}
+	if ( st ) {
+		VRX_DrawStains( st, cent, body, sk, bones, bAxis, bPos );
+	}
+	if ( !wd ) {
+		return;
 	}
 
 	if ( !vrWoundShaders[0] ) {
@@ -1831,6 +2517,14 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 				h[10] = w->flip;
 				h[11] = w->shader % VRX_BODYWOUND_SETS;     // which hole
 			}
+			{
+				vec3_t down;
+				VectorScale( bAxis[w->bone][0], w->localT[0], down );
+				VectorMA( down, w->localT[1], bAxis[w->bone][1], down );
+				VectorMA( down, w->localT[2], bAxis[w->bone][2], down );
+				VectorNormalize( down );
+				VRX_WoundBleed( wd, w, w->bleedKind, p, n, down );
+			}
 			continue;
 		}
 		VectorMA( p, 0.3f, n, p );      // just off the skin
@@ -1852,7 +2546,20 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 			VectorScale( u, w->size * w->aspect, t );
 			CrossProduct( n, u, s );
 			VectorScale( s, w->size, s );
-			VRX_Bleed( w, p, n );
+			if ( CG_VRB_On() ) {
+				vec3_t down = { 0, 0, -1 };
+				VectorMA( down, -DotProduct( down, n ), n, down );
+				if ( VectorNormalize( down ) < 0.1f ) {
+					VectorCopy( u, down );
+				}
+				if ( !w->bleedStart ) {     // a cut throat, an opened belly, a stump
+					w->bleedStart = cg.time;
+					w->bleedEnd = cg.time + ( w->kind == VRW_BELLY ? 20000 : 25000 );
+				}
+				VRX_WoundBleed( wd, w, w->kind == VRW_BELLY ? VRB_FLOW : VRB_ARTERY, p, n, down );
+			} else {
+				VRX_Bleed( w, p, n );
+			}
 			if ( w->kind == VRW_BELLY && !VRX_CryptModels()->guts ) {
 				VRX_AddGuts( p, n, u );     // (with the crypt's guts, CG_VRX_AddCryptGore spills those)
 			}
@@ -2032,11 +2739,13 @@ static int vrxDecapAsked[MAX_CLIENTS];      // when we last asked for a body
 
 // a gore marker entity: what's been done to its body (drawn as nothing)
 static int vrxGroinTime[MAX_GENTITIES];
+static int vrxMarkerSeen[MAX_GENTITIES];    // when the body's marker was last in a snapshot
 
 static void VRX_GoreMarker( centity_t *cent ) {
 	int body = cent->currentState.otherEntityNum2;
 
 	if ( body >= 0 && body < MAX_GENTITIES ) {
+		vrxMarkerSeen[body] = cg.time;
 		vrxGoreBits[body] = cent->currentState.density;
 		vrxGoreHigh[body] = cent->currentState.frame;
 		vrxDownStyle[body] = cent->currentState.time2;
@@ -2149,14 +2858,14 @@ static qboolean cg_vrxDebug( void ) {
 }
 
 // the blade went from a to b: through a dead body's neck?
-static void VRX_TryDecap( const vec3_t a, const vec3_t b, float radius ) {
+static qboolean VRX_TryDecap( const vec3_t a, const vec3_t b, float radius ) {
 	centity_t *cent;
 	vec3_t ab, ap, c, neck;
 	float t, len2;
 	int i;
 
 	if ( !CG_VRX_Gore( VRX_DECAP ) || !cg.snap ) {
-		return;
+		return qfalse;
 	}
 	VectorSubtract( b, a, ab );
 	len2 = DotProduct( ab, ab );
@@ -2178,36 +2887,117 @@ static void VRX_TryDecap( const vec3_t a, const vec3_t b, float radius ) {
 			}
 			trap_SendClientCommand( va( "vrdecap %i %.0f %.0f %.0f", i, neck[0], neck[1], neck[2] ) );
 			vrxDecapAsked[i] = cg.time;
-			return;
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+static int vrxKnifeCut[MAX_CLIENTS];        // when our knife last cut each
+
+// where the blade is: from the eye out without a headset, the hand to the tip with one
+static void VRX_Blade( vec3_t a, vec3_t b, vec3_t dir ) {
+	if ( cgvr.active ) {
+		AngleVectors( cgvr.weaponAngles, dir, NULL, NULL );
+		VectorCopy( cgvr.handOrigin[CG_VR_DominantHand()], a );
+		VectorMA( a, 18.0f, dir, b );
+	} else {
+		VectorCopy( cg.refdef.viewaxis[0], dir );
+		VectorCopy( cg.refdef.vieworg, a );
+		VectorMA( a, 72.0f, dir, b );
+	}
+}
+
+// the blade (a to b) into a dead body lying in its way: cut where it lands, an arm or a leg
+// further through with each blow until it comes off
+static void VRX_KnifeDead( const vec3_t a, const vec3_t b ) {
+	vec3_t point, dir;
+	int n;
+
+	if ( !CG_VRX_Gore( VRX_VOXEL ) ) {
+		return;
+	}
+	n = CG_Ragdoll_Trace( a, b, -1, point );
+	if ( n < 0 || n >= MAX_CLIENTS || cg.time - vrxKnifeCut[n] < 250 ) {
+		return;
+	}
+	VectorSubtract( b, a, dir );
+	VectorNormalize( dir );
+	vrxKnifeCut[n] = cg.time;
+	if ( CG_VRGore_Knife( n, point, dir, qtrue ) ) {
+		CG_Ragdoll_Hit( n, point, dir, 50.0f );
+		CG_Bleed( point, n );
+		if ( cgs.media.sfx_knifehit[0] ) {
+			trap_S_StartSound( point, n, CHAN_AUTO, cgs.media.sfx_knifehit[rand() % 4] ? cgs.media.sfx_knifehit[rand() % 4] : cgs.media.sfx_knifehit[0] );
 		}
 	}
 }
 
-// the server says a knife hit body at pos: on the neck (or near enough), the head comes off
+// the server says a knife hit body at pos. Someone on his feet: a slit where it went in, nothing
+// comes off. Someone dead: at the neck the head comes off at once. Down or dead: on an arm or a
+// leg the blade cuts into it (through, after enough blows), anywhere else a slit.
 void CG_VRX_KnifeHit( int body, const vec3_t pos ) {
 	centity_t *cent;
+	vec3_t a, b, dir, ab, ap, c, point;
+	qboolean down;
+	float t, len2;
 
-	if ( body < 0 || body >= MAX_CLIENTS || !cg.snap || cg.snap->ps.weapon != WP_KNIFE ) {
+	if ( body < 0 || body >= MAX_CLIENTS || !cg.snap || cg.snap->ps.weapon != WP_KNIFE || body == cg.snap->ps.clientNum ) {
 		return;
 	}
 	cent = &cg_entities[body];
-	if ( !cent->pe.headRefEnt.hModel ) {
+	if ( cent->currentState.eType != ET_PLAYER ) {
 		return;
 	}
-	if ( cg_vrxDebug() ) {
-		CG_Printf( "VR decap: knife hit %i at %.0f from the neck\n", body, Distance( pos, cent->pe.headRefEnt.origin ) );
+	VRX_Blade( a, b, dir );
+	down = ( cent->currentState.eFlags & EF_DEAD ) || ( CG_VRX_GoreBits( cent ) & VRX_GB_DOWNED );
+	if ( ( cent->currentState.eFlags & EF_DEAD ) && cent->pe.headRefEnt.hModel && !CG_VRX_Headless( cent ) && CG_VRX_Gore( VRX_DECAP ) ) {     // (the dead only: never someone still alive, down or not)
+		// how near the blade passes the neck as it's drawn (the server's own idea of where a body
+		// on the floor lies is rough)
+		VectorSubtract( b, a, ab );
+		len2 = DotProduct( ab, ab );
+		VectorSubtract( cent->pe.headRefEnt.origin, a, ap );
+		t = len2 > 0.001f ? DotProduct( ap, ab ) / len2 : 0;
+		t = t < 0 ? 0 : ( t > 1 ? 1 : t );
+		VectorMA( a, t, ab, c );
+		if ( cg_vrxDebug() ) {
+			CG_Printf( "VR decap: knife hit %i, the blade %.0f from the neck\n", body, Distance( c, cent->pe.headRefEnt.origin ) );
+		}
+		if ( Distance( c, cent->pe.headRefEnt.origin ) <= 9.0f || Distance( pos, cent->pe.headRefEnt.origin ) <= 9.0f ) {
+			if ( cg.time - vrxDecapAsked[body] >= 1000 ) {
+				// (dead by the time the server reads this: the blow that got here finished him)
+				trap_SendClientCommand( va( "vrdecap %i %.0f %.0f %.0f", body, cent->pe.headRefEnt.origin[0],
+											cent->pe.headRefEnt.origin[1], cent->pe.headRefEnt.origin[2] ) );
+				vrxDecapAsked[body] = cg.time;
+			}
+			return;
+		}
 	}
-	if ( Distance( pos, cent->pe.headRefEnt.origin ) <= 14.0f ) {
-		VRX_TryDecap( pos, pos, 14.0f );
+	if ( !CG_VRX_Gore( VRX_VOXEL ) || cg.time - vrxKnifeCut[body] < 250 ) {
+		return;
 	}
+	vrxKnifeCut[body] = cg.time;
+	if ( down ) {
+		// on the body as it lies, if the blade meets it
+		if ( CG_Ragdoll_Trace( a, b, body, point ) == body && CG_VRGore_Knife( body, point, dir, qtrue ) ) {
+			return;
+		}
+		if ( CG_VRGore_Knife( body, pos, dir, qtrue ) ) {
+			return;
+		}
+	}
+	CG_VRGore_Knife( body, pos, dir, qfalse );
 }
 
-// without a headset: a knife swing at a body's neck
+// without a headset: a knife swing at a body's neck, or into it
 void CG_VRX_KnifeSwing( void ) {
 	vec3_t end;
 
 	VectorMA( cg.refdef.vieworg, 72, cg.refdef.viewaxis[0], end );
-	VRX_TryDecap( cg.refdef.vieworg, end, 8.0f );
+	if ( !VRX_TryDecap( cg.refdef.vieworg, end, 8.0f ) ) {
+		VectorMA( cg.refdef.vieworg, 64, cg.refdef.viewaxis[0], end );
+		VRX_KnifeDead( cg.refdef.vieworg, end );
+	}
 }
 
 // with one: the blade swept through it, fast enough to cut
@@ -2227,7 +3017,9 @@ void CG_VRX_KnifeFrame( void ) {
 	VectorMA( cgvr.handOrigin[dom], 18.0f, fwd, tip );     // as the server's G_VR_KnifeStab
 	if ( lastTime && cg.time > lastTime && cg.time - lastTime < 200 &&
 		 Distance( tip, lastTip ) / ( ( cg.time - lastTime ) * 0.001f ) > 40.0f ) {
-		VRX_TryDecap( lastTip, tip, 7.0f );
+		if ( !VRX_TryDecap( lastTip, tip, 7.0f ) ) {
+			VRX_KnifeDead( cgvr.handOrigin[dom], tip );
+		}
 	}
 	VectorCopy( tip, lastTip );
 	lastTime = cg.time;
@@ -2353,10 +3145,8 @@ void CG_VRX_Surrender( centity_t *cent, refEntity_t *body ) {
 =================
 CG_VRX_Downed
 
-Someone shot down (VRX_GB_DOWNED) plays one of Soldier of Fortune II's agony animations,
-picked by the server from where the shot went in (G_VRX_KnockDown): falling, then writhing on
-the floor until someone finishes him (VRX_Sof2Downed). A shot in the balls doubles him over
-for a while instead.
+A shot in the balls doubles him over for a while. (Someone knocked down, VRX_GB_DOWNED, is
+the physics' now: cg_ragdoll.c staggers him, drops him and stands him back up.)
 
 Like CG_VRX_Surrender, a pose handed to the renderer as ragdollBones, in the model's own
 space: x forward, y left, z up.
@@ -2452,117 +3242,28 @@ static void VRX_Lower( float *pose, vrSkel_t *sk, float floor, float height ) {
 }
 
 /*
-SoF2's agony animations (cg_vrsof2anims.h, joint positions taken from its skeleton) put on
-this skeleton: the body turned to the animation's (the line up the back, the line across the
-hips), then each bone turned to point where the animation's does, then the pelvis put at the
-animation's height and drift, scaled by how long the legs are. Past the end the last stretch
-plays back and forth, slower: he keeps writhing.
+=================
+CG_VRX_DownedStyle
+
+knocked down, alive (cg_ragdoll.c plays it as an active ragdoll): 1, or 0
+=================
 */
-#include "cg_vrsof2anims.h"
+int CG_VRX_DownedStyle( centity_t *cent ) {
+	int n = cent->currentState.number;
 
-// CG_VRX_Downed's bones (LUA ... HEAD) in the animation data
-static const int vrxSof2Of[17] = { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 0, 1, 2, 3, 4 };
-
-static void VRX_Sof2Joints( int anim, int ms, vec3_t out[VRX_SOF2_JOINTS] ) {
-	int n = vrxSof2Frames[anim], tail = n * 35 / 100, f0, f1, j, k;
-	const short *p0, *p1;
-	float t = ms * 0.02f, fr;
-
-	if ( tail < 2 ) {
-		tail = 2;
+	if ( n >= MAX_CLIENTS || ( cent->currentState.eFlags & EF_DEAD ) || !( CG_VRX_GoreBits( cent ) & VRX_GB_DOWNED ) ||
+		 cg.time - vrxMarkerSeen[n] > 300 || cg.time < vrxMarkerSeen[n] ) {
+		return 0;       // (a marker gone from the snapshots: whatever it last said is over)
 	}
-	if ( t > n - 1 ) {
-		float u = ( t - ( n - 1 ) ) * 0.6f, period = 2.0f * ( tail - 1 );
-		u = fmod( u, period );
-		t = n - 1 - ( u < tail - 1 ? u : period - u );
-	}
-	if ( t < 0 ) {
-		t = 0;
-	}
-	f0 = (int)t;
-	f1 = f0 + 1 < n ? f0 + 1 : f0;
-	fr = t - f0;
-	p0 = vrxSof2Pose[vrxSof2Start[anim] + f0];
-	p1 = vrxSof2Pose[vrxSof2Start[anim] + f1];
-	for ( j = 0; j < VRX_SOF2_JOINTS; j++ ) {
-		for ( k = 0; k < 3; k++ ) {
-			out[j][k] = ( ( 1 - fr ) * p0[j * 3 + k] + fr * p1[j * 3 + k] ) * ( 1.0f / 32 );
-		}
-	}
+	return 1;
 }
 
-// turn every tree in the model by r about pivot
-static void VRX_TurnAll( float *pose, vrSkel_t *sk, vec3_t r[3], const vec3_t pivot ) {
-	vec3_t at;
-	int k;
+// shot and stunned (the server's G_VRX_Stun): shoved about by the bullets
+qboolean CG_VRX_Stunned( centity_t *cent ) {
+	int n = cent->currentState.number;
 
-	VectorCopy( pivot, at );        // (pivot may be one of the bones)
-	for ( k = 0; k < sk->n; k++ ) {
-		if ( sk->parents[k] < 0 ) {
-			VRX_RotateSubtree( pose, sk, k, r, at );
-		}
-	}
-}
-
-// b: CG_VRX_Downed's bones; floor: where his feet stood
-static void VRX_Sof2Downed( float *pose, vrSkel_t *sk, const int *b, int anim, int ms, float floor ) {
-	enum { LUA, LFA, LHAND, RUA, RFA, RHAND, LTH, LCALF, LFOOT, RTH, RCALF, RFOOT, PELVIS, SPINE, SPINE2, NECK, HEAD };
-	static const int chain[][2] = {
-		{ NECK, HEAD }, { LUA, LFA }, { LFA, LHAND }, { RUA, RFA }, { RFA, RHAND },
-		{ LTH, LCALF }, { LCALF, LFOOT }, { RTH, RCALF }, { RCALF, RFOOT }
-	};
-	vec3_t J[VRX_SOF2_JOINTS], J0[VRX_SOF2_JOINTS], want, cur, up, r[3], d;
-	float f, s, leg, ankle0;
-	int k;
-
-	if ( anim < 0 || anim >= VRX_SOF2_ANIMS ) {
-		anim = 0;
-	}
-	f = ms / 150.0f;
-	f = f < 0 ? 0 : f > 1 ? 1 : f;
-	VRX_Sof2Joints( anim, ms, J );
-	VRX_Sof2Joints( anim, 0, J0 );
-#define VRX_J( a, i ) ( a )[vrxSof2Of[i]]
-	leg = Distance( VRX_BP( pose, b[LTH] ), VRX_BP( pose, b[LCALF] ) ) + Distance( VRX_BP( pose, b[LCALF] ), VRX_BP( pose, b[LFOOT] ) );
-	s = leg > 1 ? leg / VRX_SOF2_LEG : 1;
-
-	// the body: up the back, then across the hips
-	VectorSubtract( VRX_J( J, SPINE2 ), VRX_J( J, PELVIS ), up );
-	VectorNormalize( up );
-	VectorSubtract( VRX_BP( pose, b[SPINE2] ), VRX_BP( pose, b[PELVIS] ), cur );
-	VectorNormalize( cur );
-	VRX_Turn( cur, up, f, r );
-	VRX_TurnAll( pose, sk, r, VRX_BP( pose, b[PELVIS] ) );
-	VectorSubtract( VRX_BP( pose, b[SPINE2] ), VRX_BP( pose, b[PELVIS] ), up );
-	VectorNormalize( up );
-	VectorSubtract( VRX_J( J, LTH ), VRX_J( J, RTH ), want );
-	VectorMA( want, -DotProduct( want, up ), up, want );
-	VectorSubtract( VRX_BP( pose, b[LTH] ), VRX_BP( pose, b[RTH] ), cur );
-	VectorMA( cur, -DotProduct( cur, up ), up, cur );
-	if ( VectorNormalize( want ) > 0.01f && VectorNormalize( cur ) > 0.01f ) {
-		VRX_Turn( cur, want, f, r );
-		VRX_TurnAll( pose, sk, r, VRX_BP( pose, b[PELVIS] ) );
-	}
-
-	// the back (the thighs hang off it here), then the head, arms and legs
-	VectorSubtract( VRX_J( J, NECK ), VRX_J( J, SPINE ), want );
-	VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], want, f, b[LTH], b[RTH] );
-	for ( k = 0; k < (int)ARRAY_LEN( chain ); k++ ) {
-		VectorSubtract( VRX_J( J, chain[k][1] ), VRX_J( J, chain[k][0] ), want );
-		VRX_Aim( pose, sk, b[chain[k][0]], b[chain[k][1]], want, f );
-	}
-
-	// the pelvis where the animation has it: its height over the ankles it stood on, its drift
-	ankle0 = min( VRX_J( J0, LFOOT )[2], VRX_J( J0, RFOOT )[2] );
-	want[0] = ( VRX_J( J, PELVIS )[0] - VRX_J( J0, PELVIS )[0] ) * s;
-	want[1] = ( VRX_J( J, PELVIS )[1] - VRX_J( J0, PELVIS )[1] ) * s;
-	want[2] = floor + 3.0f + ( VRX_J( J, PELVIS )[2] - ankle0 ) * s;
-	VectorSubtract( want, VRX_BP( pose, b[PELVIS] ), d );
-	VectorScale( d, f, d );
-	for ( k = 0; k < sk->n; k++ ) {
-		VectorAdd( VRX_BP( pose, k ), d, VRX_BP( pose, k ) );
-	}
-#undef VRX_J
+	return n < MAX_CLIENTS && !( cent->currentState.eFlags & EF_DEAD ) && vrxDownStyle[n] == VRX_STUN_MARK &&
+		   cg.time - vrxMarkerSeen[n] <= 300 && cg.time >= vrxMarkerSeen[n];
 }
 
 void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
@@ -2601,6 +3302,7 @@ void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
 	} else {
 		static int wentStyle[MAX_CLIENTS];
 
+		return;     // knocked down: the physics (cg_ragdoll.c)
 		style = vrxDownStyle[n] >= 1 && vrxDownStyle[n] <= VRX_DOWN_STYLES ? vrxDownStyle[n] : 1 + n % VRX_DOWN_STYLES;
 		if ( !vrxWentDown[n] || wentStyle[n] != style ) {     // (put down again another way: vrtestbody)
 			vrxWentDown[n] = cg.time;
@@ -2698,163 +3400,7 @@ void CG_VRX_Downed( centity_t *cent, refEntity_t *body ) {
 		VRX_AimAt( pose, sk, b[RFA], b[RHAND], crotch, f );
 		VRX_Lower( pose, sk, low, 0 );
 	} else {
-		VRX_Sof2Downed( pose, sk, b, style - 1, cg.time - vrxWentDown[n], floor );
-	}
-	pose[sk->n * 12] = 0;      // nothing after the pose (no cut, CG_VRX_Dismember)
-	body->ragdollBones = pose;
-	body->ragdollMagic = RAGDOLL_MAGIC;
-}
-
-/*
-=================
-CG_VRX_HitReact
-
-Soldier of Fortune style hit reactions (SoF2 picks a pain animation by where the shot went in;
-here the living character's own pose is bent instead), on top of the flinch
-(CG_VRX_FlinchAngles), for a moment after a bullet hits:
-
-  an arm    flung back along the shot, the forearm flopping
-  a leg     the knee buckling, the body dropping onto it (a stumble)
-  the gut   doubled over, the near hand clutching the wound
-  the chest knocked back, the near hand clutching the wound
-=================
-*/
-void CG_VRX_HitReact( centity_t *cent, refEntity_t *body ) {
-	enum { LUA, LFA, LHAND, RUA, RFA, RHAND, LTH, LCALF, LFOOT, RTH, RCALF, RFOOT, PELVIS, SPINE, SPINE2, NECK, HEAD, NB };
-	static const char *names[NB] = {
-		"L UpperArm", "L Forearm", "L Hand", "R UpperArm", "R Forearm", "R Hand",
-		"L Thigh", "L Calf", "L Foot", "R Thigh", "R Calf", "R Foot",
-		"Pelvis", "Spine", "Spine2", "Neck", "Head"
-	};
-	int n = cent->currentState.number, b[NB], k, best = -1, t, dur, rise = 60;
-	float *pose, env, d, bestD = 1e9f, floor;
-	vrSkel_t *sk;
-	vec3_t hit, dir, rel, v, w;
-
-	if ( n >= MAX_CLIENTS || !CG_VRX( VRX_REACTIONS ) || !cent->pe.vrFlinchTime || body->ragdollBones ||
-		 ( cent->currentState.eFlags & EF_DEAD ) || CG_VR_FullBody( cent ) ) {
 		return;
-	}
-	t = cg.time - cent->pe.vrFlinchTime;
-	dur = CG_VRX( VRX_REACTIONS ) == 2 ? 1100 : 800;
-	if ( t < 0 || t >= dur ) {
-		return;
-	}
-	pose = vrxPoses[n];
-	sk = VRX_Skel( body, pose );
-	if ( !sk ) {
-		return;
-	}
-	for ( k = 0; k < NB; k++ ) {
-		b[k] = VRX_FindBone( sk, names[k] );
-		if ( b[k] < 0 && k != SPINE2 ) {
-			return;
-		}
-	}
-	if ( b[SPINE2] < 0 ) {
-		b[SPINE2] = b[SPINE];
-	}
-	// the shot in the model's own space
-	VectorSubtract( cent->pe.vrFlinchPoint, body->origin, rel );
-	for ( k = 0; k < 3; k++ ) {
-		hit[k] = DotProduct( rel, body->axis[k] );
-		dir[k] = DotProduct( cent->pe.vrFlinchDir, body->axis[k] );
-	}
-	// where it went in: the nearest joint, or the middle of a limb
-	for ( k = 0; k < NB; k++ ) {
-		int c = k == LUA ? b[LFA] : k == LFA ? b[LHAND] : k == RUA ? b[RFA] : k == RFA ? b[RHAND] :
-				k == LTH ? b[LCALF] : k == LCALF ? b[LFOOT] : k == RTH ? b[RCALF] : k == RCALF ? b[RFOOT] : -1;
-		VectorCopy( VRX_BP( pose, b[k] ), v );
-		if ( c >= 0 ) {
-			VectorAdd( v, VRX_BP( pose, c ), v );
-			VectorScale( v, 0.5f, v );
-		}
-		VectorSubtract( v, hit, w );
-		d = VectorLength( w );
-		if ( d < bestD ) {
-			bestD = d;
-			best = k;
-		}
-	}
-	if ( best < 0 || best == HEAD || best == NECK ) {
-		return;     // the head: the flinch snaps it
-	}
-	// fast in, slow out; a clutched wound is held a while
-	env = t < rise ? (float)t / rise : 1.0f - (float)( t - rise ) / ( dur - rise );
-	env = env < 0 ? 0 : env;
-	env = env * env * ( 3 - 2 * env );
-	floor = min( VRX_BP( pose, b[LFOOT] )[2], VRX_BP( pose, b[RFOOT] )[2] );
-
-	if ( best == LUA || best == LFA || best == LHAND || best == RUA || best == RFA || best == RHAND ) {
-		int ua = best <= LHAND ? LUA : RUA;
-		// the arm thrown back along the shot
-		VectorSubtract( VRX_BP( pose, b[ua + 1] ), VRX_BP( pose, b[ua] ), v );
-		VectorNormalize( v );
-		VectorMA( v, 1.4f, dir, w );
-		w[1] += ua == LUA ? 0.9f : -0.9f;       // and out to the side, so it shows from the front
-		w[2] += 0.3f;
-		VRX_Aim( pose, sk, b[ua], b[ua + 1], w, env * 0.85f );
-		VectorSubtract( VRX_BP( pose, b[ua + 2] ), VRX_BP( pose, b[ua + 1] ), v );
-		VectorNormalize( v );
-		VectorMA( v, 1.2f, dir, w );
-		w[2] -= 0.6f;
-		VRX_Aim( pose, sk, b[ua + 1], b[ua + 2], w, env * 0.8f );
-		VectorSet( v, -dir[0] * 0.15f, -dir[1] * 0.15f, 1 );
-		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, env * 0.25f, b[LTH], b[RTH] );
-	} else if ( best == LTH || best == LCALF || best == LFOOT || best == RTH || best == RCALF || best == RFOOT ) {
-		int th = best <= LFOOT ? LTH : RTH, other = th == LTH ? RTH : LTH;
-		float side = th == LTH ? 0.08f : -0.08f;
-		// the knee gives: thigh forward, shin back, the other knee bending a little too
-		VectorSet( v, 0.75f, side, -1 );
-		VRX_Aim( pose, sk, b[th], b[th + 1], v, env );
-		VectorSet( v, -0.55f, side, -1 );
-		VRX_Aim( pose, sk, b[th + 1], b[th + 2], v, env );
-		VectorSet( v, 0.25f, -side, -1 );
-		VRX_Aim( pose, sk, b[other], b[other + 1], v, env * 0.6f );
-		VectorSet( v, -0.15f, -side, -1 );
-		VRX_Aim( pose, sk, b[other + 1], b[other + 2], v, env * 0.6f );
-		// and over the hurt leg, reaching down for it
-		VectorSet( v, 0.35f, side * 3, 1 );
-		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, env * 0.7f, b[LTH], b[RTH] );
-		VRX_Lower( pose, sk, floor, 0 );
-	} else {
-		qboolean gut = hit[2] < VRX_BP( pose, b[SPINE2] )[2] - 2.0f;
-		int ua = hit[1] > VRX_BP( pose, b[PELVIS] )[1] ? LUA : RUA;
-		vec3_t at, was, now, r[3];
-
-		VectorSubtract( VRX_BP( pose, b[NECK] ), VRX_BP( pose, b[SPINE] ), was );
-		VectorSubtract( hit, VRX_BP( pose, b[SPINE] ), rel );
-
-		if ( gut ) {
-			VectorSet( v, 0.7f, 0, 0.7f );      // doubled over
-		} else {
-			VectorSet( v, dir[0] * 0.6f, dir[1] * 0.6f, 1 );       // knocked back
-		}
-		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, env * 0.8f, b[LTH], b[RTH] );
-		// the hand to the wound (where it is now, turned with the trunk)
-		VectorSubtract( VRX_BP( pose, b[NECK] ), VRX_BP( pose, b[SPINE] ), now );
-		VectorNormalize( was );
-		VectorNormalize( now );
-		VRX_Turn( was, now, 1, r );
-		for ( k = 0; k < 3; k++ ) {
-			at[k] = VRX_BP( pose, b[SPINE] )[k] + r[0][k] * rel[0] + r[1][k] * rel[1] + r[2][k] * rel[2];
-		}
-		VectorMA( at, -2.0f, dir, at );         // on the skin, not in it
-		VectorSubtract( at, VRX_BP( pose, b[ua] ), v );
-		v[2] -= 6.0f;
-		VRX_Aim( pose, sk, b[ua], b[ua + 1], v, env * 0.9f );
-		VRX_AimAt( pose, sk, b[ua + 1], b[ua + 2], at, env );
-		if ( gut ) {
-			VectorSet( v, 0.3f, 0.06f, -1 );
-			VRX_Aim( pose, sk, b[LTH], b[LCALF], v, env * 0.5f );
-			VectorSet( v, 0.3f, -0.06f, -1 );
-			VRX_Aim( pose, sk, b[RTH], b[RCALF], v, env * 0.5f );
-			VectorSet( v, -0.2f, 0.06f, -1 );
-			VRX_Aim( pose, sk, b[LCALF], b[LFOOT], v, env * 0.5f );
-			VectorSet( v, -0.2f, -0.06f, -1 );
-			VRX_Aim( pose, sk, b[RCALF], b[RFOOT], v, env * 0.5f );
-			VRX_Lower( pose, sk, floor, 0 );
-		}
 	}
 	pose[sk->n * 12] = 0;      // nothing after the pose (no cut, CG_VRX_Dismember)
 	body->ragdollBones = pose;
@@ -2948,8 +3494,8 @@ void CG_VRX_Dismember( centity_t *cent, refEntity_t *body ) {
 	float *pose;
 	vrSkel_t *sk;
 
-	if ( n >= MAX_CLIENTS || !CG_VRX_Gore( VRX_DISMEMBER ) ) {
-		return;
+	if ( n >= MAX_CLIENTS || !CG_VRX_Gore( VRX_DISMEMBER ) || CG_VRX_Gore( VRX_VOXEL ) ) {
+		return;     // (the voxel gore cuts limbs off the body itself)
 	}
 	bits = CG_VRX_GoreBits( cent ) & ( VRX_GB_LARM | VRX_GB_RARM | VRX_GB_LLEG | VRX_GB_RLEG );
 	if ( !( cent->currentState.eFlags & EF_DEAD ) ) {
@@ -3082,4 +3628,195 @@ void CG_VRX_BloodPool( centity_t *cent, refEntity_t *body ) {
 	grow = t >= 1.0f ? 1.0f : 1.0f - ( 1.0f - t ) * ( 1.0f - t );
 	CG_ImpactMark( shader, tr.endpos, tr.plane.normal, vrxPoolSpin[n], 1, 1, 1, 1, qfalse,
 				   3.0f + size * grow, qtrue, 0 );
+}
+
+// everything up or down so the lowest of his legs and pelvis is height above the floor (his
+// arms, not placed yet, don't count)
+static void VRX_LowerLegs( float *pose, vrSkel_t *sk, const int *b, float floor, float height ) {
+	static const int legs[7] = { 6, 7, 8, 9, 10, 11, 12 };     // LTH .. RFOOT, PELVIS in CG_VRX_GetUpPose's order
+	float low = 1e9f;
+	int i;
+
+	for ( i = 0; i < 7; i++ ) {
+		float z = VRX_BP( pose, b[legs[i]] )[2];
+		low = z < low ? z : low;
+	}
+	for ( i = 0; i < sk->n; i++ ) {
+		pose[i * 12 + 11] += floor + height - low;
+	}
+}
+
+// the get-up's poses on the floor (CG_VRX_GetUpPose): b the bones in its order
+static void VRX_GetUpLying( float *pose, vrSkel_t *sk, const int *b, int which, float floor ) {
+	enum { LUA, LFA, LHAND, RUA, RFA, RHAND, LTH, LCALF, LFOOT, RTH, RCALF, RFOOT, PELVIS, SPINE, NECK, HEAD, NB };
+	vec3_t v, at, elbow;
+	int side;
+
+	if ( which == VRX_GU_PRESS ) {
+		// face down, chest pushed up off the floor, legs out straight behind
+		VectorSet( v, 1, 0, 0.7f );
+		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, 1, b[LTH], b[RTH] );
+		VectorSet( v, 1, 0, 0.45f );
+		VRX_Aim( pose, sk, b[NECK], b[HEAD], v, 1 );
+		VectorSet( v, -1, 0.07f, -0.12f );
+		VRX_Aim( pose, sk, b[LTH], b[LCALF], v, 1 );
+		VectorSet( v, -1, -0.07f, -0.12f );
+		VRX_Aim( pose, sk, b[RTH], b[RCALF], v, 1 );
+		VectorSet( v, -1, 0, 0.05f );
+		VRX_Aim( pose, sk, b[LCALF], b[LFOOT], v, 1 );
+		VRX_Aim( pose, sk, b[RCALF], b[RFOOT], v, 1 );
+		VRX_LowerLegs( pose, sk, b, floor, 3.0f );
+	} else if ( which == VRX_GU_TUCK ) {
+		// hips drawn back: the right knee under him, the left foot brought up ahead, leaning on his hands
+		VectorSet( v, 1, 0, 0.45f );
+		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, 1, b[LTH], b[RTH] );
+		VectorSet( v, 1, 0, 0.6f );
+		VRX_Aim( pose, sk, b[NECK], b[HEAD], v, 1 );
+		VectorSet( v, 0.15f, -0.12f, -1 );
+		VRX_Aim( pose, sk, b[RTH], b[RCALF], v, 1 );
+		VectorSet( v, -1, -0.05f, -0.12f );
+		VRX_Aim( pose, sk, b[RCALF], b[RFOOT], v, 1 );
+		VectorSet( v, 0.8f, 0.2f, -0.55f );
+		VRX_Aim( pose, sk, b[LTH], b[LCALF], v, 1 );
+		VectorSet( v, -0.15f, 0.05f, -1 );
+		VRX_Aim( pose, sk, b[LCALF], b[LFOOT], v, 1 );
+		VRX_LowerLegs( pose, sk, b, floor, 1.5f );
+	} else {
+		// sat up, leaning back, knees up (the left more), feet flat
+		VectorSet( v, -0.5f, 0, 0.87f );
+		VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, 1, b[LTH], b[RTH] );
+		VectorSet( v, 0.25f, 0, 1 );
+		VRX_Aim( pose, sk, b[NECK], b[HEAD], v, 1 );
+		VectorSet( v, 0.7f, 0.1f, 0.7f );
+		VRX_Aim( pose, sk, b[LTH], b[LCALF], v, 1 );
+		VectorSet( v, 0.5f, 0, -0.85f );
+		VRX_Aim( pose, sk, b[LCALF], b[LFOOT], v, 1 );
+		VectorSet( v, 0.9f, -0.15f, 0.3f );
+		VRX_Aim( pose, sk, b[RTH], b[RCALF], v, 1 );
+		VectorSet( v, 0.65f, 0, -0.75f );
+		VRX_Aim( pose, sk, b[RCALF], b[RFOOT], v, 1 );
+		VRX_LowerLegs( pose, sk, b, floor, 3.0f );
+	}
+
+	// the hands on the floor: under his shoulders (on his front), behind his hips (sat up)
+	for ( side = 0; side < 2; side++ ) {
+		int ua = side ? b[RUA] : b[LUA], fa = side ? b[RFA] : b[LFA], hand = side ? b[RHAND] : b[LHAND];
+		float out = side ? -1.0f : 1.0f;
+		if ( which == VRX_GU_SIT ) {
+			VectorCopy( VRX_BP( pose, b[PELVIS] ), at );
+			at[0] -= 10.0f;
+			at[1] += out * 9.0f;
+		} else {
+			VectorCopy( VRX_BP( pose, ua ), at );
+			at[0] += which == VRX_GU_TUCK ? 6.0f : 3.0f;
+			at[1] += out * 3.0f;
+		}
+		at[2] = floor + 1.5f;
+		// the elbow out to the side and back, as far as the arm needs to bend
+		VectorAdd( VRX_BP( pose, ua ), at, elbow );
+		VectorScale( elbow, 0.5f, elbow );
+		elbow[0] -= which == VRX_GU_SIT ? 1.0f : 3.0f;
+		elbow[1] += out * 3.0f;
+		VRX_AimAt( pose, sk, ua, fa, elbow, 1 );
+		VRX_AimAt( pose, sk, fa, hand, at, 1 );
+	}
+}
+
+/*
+=================
+CG_VRX_KneelPose
+
+Getting up off the floor (cg_ragdoll.c eases a knocked-down body through this into his
+animation): down on the right knee, the left foot planted ahead, leaning forward with the
+right hand pushing off the floor and the left forearm on the left knee. A pose in the
+model's own space (x forward, y left, z up), or NULL.
+=================
+*/
+const float *CG_VRX_KneelPose( centity_t *cent, refEntity_t *body ) {
+	return CG_VRX_GetUpPose( cent, body, VRX_GU_KNEEL );
+}
+
+/*
+=================
+CG_VRX_GetUpPose
+
+The poses a man goes through getting up off the floor (cg_ragdoll.c RD_GetUpFrame drives his
+muscles through them, one into the next), in the model's own space (x the way he faces, y to
+his left, z up), built from his animation's pose:
+
+  VRX_GU_PRESS  off his front: pushing his chest up off the floor on his hands, legs out behind
+  VRX_GU_TUCK   then his hips drawn back, the right knee under him and the left foot brought
+                up ahead, still leaning on his hands
+  VRX_GU_SIT    off his back: sat up, leaning back on his hands, knees up
+  VRX_GU_KNEEL  up on the right knee, the left foot planted ahead, the left hand on that knee
+                to push himself up, upright, looking ahead
+=================
+*/
+const float *CG_VRX_GetUpPose( centity_t *cent, refEntity_t *body, int which ) {
+	enum { LUA, LFA, LHAND, RUA, RFA, RHAND, LTH, LCALF, LFOOT, RTH, RCALF, RFOOT, PELVIS, SPINE, NECK, HEAD, NB };
+	static const char *names[NB] = {
+		"L UpperArm", "L Forearm", "L Hand", "R UpperArm", "R Forearm", "R Hand",
+		"L Thigh", "L Calf", "L Foot", "R Thigh", "R Calf", "R Foot",
+		"Pelvis", "Spine", "Neck", "Head"
+	};
+	static float poses[MAX_CLIENTS][VRX_GU_POSES][VRX_MAX_BONES * 12 + 16];
+	int n = cent->currentState.number, b[NB], k;
+	float *pose, floor;
+	vrSkel_t *sk;
+	refEntity_t still = *body;
+	vec3_t v, at;
+
+	if ( n < 0 || n >= MAX_CLIENTS || which < 0 || which >= VRX_GU_POSES ) {
+		return NULL;
+	}
+	pose = poses[n][which];
+	still.ragdollBones = NULL;
+	sk = VRX_Skel( &still, pose );
+	if ( !sk ) {
+		return NULL;
+	}
+	for ( k = 0; k < NB; k++ ) {
+		b[k] = VRX_FindBone( sk, names[k] );
+		if ( b[k] < 0 ) {
+			return NULL;
+		}
+	}
+	floor = min( VRX_BP( pose, b[LFOOT] )[2], VRX_BP( pose, b[RFOOT] )[2] ) - 3.0f;     // (the foot bone is at the ankle)
+
+	if ( which != VRX_GU_KNEEL ) {
+		VRX_GetUpLying( pose, sk, b, which, floor );
+		pose[sk->n * 12] = 0;
+		return pose;
+	}
+
+	// upright over the front knee, a little forward, looking ahead
+	VectorSet( v, 0.3f, 0, 1 );
+	VRX_AimTrunk( pose, sk, b[SPINE], b[NECK], v, 1, b[LTH], b[RTH] );
+	VectorSet( v, 0.15f, 0, 1 );
+	VRX_Aim( pose, sk, b[NECK], b[HEAD], v, 1 );
+	// right knee down, the shin flat on the floor behind; left foot planted ahead
+	VectorSet( v, 0.15f, -0.12f, -1 );
+	VRX_Aim( pose, sk, b[RTH], b[RCALF], v, 1 );
+	VectorSet( v, -1, -0.05f, -0.12f );
+	VRX_Aim( pose, sk, b[RCALF], b[RFOOT], v, 1 );
+	VectorSet( v, 1, 0.12f, -0.35f );
+	VRX_Aim( pose, sk, b[LTH], b[LCALF], v, 1 );
+	VectorSet( v, 0.08f, 0.04f, -1 );
+	VRX_Aim( pose, sk, b[LCALF], b[LFOOT], v, 1 );
+	VRX_Lower( pose, sk, floor, 0 );
+	// right arm hanging, a little forward and out (for balance as he rises)
+	VectorSet( v, 0.25f, -0.25f, -1 );
+	VRX_Aim( pose, sk, b[RUA], b[RFA], v, 1 );
+	VectorSet( v, 0.6f, -0.1f, -0.7f );
+	VRX_Aim( pose, sk, b[RFA], b[RHAND], v, 1 );
+	// left hand on the left knee, to push himself up
+	VectorCopy( VRX_BP( pose, b[LCALF] ), at );
+	at[2] += 5.0f;
+	at[1] += 2.0f;
+	VRX_AimAt( pose, sk, b[LUA], b[LFA], at, 1 );
+	at[0] += 6.0f;
+	at[1] -= 3.0f;
+	VRX_AimAt( pose, sk, b[LFA], b[LHAND], at, 1 );
+	pose[sk->n * 12] = 0;      // nothing after the pose (no cut, CG_VRX_Dismember)
+	return pose;
 }

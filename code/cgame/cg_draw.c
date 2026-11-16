@@ -4270,6 +4270,8 @@ static void CG_Draw2D(stereoFrame_t stereoFrame) {
 	//	return;
 	}
 
+	CG_VR_HandTweakDraw2D();    // RealRTCW-VR: the hand alignment readout (handtweak)
+
 	if ( cg_nohudChallenge.integer ) {
 		CG_DrawFlashBlend();    // (for fades)
 		CG_DrawWeapReticle();   // (for scopes)

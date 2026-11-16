@@ -1320,6 +1320,13 @@ void ClientThink_real( gentity_t *ent ) {
 		}
 	}
 
+	// RealRTCW-VR: maps mark stairs "monster slick" so a dead body's animation doesn't lie
+	// sticking out over the steps: the corpse is slid down them. A ragdoll lies on the steps
+	// as it fell, and the slide dragged it down the stairs after it
+	if ( monsterslick && trap_Cvar_VariableIntegerValue( "vr_ragdolls" ) ) {
+		monsterslick = 0;
+		ent->flags |= FL_NO_MONSTERSLICK;
+	}
 	if ( monsterslick && !( ent->flags & FL_NO_MONSTERSLICK ) ) {
 		{
 			vec3_t dir;

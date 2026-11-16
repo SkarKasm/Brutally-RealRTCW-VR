@@ -1155,6 +1155,8 @@ Then, optionally, bullet holes (R_VRX_BodyWounds).
 #define VRX_CUT_MAGIC       0x56524354      // "VRCT"
 #define VRX_CUT_WORDS       ( ( MDS_MAX_BONES + 31 ) / 32 )
 
+#include "../qcommon/vr_gore.h"
+
 typedef union { float f; int i; } vrxBits_t;
 
 static const float *R_VRX_Trailer( const mdsHeader_t *header, const refEntity_t *refent, int *cutMode, unsigned *cutMask ) {
@@ -1193,27 +1195,126 @@ along the skin, half the size, 1 or -1 to mirror it, and a spare.
 ==============
 */
 #define VRX_WOUND_MAGIC     0x56525744      // "VRWD"
-#define VRX_MAX_BODYWOUNDS  32
+#define VRX_MAX_BODYWOUNDS  352     // (the cgame sends at most VRX_DECAL_MAX, cg_local.h)
+
+void R_VRX_Decals( const float *g, int firstVert, int numVerts, int firstIndex );
 
 static void R_VRX_BodyWounds( mdsHeader_t *header, const refEntity_t *refent, int firstVert, int numVerts, int firstIndex ) {
+	const float *g = NULL;
+	union { float f; int i; } magic;
+
+	if ( refent->ragdollBones && refent->ragdollMagic == RAGDOLL_MAGIC ) {
+		int cutMode;
+		unsigned cutMask[VRX_CUT_WORDS];
+		g = R_VRX_Trailer( header, refent, &cutMode, cutMask );
+	}
+	if ( g ) {
+		magic.f = g[0];
+		if ( magic.i == VRG_MAGIC ) {      // voxel gore's holes first (cut already, R_VRG_Skin): the blood goes round them
+			g += VRG_TRAILER_FLOATS;
+		}
+	}
+	R_VRX_Decals( g, firstVert, numVerts, firstIndex );
+}
+
+/*
+==============
+R_VRX_Decals
+
+The holes after VRX_WOUND_MAGIC (see R_VRX_BodyWounds) laid on the surface just made, which
+is replaced by them: bodies, and heads (tr_surface.c R_VRG_Mesh).
+
+Each hole is 12 floats: where (model space), the outward normal, which way is down along the
+skin, half its size, its mirroring and picture, and how it is laid:
+- the mirroring and picture: under 0 mirrored; 1 the shader's whole texture, 2 and up one
+  cell of vr_gorebloodatlas (vrxDecalCell), so every kind of blood on a body is one draw
+  (r_vrDecals 2 tells the cgame this renderer takes them);
+- how it is laid: under 10 as it is; 10 and up stretched down the skin that many minus 10
+  times (blood running from a wound), and drawn where it was given if no skin is found under
+  it; 100 and up the same less 100, and known to lie on the skin already (no looking for it).
+
+What is drawn of a triangle is only the part under the picture: cut to its edges, so nothing
+of the picture's rim is smeared over the rest of a big triangle, whatever the texture is.
+
+The surface's triangles are sorted into slabs along its longest side first, so a hole only
+looks at the triangles of the slabs it reaches, and works out where a vertex falls on its
+picture once, the first time a triangle asks: with all the blood of a body in one draw this is
+well over ten times less work than a ray and a plane for every triangle of every hole, in a
+draw for each kind of blood.
+==============
+*/
+#define VRX_DECAL_CELLS     9
+static const float vrxDecalCell[VRX_DECAL_CELLS][4] = {     // u0, v0, u1, v1 (bloodatlas.tga, 512 by 256)
+	{ 0, 0, 1, 1 },                         // the whole texture
+	{ 0, 0, 0.25f, 0.5f },                  // soaking into the cloth round a wound
+	{ 0, 0.5f, 0.25f, 1 },                  // a splash where blood landed on him
+	{ 0.25f, 0, 0.375f, 1 },                // the end of a run, a drop hanging from it
+	{ 0.375f, 0, 0.5f, 1 },                 // a run
+	{ 0.5f, 0, 0.75f, 0.5f },               // the splash round a bullet hole
+	{ 0.5f, 0.5f, 0.75f, 1 },               // a scatter of drops
+	{ 0.75f, 0, 0.875f, 1 },                // a streak
+	{ 0.875f, 0, 1, 1 },                    // another
+};
+
+typedef struct {
+	float u, v;
+	vec3_t xyz, nrm;
+} vrxDecalVert_t;
+
+// what is left of a polygon on the kept side of one edge of the picture (axis 0: u, 1: v;
+// keepLow: under limit). in and out may not be the same array. How many corners are left.
+static int R_VRX_ClipDecal( const vrxDecalVert_t *in, int n, vrxDecalVert_t *out, int axis, float limit, qboolean keepLow ) {
+	int i, k, m = 0;
+
+	for ( i = 0; i < n; i++ ) {
+		const vrxDecalVert_t *a = &in[i], *b = &in[( i + 1 ) % n];
+		float ca = axis ? a->v : a->u, cb = axis ? b->v : b->u;
+		qboolean ina = keepLow ? ca <= limit : ca >= limit, inb = keepLow ? cb <= limit : cb >= limit;
+
+		if ( ina ) {
+			out[m++] = *a;
+		}
+		if ( ina != inb ) {
+			float f = ( limit - ca ) / ( cb - ca );
+			vrxDecalVert_t *o = &out[m++];
+			o->u = a->u + f * ( b->u - a->u );
+			o->v = a->v + f * ( b->v - a->v );
+			if ( axis ) {
+				o->v = limit;
+			} else {
+				o->u = limit;
+			}
+			for ( k = 0; k < 3; k++ ) {
+				o->xyz[k] = a->xyz[k] + f * ( b->xyz[k] - a->xyz[k] );
+				o->nrm[k] = a->nrm[k] + f * ( b->nrm[k] - a->nrm[k] );
+			}
+		}
+	}
+	return m;
+}
+
+#define VRX_DECAL_SLABS     32
+
+void R_VRX_Decals( const float *g, int firstVert, int numVerts, int firstIndex ) {
 	static vec4_t xyz[SHADER_MAX_VERTEXES], nrm[SHADER_MAX_VERTEXES];
-	static glIndex_t tri[SHADER_MAX_INDEXES];
-	const float *g;
-	int count, numTri, i, k, w;
+	static glIndex_t tri[SHADER_MAX_INDEXES], sorted[SHADER_MAX_INDEXES];
+	// each vertex against the hole in hand (worked out when first asked for, stampA / stampB):
+	// across and down the picture and out of the skin from where the hole was given, how far
+	// it faces the hole's way, across the line in through the hole; then where it falls on
+	// the picture, and which edges of the picture it lies beyond
+	static float vs[SHADER_MAX_VERTEXES], vt[SHADER_MAX_VERTEXES], vh[SHADER_MAX_VERTEXES], vf[SHADER_MAX_VERTEXES],
+				 vq[SHADER_MAX_VERTEXES], vu[SHADER_MAX_VERTEXES], vv[SHADER_MAX_VERTEXES];
+	static byte vo[SHADER_MAX_VERTEXES];
+	static int stampA[SHADER_MAX_VERTEXES], stampB[SHADER_MAX_VERTEXES];
+	int slabFirst[VRX_DECAL_SLABS + 1], slabFill[VRX_DECAL_SLABS];
+	float slabLo[VRX_DECAL_SLABS], slabHi[VRX_DECAL_SLABS], lo[3], hi[3], scale;
+	int count, numTri, i, k, w, ax, sl;
 	union { float f; int i; } magic;
 
 	numTri = tess.numIndexes - firstIndex;
 	tess.numIndexes = firstIndex;       // only what's made here is drawn
 	tess.numVertexes = firstVert;
-	if ( !refent->ragdollBones || refent->ragdollMagic != RAGDOLL_MAGIC || numVerts > SHADER_MAX_VERTEXES ) {
-		return;
-	}
-	{
-		int cutMode;
-		unsigned cutMask[VRX_CUT_WORDS];
-		g = R_VRX_Trailer( header, refent, &cutMode, cutMask );
-	}
-	if ( !g ) {
+	if ( !g || numVerts > SHADER_MAX_VERTEXES || numVerts <= 0 ) {
 		return;
 	}
 	magic.f = g[0];
@@ -1223,124 +1324,393 @@ static void R_VRX_BodyWounds( mdsHeader_t *header, const refEntity_t *refent, in
 	count = (int)g[1];
 	count = count < 0 ? 0 : ( count > VRX_MAX_BODYWOUNDS ? VRX_MAX_BODYWOUNDS : count );
 	g += 2;
+	if ( !count ) {
+		return;
+	}
 
 	// the deformed surface, put aside
+	VectorCopy( tess.xyz[firstVert], lo );
+	VectorCopy( tess.xyz[firstVert], hi );
 	for ( i = 0; i < numVerts; i++ ) {
 		Vector4Copy( tess.xyz[firstVert + i], xyz[i] );
 		Vector4Copy( tess.normal[firstVert + i], nrm[i] );
+		for ( k = 0; k < 3; k++ ) {
+			if ( xyz[i][k] < lo[k] ) {
+				lo[k] = xyz[i][k];
+			}
+			if ( xyz[i][k] > hi[k] ) {
+				hi[k] = xyz[i][k];
+			}
+		}
+		stampA[i] = stampB[i] = 0;
 	}
-	for ( i = 0; i < numTri; i++ ) {
-		tri[i] = tess.indexes[firstIndex + i] - firstVert;
+	k = 0;
+	for ( i = 0; i + 2 < numTri; i += 3 ) {
+		int a = tess.indexes[firstIndex + i] - firstVert, b = tess.indexes[firstIndex + i + 1] - firstVert,
+			c = tess.indexes[firstIndex + i + 2] - firstVert;
+		if ( a < 0 || b < 0 || c < 0 || a >= numVerts || b >= numVerts || c >= numVerts ) {
+			continue;
+		}
+		tri[k++] = a;
+		tri[k++] = b;
+		tri[k++] = c;
 	}
+	numTri = k;
+
+	// its triangles in slabs along its longest side, each slab knowing how far its own reach
+	ax = hi[0] - lo[0] > hi[1] - lo[1] ? 0 : 1;
+	ax = hi[2] - lo[2] > hi[ax] - lo[ax] ? 2 : ax;
+	scale = hi[ax] - lo[ax] > 0.01f ? VRX_DECAL_SLABS / ( hi[ax] - lo[ax] ) : 0;
+	for ( sl = 0; sl < VRX_DECAL_SLABS; sl++ ) {
+		slabFill[sl] = 0;
+		slabLo[sl] = 1e9f;
+		slabHi[sl] = -1e9f;
+	}
+#define VRX_TRI_SLAB( i, out ) { \
+		float c0 = xyz[tri[i]][ax], c1 = xyz[tri[( i ) + 1]][ax], c2 = xyz[tri[( i ) + 2]][ax]; \
+		out = (int)( ( ( c0 + c1 + c2 ) * ( 1.0f / 3.0f ) - lo[ax] ) * scale ); \
+		out = out < 0 ? 0 : ( out >= VRX_DECAL_SLABS ? VRX_DECAL_SLABS - 1 : out ); }
+	for ( i = 0; i < numTri; i += 3 ) {
+		VRX_TRI_SLAB( i, sl );
+		slabFill[sl] += 3;
+		for ( k = 0; k < 3; k++ ) {
+			float c = xyz[tri[i + k]][ax];
+			if ( c < slabLo[sl] ) {
+				slabLo[sl] = c;
+			}
+			if ( c > slabHi[sl] ) {
+				slabHi[sl] = c;
+			}
+		}
+	}
+	slabFirst[0] = 0;
+	for ( sl = 0; sl < VRX_DECAL_SLABS; sl++ ) {
+		slabFirst[sl + 1] = slabFirst[sl] + slabFill[sl];
+		slabFill[sl] = slabFirst[sl];
+	}
+	for ( i = 0; i < numTri; i += 3 ) {
+		VRX_TRI_SLAB( i, sl );
+		sorted[slabFill[sl]] = tri[i];
+		sorted[slabFill[sl] + 1] = tri[i + 1];
+		sorted[slabFill[sl] + 2] = tri[i + 2];
+		slabFill[sl] += 3;
+	}
+#undef VRX_TRI_SLAB
 
 	for ( w = 0; w < count; w++ ) {
-		const float *n = g + w * 12 + 3, *down = g + w * 12 + 6;
-		float size = g[w * 12 + 9], flip = g[w * 12 + 10] < 0 ? -1.0f : 1.0f, bestT = 1e9f;
-		vec3_t across, p, from;
+		const float *at = g + w * 12, *n = at + 3, *down = at + 6;
+		float size = at[9], lay = at[11], stretch, flip = at[10] < 0 ? -1.0f : 1.0f, up = 0, dn, su, sv, from, to, reach;
+		int cell = (int)( fabs( at[10] ) + 0.5f ) - 1;
+		const float *uv;
+		qboolean onSkin = lay >= 100.0f;
+		vec3_t across, e2, p;
 
 		if ( size <= 0 ) {
 			continue;
 		}
+		if ( onSkin ) {
+			lay -= 90.0f;
+		}
+		stretch = lay >= 10.0f ? lay - 10.0f : 1.0f;
+		if ( stretch < 0.01f ) {
+			continue;
+		}
+		uv = vrxDecalCell[cell < 0 || cell >= VRX_DECAL_CELLS ? 0 : cell];
 		CrossProduct( down, n, across );
-		// the cgame only knows roughly where the skin is (round its bones): find it, the
-		// nearest triangle facing out along a line in through the hole
-		VectorMA( g + w * 12, 16.0f, n, from );
-		for ( i = 0; i + 2 < numTri; i += 3 ) {
-			const float *a, *b, *c;
-			vec3_t e1, e2, pv, tv, qv;
-			float det, u, v, t;
+		CrossProduct( n, across, e2 );
+		dn = DotProduct( down, n );
+#define VRX_VERT_A( v ) if ( stampA[v] != w + 1 ) { \
+			vec3_t rel; \
+			stampA[v] = w + 1; \
+			VectorSubtract( xyz[v], at, rel ); \
+			vs[v] = DotProduct( rel, across ); \
+			vt[v] = DotProduct( rel, down ); \
+			vh[v] = DotProduct( rel, n ); \
+			vf[v] = DotProduct( nrm[v], n ); \
+			vq[v] = DotProduct( rel, e2 ); }
 
-			if ( tri[i] >= numVerts || tri[i + 1] >= numVerts || tri[i + 2] >= numVerts ) {
-				continue;
-			}
-			if ( DotProduct( nrm[tri[i]], n ) + DotProduct( nrm[tri[i + 1]], n ) + DotProduct( nrm[tri[i + 2]], n ) < 0.3f ) {
-				continue;
-			}
-			a = xyz[tri[i]]; b = xyz[tri[i + 1]]; c = xyz[tri[i + 2]];
-			VectorSubtract( b, a, e1 );
-			VectorSubtract( c, a, e2 );
-			CrossProduct( n, e2, pv );      // the line runs along -n
-			det = -DotProduct( e1, pv );
-			if ( det > -1e-6f && det < 1e-6f ) {
-				continue;
-			}
-			VectorSubtract( from, a, tv );
-			u = -DotProduct( tv, pv ) / det;
-			if ( u < 0 || u > 1 ) {
-				continue;
-			}
-			CrossProduct( tv, e1, qv );
-			v = -DotProduct( n, qv ) / det;
-			if ( v < 0 || u + v > 1 ) {
-				continue;
-			}
-			t = DotProduct( e2, qv ) / det;
-			if ( t >= 0 && t < 32.0f && t < bestT ) {
-				bestT = t;
-			}
-		}
-		if ( bestT > 1e8f ) {
-			continue;       // nothing of this surface there
-		}
-		VectorMA( from, -bestT, n, p );
-		for ( i = 0; i + 2 < numTri; i += 3 ) {
-			vec3_t e1, e2, tn, rel;
-			float st[3][2], d, facing = 0;
-			int out;
-
-			if ( tri[i] >= numVerts || tri[i + 1] >= numVerts || tri[i + 2] >= numVerts ) {
-				continue;
-			}
-			// facing the hole's way, and the hole near its plane
-			VectorSubtract( xyz[tri[i + 1]], xyz[tri[i]], e1 );
-			VectorSubtract( xyz[tri[i + 2]], xyz[tri[i]], e2 );
-			CrossProduct( e1, e2, tn );
-			if ( VectorNormalize( tn ) < 1e-6f ) {
-				continue;
-			}
-			for ( k = 0; k < 3; k++ ) {
-				facing += DotProduct( nrm[tri[i + k]], n );
-			}
-			if ( facing < 0.6f ) {      // (vertex normals, so the winding doesn't matter)
-				continue;
-			}
-			VectorSubtract( p, xyz[tri[i]], rel );
-			d = DotProduct( rel, tn );
-			if ( d > 2.0f || d < -2.0f ) {
-				continue;
-			}
-			// where its corners fall on the texture: the hole in the middle (the Soldier of
-			// Fortune 2 holes are splashes round it)
-			for ( k = 0; k < 3; k++ ) {
-				VectorSubtract( xyz[tri[i + k]], p, rel );
-				st[k][0] = 0.5f + flip * DotProduct( rel, across ) / ( 2.0f * size );
-				st[k][1] = 0.5f + DotProduct( rel, down ) / ( 2.0f * size );
-			}
-			out = 0;
-			for ( k = 0; k < 2; k++ ) {
-				if ( st[0][k] < 0 && st[1][k] < 0 && st[2][k] < 0 ) {
-					out = 1;
+		if ( !onSkin ) {
+			// the cgame only knows roughly where the skin is (round its bones): find it, the
+			// nearest triangle facing out along a line in through the hole, from 16 outside
+			// it to 16 in. Seen along that line the hole is the origin: a triangle the line
+			// passes through has the origin inside it
+			float best = -1e9f;
+			reach = 16.0f * fabs( n[ax] ) + 0.05f;
+			from = at[ax] - reach;
+			to = at[ax] + reach;
+			for ( sl = 0; sl < VRX_DECAL_SLABS; sl++ ) {
+				if ( slabHi[sl] < from || slabLo[sl] > to ) {
+					continue;
 				}
-				if ( st[0][k] > 1 && st[1][k] > 1 && st[2][k] > 1 ) {
-					out = 1;
+				for ( i = slabFirst[sl]; i < slabFirst[sl + 1]; i += 3 ) {
+					int a = sorted[i], b = sorted[i + 1], c = sorted[i + 2];
+					float w0, w1, w2, sum, h;
+					VRX_VERT_A( a );
+					VRX_VERT_A( b );
+					VRX_VERT_A( c );
+					if ( ( vs[a] > 0 && vs[b] > 0 && vs[c] > 0 ) || ( vs[a] < 0 && vs[b] < 0 && vs[c] < 0 ) ||
+						 ( vq[a] > 0 && vq[b] > 0 && vq[c] > 0 ) || ( vq[a] < 0 && vq[b] < 0 && vq[c] < 0 ) ) {
+						continue;
+					}
+					if ( vf[a] + vf[b] + vf[c] < 0.3f ) {
+						continue;
+					}
+					w0 = vs[b] * vq[c] - vs[c] * vq[b];
+					w1 = vs[c] * vq[a] - vs[a] * vq[c];
+					w2 = vs[a] * vq[b] - vs[b] * vq[a];
+					if ( !( ( w0 >= 0 && w1 >= 0 && w2 >= 0 ) || ( w0 <= 0 && w1 <= 0 && w2 <= 0 ) ) ) {
+						continue;
+					}
+					sum = w0 + w1 + w2;
+					if ( sum > -1e-9f && sum < 1e-9f ) {
+						continue;
+					}
+					h = ( w0 * vh[a] + w1 * vh[b] + w2 * vh[c] ) / sum;
+					if ( h <= 16.0f && h > -16.0f && h > best ) {
+						best = h;
+					}
 				}
 			}
-			if ( out ) {
+			if ( best > -1e8f ) {
+				up = best;
+			} else if ( lay < 10.0f ) {
+				continue;       // nothing of this surface there
+			}
+		}
+		VectorMA( at, up, n, p );
+		// where its vertexes fall on the picture, the hole in its middle
+		su = flip / ( 2.0f * size );
+		sv = 1.0f / ( 2.0f * size * stretch );
+#define VRX_VERT_B( v ) if ( stampB[v] != w + 1 ) { \
+			float pu, pv; \
+			VRX_VERT_A( v ); \
+			stampB[v] = w + 1; \
+			pu = 0.5f + vs[v] * su; \
+			pv = 0.5f + ( vt[v] - up * dn ) * sv; \
+			vu[v] = pu; \
+			vv[v] = pv; \
+			vo[v] = ( pu < 0 ? 1 : 0 ) | ( pu > 1 ? 2 : 0 ) | ( pv < 0 ? 4 : 0 ) | ( pv > 1 ? 8 : 0 ); }
+
+		// (the slabs the picture can reach: its own size, and the skin under it tilted away)
+		{
+			float len = size * ( stretch > 1.0f ? stretch : 1.0f );
+			reach = 1.25f * size * ( fabs( across[ax] ) + stretch * fabs( down[ax] ) ) +
+					( 2.0f * stretch + 3.0f * len + 2.0f ) * fabs( n[ax] ) + 0.5f;
+		}
+		from = p[ax] - reach;
+		to = p[ax] + reach;
+		for ( sl = 0; sl < VRX_DECAL_SLABS; sl++ ) {
+			if ( slabHi[sl] < from || slabLo[sl] > to ) {
 				continue;
 			}
-			if ( tess.numVertexes + 3 > SHADER_MAX_VERTEXES || tess.numIndexes + 3 > SHADER_MAX_INDEXES ) {
-				return;
+			for ( i = slabFirst[sl]; i < slabFirst[sl + 1]; i += 3 ) {
+				int a = sorted[i], b = sorted[i + 1], c = sorted[i + 2], num, v0;
+				vrxDecalVert_t poly[2][10];
+				vec3_t e1, e3, tn, rel;
+				float d;
+
+				VRX_VERT_B( a );
+				VRX_VERT_B( b );
+				VRX_VERT_B( c );
+				if ( vo[a] & vo[b] & vo[c] ) {
+					continue;       // all of it off one edge of the picture
+				}
+				if ( vf[a] + vf[b] + vf[c] < 0.6f ) {       // facing the hole's way (vertex normals, so the winding doesn't matter)
+					continue;
+				}
+				// and the hole near its plane
+				VectorSubtract( xyz[b], xyz[a], e1 );
+				VectorSubtract( xyz[c], xyz[a], e3 );
+				CrossProduct( e1, e3, tn );
+				if ( VectorNormalize( tn ) < 1e-6f ) {
+					continue;
+				}
+				VectorSubtract( p, xyz[a], rel );
+				d = DotProduct( rel, tn );
+				if ( d > 2.0f * stretch || d < -2.0f * stretch ) {
+					continue;
+				}
+				for ( k = 0; k < 3; k++ ) {
+					int v = sorted[i + k];
+					poly[0][k].u = vu[v];
+					poly[0][k].v = vv[v];
+					VectorCopy( xyz[v], poly[0][k].xyz );
+					VectorCopy( nrm[v], poly[0][k].nrm );
+				}
+				num = 3;
+				if ( vo[a] | vo[b] | vo[c] ) {
+					num = R_VRX_ClipDecal( poly[0], num, poly[1], 0, 0.0f, qfalse );
+					num = R_VRX_ClipDecal( poly[1], num, poly[0], 0, 1.0f, qtrue );
+					num = R_VRX_ClipDecal( poly[0], num, poly[1], 1, 0.0f, qfalse );
+					num = R_VRX_ClipDecal( poly[1], num, poly[0], 1, 1.0f, qtrue );
+					if ( num < 3 ) {
+						continue;
+					}
+				}
+				if ( tess.numVertexes + num > SHADER_MAX_VERTEXES - 1 || tess.numIndexes + ( num - 2 ) * 3 > SHADER_MAX_INDEXES - 1 ) {
+					return;
+				}
+				v0 = tess.numVertexes;
+				for ( k = 0; k < num; k++ ) {
+					int v = tess.numVertexes++;
+					VectorCopy( poly[0][k].xyz, tess.xyz[v] );
+					tess.xyz[v][3] = 1.0f;
+					VectorCopy( poly[0][k].nrm, tess.normal[v] );
+					tess.normal[v][3] = 0.0f;
+					tess.texCoords[v][0][0] = uv[0] + poly[0][k].u * ( uv[2] - uv[0] );
+					tess.texCoords[v][0][1] = uv[1] + poly[0][k].v * ( uv[3] - uv[1] );
+				}
+				for ( k = 1; k + 1 < num; k++ ) {
+					tess.indexes[tess.numIndexes++] = v0;
+					tess.indexes[tess.numIndexes++] = v0 + k;
+					tess.indexes[tess.numIndexes++] = v0 + k + 1;
+				}
 			}
-			for ( k = 0; k < 3; k++ ) {
-				int v = tess.numVertexes++;
-				Vector4Copy( xyz[tri[i + k]], tess.xyz[v] );
-				Vector4Copy( nrm[tri[i + k]], tess.normal[v] );
-				tess.texCoords[v][0][0] = st[k][0];
-				tess.texCoords[v][0][1] = st[k][1];
-				tess.indexes[tess.numIndexes++] = v;
-			}
+		}
+#undef VRX_VERT_A
+#undef VRX_VERT_B
+	}
+}
+
+/*
+==============
+R_VRG_Get / R_VRG_Skin / R_VRG_Flesh
+
+RealRTCW-VR voxel gore (qcommon/vr_gore.h, cgame cg_vrgore.c): after the pose (and a cut)
+in ragdollBones, VRG_MAGIC and the address of what to draw. The skin keeps only the
+triangles the cgame left whole, plus the pieces of the others round the holes (each corner
+weighted from its triangle's three, so they bend with the body as it does). A second copy
+of the body drawn with the shader vr_goreflesh is the wound walls instead, which the cgame
+posed itself.
+==============
+*/
+static const vrGoreDraw_t *R_VRG_Get( const mdsHeader_t *header, const refEntity_t *refent ) {
+	unsigned cutMask[VRX_CUT_WORDS];
+	unsigned long long addr;
+	const float *g;
+	vrxBits_t m;
+	int cutMode;
+
+	g = R_VRX_Trailer( header, refent, &cutMode, cutMask );
+	if ( !g ) {
+		return NULL;
+	}
+	m.f = g[0];
+	if ( m.i != VRG_MAGIC ) {
+		return NULL;
+	}
+	m.f = g[1];
+	addr = (unsigned)m.i;
+	m.f = g[2];
+	addr |= (unsigned long long)(unsigned)m.i << 32;
+	return (const vrGoreDraw_t *)(uintptr_t)addr;
+}
+
+void R_VRG_Room( const vrGoreDraw_t *gd, int *verts, int *indexes );     // tr_surface.c
+
+static int R_VRG_SurfIndex( const mdsHeader_t *header, const mdsSurface_t *surface ) {
+	const mdsSurface_t *s = ( const mdsSurface_t * )( (const byte *)header + header->ofsSurfaces );
+	int i;
+
+	for ( i = 0; i < header->numSurfaces && i < VRG_MAX_SURFS; i++ ) {
+		if ( s == surface ) {
+			return i;
+		}
+		s = ( const mdsSurface_t * )( (const byte *)s + s->ofsEnd );
+	}
+	return -1;
+}
+
+static void R_VRG_Skin( const vrGoreDraw_t *gd, const mdsHeader_t *header, const mdsSurface_t *surface, int firstVert, int numVerts, int firstIndex ) {
+	const vrGoreSurf_t *gs;
+	const int *triangles;
+	int s, i, k, j, numSub;
+
+	s = R_VRG_SurfIndex( header, surface );
+	if ( s < 0 || s >= gd->numSurfaces ) {
+		return;
+	}
+	gs = &gd->surf[s];
+	if ( gs->numKeep < 0 || gs->numVerts != surface->numVerts || gs->numTriangles != surface->numTriangles ||
+		 numVerts != surface->numVerts ) {
+		return;     // untouched, or not the model (or the detail) it was worked out for: drawn whole
+	}
+	triangles = ( const int * )( (const byte *)surface + surface->ofsTriangles );
+	tess.numIndexes = firstIndex;
+	for ( i = 0; i < gs->numKeep; i++ ) {
+		int t = gs->keep[i];
+		if ( t < 0 || t >= surface->numTriangles ) {
+			continue;
+		}
+		for ( k = 0; k < 3; k++ ) {
+			tess.indexes[tess.numIndexes++] = triangles[t * 3 + k] + firstVert;
 		}
 	}
+	numSub = gs->numSub;
+	// (never into the last slot: RB_EndSurface takes a write there for an overflow)
+	if ( tess.numVertexes + numSub * 3 > SHADER_MAX_VERTEXES - 1 ) {
+		numSub = ( SHADER_MAX_VERTEXES - 1 - tess.numVertexes ) / 3;
+	}
+	if ( tess.numIndexes + numSub * 3 > SHADER_MAX_INDEXES - 1 ) {
+		numSub = ( SHADER_MAX_INDEXES - 1 - tess.numIndexes ) / 3;
+	}
+	if ( numSub < 0 ) {
+		numSub = 0;
+	}
+	for ( i = 0; i < numSub; i++ ) {
+		const float *sb = gs->sub + i * VRG_SUB_FLOATS;
+		int t = (int)sb[0], c[3];
+		if ( t < 0 || t >= surface->numTriangles ) {
+			continue;
+		}
+		for ( k = 0; k < 3; k++ ) {
+			c[k] = triangles[t * 3 + k] + firstVert;
+		}
+		for ( k = 0; k < 3; k++ ) {
+			const float *w = sb + 1 + k * 3;
+			int v = tess.numVertexes++;
+			for ( j = 0; j < 3; j++ ) {
+				tess.xyz[v][j] = w[0] * tess.xyz[c[0]][j] + w[1] * tess.xyz[c[1]][j] + w[2] * tess.xyz[c[2]][j];
+				tess.normal[v][j] = w[0] * tess.normal[c[0]][j] + w[1] * tess.normal[c[1]][j] + w[2] * tess.normal[c[2]][j];
+			}
+			for ( j = 0; j < 2; j++ ) {
+				tess.texCoords[v][0][j] = w[0] * tess.texCoords[c[0]][0][j] + w[1] * tess.texCoords[c[1]][0][j] + w[2] * tess.texCoords[c[2]][0][j];
+				tess.texCoords[v][1][j] = 0;
+			}
+			tess.indexes[tess.numIndexes++] = v;
+		}
+	}
+}
+
+static void R_VRG_Flesh( const vrGoreDraw_t *gd, const mdsHeader_t *header, const mdsSurface_t *surface, int firstVert, int firstIndex ) {
+	int i, k, n;
+
+	tess.numIndexes = firstIndex;       // the body's own surface isn't drawn
+	tess.numVertexes = firstVert;
+	if ( surface != ( const mdsSurface_t * )( (const byte *)header + header->ofsSurfaces ) ) {
+		return;     // all of it, once: with the first surface
+	}
+	n = gd->numFleshVerts;
+	if ( n <= 0 || tess.numVertexes + n > SHADER_MAX_VERTEXES - 1 || tess.numIndexes + gd->numFleshIndexes > SHADER_MAX_INDEXES - 1 ) {
+		return;
+	}
+	for ( i = 0; i < n; i++ ) {
+		int v = tess.numVertexes + i;
+		for ( k = 0; k < 3; k++ ) {
+			tess.xyz[v][k] = gd->fleshXyz[i * 3 + k];
+			tess.normal[v][k] = gd->fleshNormal[i * 3 + k];
+		}
+		for ( k = 0; k < 4; k++ ) {
+			tess.vertexColors[v][k] = gd->fleshRGBA[i * 4 + k];
+		}
+		tess.texCoords[v][0][0] = tess.texCoords[v][0][1] = 0;
+		tess.texCoords[v][1][0] = tess.texCoords[v][1][1] = 0;
+	}
+	for ( i = 0; i < gd->numFleshIndexes; i++ ) {
+		int idx = gd->fleshIndexes[i];
+		tess.indexes[tess.numIndexes++] = tess.numVertexes + ( idx >= 0 && idx < n ? idx : 0 );
+	}
+	tess.numVertexes += n;
 }
 
 /*
@@ -1407,7 +1777,19 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	//
 	// setup triangle list
 	//
-	RB_CHECKOVERFLOW( render_count, surface->numTriangles * 3 );
+	{
+		// RealRTCW-VR: with room for what the voxel gore adds, so a full batch is flushed first
+		int goreVerts, goreIndexes;
+		const vrGoreDraw_t *gd = R_VRG_Get( header, refent );
+		R_VRG_Room( gd, &goreVerts, &goreIndexes );
+		RB_CHECKOVERFLOW( render_count + goreVerts, surface->numTriangles * 3 + goreIndexes );
+		// drawn for its wound walls (vr_goreflesh), which the cgame posed itself: none of the
+		// surface is wanted, so it isn't deformed first just to be thrown away
+		if ( gd && tess.shader && !Q_stricmp( tess.shader->name, "vr_goreflesh" ) ) {
+			R_VRG_Flesh( gd, header, surface, tess.numVertexes, tess.numIndexes );
+			return;
+		}
+	}
 
 //DBG_SHOWTIME
 
@@ -1523,11 +1905,21 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 		tess.numIndexes = out;
 	}
 	}
+	{
+		const vrGoreDraw_t *gd = R_VRG_Get( header, refent );
+		if ( gd ) {
+			if ( tess.shader && !Q_stricmp( tess.shader->name, "vr_goreflesh" ) ) {
+				R_VRG_Flesh( gd, header, surface, baseVertex, oldIndexes );
+				return;
+			}
+			R_VRG_Skin( gd, header, surface, baseVertex, render_count, oldIndexes );
+		}
+	}
 	if ( tess.shader && !Q_stricmp( tess.shader->name, "vr_bodyblood" ) ) {
 		R_VRX_BodyBlood( header, surface, refent, baseVertex, render_count );
 	}
-	if ( tess.shader && !Q_stricmpn( tess.shader->name, "vr_bodywound", 12 ) ) {
-		R_VRX_BodyWounds( header, refent, baseVertex, render_count, oldIndexes );
+	if ( tess.shader && ( !Q_stricmpn( tess.shader->name, "vr_bodywound", 12 ) || !Q_stricmpn( tess.shader->name, "vr_goreblood", 12 ) ) ) {
+		R_VRX_BodyWounds( header, refent, baseVertex, tess.numVertexes - baseVertex, oldIndexes );     // (with the voxel gore's pieces round its holes)
 		return;
 	}
 

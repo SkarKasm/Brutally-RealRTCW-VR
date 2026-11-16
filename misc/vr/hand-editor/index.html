@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RealRTCW VR · Hand Editor</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
+</head>
+<body>
+<header><div><strong>RealRTCW VR</strong><span>HAND &amp; FINGER EDITOR</span></div><div class="actions"><button id="undo" title="Ctrl+Z">Undo</button><button id="redo" title="Ctrl+Shift+Z">Redo</button><button id="save">Save poses</button><button id="build">Build saved poses</button><button id="install" class="primary">Install into game</button><button id="uninstall" class="danger" title="Takes the installed edits out of the game (your saved poses stay)">Remove from game</button></div></header>
+<main>
+<aside>
+<label class="field">Weapon<select id="weapon"></select></label>
+<p id="shared" class="note" hidden></p>
+<section><h2>Size</h2><div id="weapon-size"></div><div id="dimensions" class="muted"></div><p class="hint">Weapon size changes the whole gun and its hands together in VR. The grid is about 10 cm per square at the size the gun is drawn in VR.</p></section>
+<section><h2>Hand</h2><div class="tabs"><button id="trigger" class="active">Trigger · right</button><button id="support">Support · left</button></div><div class="seg"><button id="move">Move · G</button><button id="rotate">Rotate · R</button><button id="hide-gizmo">Hide gizmo</button></div><div id="root-controls"></div><label><input type="checkbox" id="sleeve" checked>Sleeve follows the hand</label><button id="reset-hand" class="subtle">Reset this hand</button></section>
+<section><h2>Fingers</h2><label class="field">Selected finger<select id="finger"><option value="thumb">Thumb</option><option value="index">Index</option><option value="middle">Middle</option><option value="ring">Ring</option><option value="little">Little</option></select></label><div id="finger-controls"></div><p class="hint">Offsets from the gun's own pose. Positive bend curls towards the palm, negative opens. Splay moves the finger sideways. Roll turns it around its length. Turn on "Show finger joints" to see the joints.</p><button id="reset-finger" class="subtle">Reset this finger</button></section>
+<section><h2>View</h2><label><input type="checkbox" id="wire">Wireframe</label><label><input type="checkbox" id="transparent">See through weapon</label><label><input type="checkbox" id="skeleton" checked>Show finger joints</label><label><input type="checkbox" id="other-hand" checked>Show other hand</label><label><input type="checkbox" id="show-weapon" checked>Show weapon</label><label><input type="checkbox" id="show-sleeves" checked>Show sleeves</label></section>
+<section><h2>Presets</h2><div class="seg"><button id="export">Export JSON</button><button id="import">Import JSON</button></div><button id="reset-weapon" class="subtle">Reset this weapon</button><input type="file" id="import-file" accept=".json,application/json" hidden></section>
+</aside>
+<div id="viewport"><div id="camera-bar"><button data-view="angle">3D</button><button data-view="eye">Your view</button><button data-view="left">Left</button><button data-view="right">Right</button><button data-view="front">Muzzle</button><button data-view="back">Rear</button><button data-view="top">Top</button><button data-view="bottom">Under</button><button id="frame-all">Frame all · F</button><button id="frame-hand">Frame hand</button><button id="screenshot">PNG</button></div><div id="viewport-label"><span class="orange">TRIGGER HAND</span><span class="blue">SUPPORT HAND</span><span>The game's own weapon and hand models, at the pose VR holds them in</span></div><div id="loading">Loading weapon…</div><div id="help">Drag to orbit · Right drag to pan · Wheel to zoom<br>G move · R rotate · F frame all · Ctrl+S save</div></div>
+</main>
+<footer><span id="status">Starting…</span><button id="toggle-log">Build log</button><button id="stop-editor">Stop editor</button><span id="save-state">Saved</span></footer><pre id="log" hidden></pre>
+<script type="module" src="editor.js"></script>
+</body></html>

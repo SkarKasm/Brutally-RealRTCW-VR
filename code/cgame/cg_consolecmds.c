@@ -814,9 +814,19 @@ typedef struct {
 
 static consoleCommand_t commands[] = {
 	{ "vrtestwound", CG_VRX_TestWound_f },
+	{ "vrgoretest", CG_VRGore_Test_f },
+	{ "vrgoredemo", CG_VRGore_Demo_f },
 	{ "vrposedump", CG_VRX_PoseDump_f },
 	{ "vrtesthit", CG_VRX_TestHit_f },       // RealRTCW-VR test aid
 	{ "vrshowmodel", CG_VRX_ShowModel_f },   // RealRTCW-VR test aid
+	{ "handtweak", CG_VR_HandTweak_f },     // RealRTCW-VR hand alignment (cg_vrhandtweak.c)
+	{ "handtweak_part", CG_VR_HandTweakPart_f },
+	{ "handtweak_nudge", CG_VR_HandTweakNudge_f },
+	{ "handtweak_reset", CG_VR_HandTweakReset_f },
+	{ "handtweak_undo", CG_VR_HandTweakUndo_f },
+	{ "handtweak_print", CG_VR_HandTweakPrint_f },
+	{ "handtweak_load", CG_VR_HandTweakLoad_f },
+	{ "handtweak_save", CG_VR_HandTweakSave_f },
 	{"testgun", CG_TestGun_f},
 	{"testmodel", CG_TestModel_f},
 	{"nextframe", CG_TestModelNextFrame_f},

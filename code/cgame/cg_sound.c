@@ -201,6 +201,28 @@ qboolean CG_SoundPlaySoundScript( const char *name, vec3_t org, int entnum ) {
 
 /*
 ==============
+CG_SoundScriptIsFoley
+
+  RealRTCW-VR: qtrue for a sound script that isn't a voice (not on the voice channel, not
+  global), such as the body falls the old death animations play
+==============
+*/
+qboolean CG_SoundScriptIsFoley( const char *name ) {
+	soundScript_t   *sound;
+
+	if ( !name || !name[0] ) {
+		return qfalse;
+	}
+	for ( sound = hashTable[generateHashValue( name )]; sound; sound = sound->nextHash ) {
+		if ( !Q_strcasecmp( (char *)name, sound->name ) ) {
+			return sound->channel != CHAN_VOICE && sound->attenuation != 0;
+		}
+	}
+	return qfalse;
+}
+
+/*
+==============
 CG_SoundPlayIndexedScript
 
   returns qtrue is a script is found

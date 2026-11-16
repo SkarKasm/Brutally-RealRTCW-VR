@@ -34,6 +34,7 @@ the Free Software Foundation, either version 3 of the License, or
 
 static vmCvar_t vrxCvars[VRX_COUNT];
 static vmCvar_t g_vrx;
+static vmCvar_t g_bleedOut;      // wounds that bleed him out over time (G_VRX_Bleed)
 static const char *vrxNames[VRX_COUNT] = {
 	"g_gore",
 	"g_shotReactions",
@@ -45,15 +46,26 @@ static const char *vrxNames[VRX_COUNT] = {
 	"g_decapitate",
 	"g_headScare",
 	"g_stockGibs",
+	"g_voxelGore",
 };
 static qboolean vrxRegistered;
 
 static void G_VRX_PropsFrame( void );
 static void G_VRX_MarkersFrame( void );
+static void G_VRX_ScreamFrame( void );
+static void G_VRX_GhostFrame( void );
 static gentity_t *G_VRX_Marker( gentity_t *body, qboolean create );
 static gentity_t *G_VRX_SpawnHead( gentity_t *body, const vec3_t pos, gentity_t *by );
 static void G_VRX_DropWeapon( gentity_t *e, cast_state_t *cs );
+static void G_VRX_Disarm( gentity_t *targ );
+static void G_VRX_DisarmFrame( void );
+static void G_VRX_DisarmItemFree( int n );
+static int vrxDisarmed[MAX_CLIENTS];        // the weapon he dropped (0: none)
+static int vrxDisarmItem[MAX_CLIENTS];      // where it lies: its entity (0: none)
+static int vrxPickupAt[MAX_CLIENTS];        // stooping for it: he has it then
 static void G_VRX_SurvivalTest( void );
+static void G_VRX_BleedFrame( void );
+static void G_VRX_Bleed( gentity_t *targ, gentity_t *attacker, const vec3_t point, int region, int mod, qboolean headshot );
 
 static void G_VRX_Register( void ) {
 	char def[2] = { 0, 0 };
@@ -67,6 +79,7 @@ static void G_VRX_Register( void ) {
 		trap_Cvar_Register( &vrxCvars[i], vrxNames[i], def, CVAR_ARCHIVE );
 	}
 	trap_Cvar_Register( &g_vrx, "g_vrx", VRX_DEFAULTS, CVAR_SERVERINFO );
+	trap_Cvar_Register( &g_bleedOut, "g_bleedOut", "1", CVAR_ARCHIVE );
 	vrxRegistered = qtrue;
 }
 
@@ -89,6 +102,10 @@ void G_VRX_Frame( void ) {
 
 	G_VRX_PropsFrame();
 	G_VRX_MarkersFrame();
+	G_VRX_BleedFrame();
+	G_VRX_ScreamFrame();
+	G_VRX_GhostFrame();
+	G_VRX_DisarmFrame();
 	G_VRX_SurvivalTest();     // (test aid, cheats only)
 }
 
@@ -104,6 +121,12 @@ int G_VRX( int which ) {
 // a gory one: only with the master switch on too
 qboolean G_VRX_Gore( int which ) {
 	return G_VRX( VRX_GORE ) && G_VRX( which );
+}
+
+// the older body gore (wounds, throats, guts, limbs off): not with the voxel gore, which
+// does bodies itself
+static qboolean G_VRX_OldGore( int which ) {
+	return G_VRX_Gore( which ) && !G_VRX_Gore( VRX_VOXEL );
 }
 
 /*
@@ -193,6 +216,9 @@ static void G_VRX_Dismember( gentity_t *targ, gentity_t *inflictor, const vec3_t
 	if ( !blast && !( G_VRX( VRX_DISMEMBER ) >= 2 && ( mod == MOD_VENOM || damage >= 45 ) ) ) {
 		return;
 	}
+	if ( mod == MOD_KNIFE || mod == MOD_KNIFE2 || mod == MOD_KNIFE_STEALTH ) {
+		return;     // a knife takes nothing off someone on his feet: it cuts where it lands (the cgame's CG_VRX_KnifeHit)
+	}
 	if ( !blast && ( headshot || G_VRX_ShotAtHead( targ, dir, point ) ) ) {
 		return;     // a round through the head takes no limb
 	}
@@ -258,6 +284,7 @@ Where it met him (VRH_*) goes to the damage: head shots, groin shots, which limb
 static int vrxHitEnt = -1;
 static int vrxHitRegion;
 static vec3_t vrxHitPoint;
+static qboolean vrxHitHeadTop;      // a head hit in its upper half: eyes and up (the lethal one)
 
 // where the ray o + t d (d unit, t up to maxT) first meets the capsule a-b of radius r
 static qboolean G_VRX_RayCapsule( const vec3_t o, const vec3_t d, float maxT, const vec3_t a, const vec3_t b, float r, float *tOut ) {
@@ -307,7 +334,7 @@ static int G_VRX_BodyTrace( gentity_t *e, const vec3_t start, const vec3_t end, 
 		{ VRB_LTHIGH, VRB_LCALF, 4.8f, VRH_LLEG }, { VRB_LCALF, VRB_LFOOT, 3.8f, VRH_LLEG }, { VRB_LFOOT, VRB_LTOE, 2.8f, VRH_LLEG },
 		{ VRB_RTHIGH, VRB_RCALF, 4.8f, VRH_RLEG }, { VRB_RCALF, VRB_RFOOT, 3.8f, VRH_RLEG }, { VRB_RFOOT, VRB_RTOE, 2.8f, VRH_RLEG },
 	};
-	vec3_t pt[VRB_GROUPS * 4], d, u, a, b, up, right, fwd, groin;
+	vec3_t pt[VRB_GROUPS * 4], d, u, a, b, up, right, fwd, groin, headUp, headC;
 	orientation_t or;
 	float maxT, t, best = 1e9f, groinT = 1e9f;
 	int g, k, region = VRH_NONE;
@@ -337,6 +364,8 @@ static int G_VRX_BodyTrace( gentity_t *e, const vec3_t start, const vec3_t end, 
 	VectorSubtract( pt[VRB_HEAD], pt[VRB_NECK], u );
 	VectorNormalize( u );
 	VectorMA( pt[VRB_HEAD], 3.5f, u, a );
+	VectorCopy( u, headUp );
+	VectorCopy( a, headC );
 	if ( G_VRX_RayCapsule( start, d, maxT, a, a, 5.0f, &t ) && t < best ) {
 		best = t;
 		region = VRH_HEAD;
@@ -370,12 +399,68 @@ static int G_VRX_BodyTrace( gentity_t *e, const vec3_t start, const vec3_t end, 
 	VectorMA( start, best, d, hit );
 	vrxHitEnt = e->s.number;
 	vrxHitRegion = region;
+	vrxHitHeadTop = qfalse;
+	if ( region == VRH_HEAD ) {
+		// the upper half of the head and face, its own hit box. The ball sits on the head bone
+		// 3.5 up: the mouth is about 2.5 below its middle, the eyes just above it, the chin 5
+		// below and the crown 6 above, so halfway down the face (the nose) is 1.25 below the
+		// middle. Not where the bullet first touches the ball but where it passes through the
+		// head, its path's nearest point to the middle: a shot from below into the eyes goes up
+		// into the brain, though it touched the ball low
+		vec3_t rel, mid;
+		float t0;
+		VectorSubtract( headC, start, rel );
+		t0 = DotProduct( rel, d );
+		VectorMA( start, t0, d, mid );
+		VectorSubtract( mid, headC, rel );
+		vrxHitHeadTop = DotProduct( rel, headUp ) >= -1.25f;
+	}
 	VectorCopy( hit, vrxHitPoint );
 	return 1;
 }
 
+static void G_VRX_ShotTraceLoose( trace_t *tr, const vec3_t start, const vec3_t end, int passEnt );
+static void G_VRX_ShotTraceBox( trace_t *tr, const vec3_t start, const vec3_t end, int passEnt, int mask );
+
 // a bullet's trace, but through the gaps round a character's body
+static qboolean vrxGhost[MAX_CLIENTS];      // down and not in the way (G_VRX_GhostFrame)
+static qboolean G_VRX_GhostOnFeet( int i ); // a ghost because he's staggering, not because he's on the floor
+static qboolean G_VRX_Staggering( int i );  // stunned by a hit and on his feet, the cgame's physics moving him
+
 void G_VRX_ShotTrace( trace_t *tr, const vec3_t start, const vec3_t end, int passEnt, int mask ) {
+	int i;
+
+	// a man on the floor is shot where he's drawn (the loose trace below), never by his box:
+	// it stands man-high where he fell, and the player can be standing in it now, so every
+	// shot started inside it and hit him at the muzzle
+	// (a man staggering on his feet is still shot by his box, which keeps up with him
+	// (G_VRX_DownPos_f), unless the shot starts inside it)
+	for ( i = 1; i < MAX_CLIENTS; i++ ) {
+		if ( vrxGhost[i] && g_entities[i].r.contents == CONTENTS_CORPSE ) {
+			gentity_t *g = &g_entities[i];
+			if ( G_VRX_GhostOnFeet( i ) &&
+				 !( start[0] > g->r.absmin[0] - 8 && start[0] < g->r.absmax[0] + 8 && start[1] > g->r.absmin[1] - 8 &&
+					start[1] < g->r.absmax[1] + 8 && start[2] > g->r.absmin[2] - 8 && start[2] < g->r.absmax[2] + 8 ) ) {
+				continue;
+			}
+			g_entities[i].r.contents = 0;
+		} else {
+			vrxGhost[i] = vrxGhost[i] && g_entities[i].r.contents == CONTENTS_CORPSE;
+		}
+	}
+	G_VRX_ShotTraceBox( tr, start, end, passEnt, mask );
+	for ( i = 1; i < MAX_CLIENTS; i++ ) {
+		if ( vrxGhost[i] && g_entities[i].r.contents == 0 ) {
+			g_entities[i].r.contents = CONTENTS_CORPSE;
+		}
+	}
+	if ( mask & CONTENTS_BODY ) {
+		G_VRX_ShotTraceLoose( tr, start, end, passEnt );
+	}
+}
+
+// (as the box trace finds him, then through the gaps)
+static void G_VRX_ShotTraceBox( trace_t *tr, const vec3_t start, const vec3_t end, int passEnt, int mask ) {
 	vec3_t from, hit;
 	float total = Distance( start, end );
 	int k, r;
@@ -400,6 +485,18 @@ void G_VRX_ShotTrace( trace_t *tr, const vec3_t start, const vec3_t end, int pas
 			tr->fraction = total > 0 ? Distance( start, hit ) / total : 0;
 			return;
 		}
+		if ( G_VRX_Staggering( e->s.number ) ) {
+			// staggering: the cgame's physics has his body, not the animation these gaps were
+			// measured on (he's bent over, leaning, an arm across him), and shots at him went
+			// through. So for him the box counts, the middle of it: within a body's width of
+			// his upright axis
+			float dx = e->r.currentOrigin[0] - start[0], dy = e->r.currentOrigin[1] - start[1];
+			float ex = end[0] - start[0], ey = end[1] - start[1], len = sqrt( ex * ex + ey * ey );
+			if ( len < 1.0f || fabs( dx * ey - dy * ex ) / len < 11.0f ) {
+				vrxHitEnt = -1;     // (where on him: not known)
+				return;
+			}
+		}
 		// missed him: on past
 		VectorCopy( tr->endpos, from );
 		trap_Trace( tr, from, NULL, NULL, (float *)end, e->s.number, mask );
@@ -413,6 +510,14 @@ int G_VRX_HitRegion( gentity_t *targ, const vec3_t point ) {
 		return VRH_NONE;
 	}
 	return vrxHitRegion;
+}
+
+// the shot that hit targ at point went into the upper half of his head (eyes and up): -1 not known
+int G_VRX_HitHeadTop( gentity_t *targ, const vec3_t point ) {
+	if ( G_VRX_HitRegion( targ, point ) != VRH_HEAD ) {
+		return G_VRX_HitRegion( targ, point ) == VRH_NONE ? -1 : 0;
+	}
+	return vrxHitHeadTop ? 1 : 0;
 }
 
 /*
@@ -448,6 +553,29 @@ static qboolean G_VRX_Heavy( gentity_t *targ, gentity_t *attacker, int mod, int 
 	return G_VRX_Shotgun( mod ) && attacker && Distance( attacker->r.currentOrigin, targ->r.currentOrigin ) < 300.0f;
 }
 
+// who a shot to the head always kills: people (not the bosses, the dogs, the lopers)
+static qboolean G_VRX_HeadshotKills( gentity_t *e ) {
+	switch ( e->aiCharacter ) {
+	case AICHAR_SUPERSOLDIER: case AICHAR_SUPERSOLDIER_LAB: case AICHAR_PROTOSOLDIER: case AICHAR_HELGA:
+	case AICHAR_HEINRICH: case AICHAR_LOPER: case AICHAR_LOPER_SPECIAL: case AICHAR_DOG:
+		return qfalse;
+	default:
+		return qtrue;
+	}
+}
+
+// the bosses (Helga, Heinrich, the Uebersoldaten): no hit physics on them while they live (no
+// stagger, stun or knockdown, no dropped gun) and no bleeding out: they fight on till they die
+static qboolean G_VRX_Boss( gentity_t *e ) {
+	switch ( e->aiCharacter ) {
+	case AICHAR_SUPERSOLDIER: case AICHAR_SUPERSOLDIER_LAB: case AICHAR_PROTOSOLDIER: case AICHAR_HELGA:
+	case AICHAR_HEINRICH:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
 // crippled, given up, or nearly dead
 static qboolean G_VRX_Downed( gentity_t *e ) {
 	int max;
@@ -464,13 +592,139 @@ static qboolean G_VRX_Downed( gentity_t *e ) {
 // 3 chest, writhing onto his front  4/5 left/right leg, writhing on his back
 // 6/7 left/right arm, writhing on his side   8 slumped, sitting, helpless
 #define VRX_DOWN_GRACE  10000   // ms after going down that stray fire can't finish him
+#define VRX_DOWN_MS     2200    // knocked down: on the floor this long (plus up to VRX_DOWN_RAND)...
+#define VRX_DOWN_RAND   1500
+#define VRX_GETUP_MS    3400    // ...then getting back up (the cgame's get-up, RD_GETUP_MS), still not fighting
+#define VRX_DOWN_AGAIN  2500    // after getting up, not knocked straight back down
 static int vrxDownedAt[MAX_GENTITIES];
 static float vrxDownedYaw[MAX_GENTITIES];
+static int vrxGetUpAt[MAX_GENTITIES];       // knocked down, gets up then (0: stays down, a leg off)
+static int vrxUpAt[MAX_GENTITIES];          // got up then
+static int vrxGetUpHold[MAX_GENTITIES];     // held facing the way the cgame's get-up turned him, until then
+#define VRX_STUN_MS     1100    // shot and not down: stunned, shoved about by the bullets, this long (plus up to VRX_STUN_RAND)
+#define VRX_STUN_RAND   500
+#define VRX_STUN_MAX    5000    // however many more hits: he comes to after this long
+static int vrxStunUntil[MAX_GENTITIES];
+static int vrxStaggerUntil[MAX_GENTITIES];  // the stun's over, but the cgame has him still staggering ("vrstagger")
+static int vrxStunStart[MAX_GENTITIES];
+static int vrxKnifedAlive[MAX_GENTITIES];
+static qboolean vrxFightBack[MAX_GENTITIES];  // stunned by a chest shot: fights back as he staggers (G_VRX_HoldStunned)   // a knife went into him while he was alive, then (G_VRX_Decap_f)
 
-static void G_VRX_KnockDown( gentity_t *targ, gentity_t *attacker, int region ) {
+/*
+=================
+G_VRX_Scream
+
+A limb gone, alive: the burning man's scream (the character's flame death), now and every few
+seconds while he lasts (G_VRX_ScreamFrame).
+=================
+*/
+static int vrxNextScream[MAX_GENTITIES];
+
+static void G_VRX_Scream( gentity_t *ent ) {
+	const char *snd;
+
+	if ( !ent->client || !ent->aiCharacter || ent->health <= 0 ) {
+		return;
+	}
+	snd = aiDefaults[ent->aiCharacter].soundScripts[FLAMEDEATHSOUNDSCRIPT];
+	if ( !snd || !snd[0] ) {
+		snd = aiDefaults[ent->aiCharacter].soundScripts[PAINSOUNDSCRIPT];
+	}
+	if ( snd && snd[0] ) {
+		G_AddEvent( ent, EV_GENERAL_SOUND, G_SoundIndex( (char *)snd ) );
+	}
+	vrxNextScream[ent->s.number] = level.time + 2600 + rand() % 2200;
+}
+
+/*
+=================
+G_VRX_GhostFrame
+
+A man the physics has (staggering from a hit, knocked down and alive, or still getting up) isn't in the way: his box
+stands where he fell, as tall as a man, and the player walked into thin air above him. So
+down, he's like a corpse to movement (shots still find him, G_VRX_ShotTrace), and he's solid
+again once he's up and nobody is standing in him.
+=================
+*/
+static qboolean G_VRX_Staggering( int i ) {
+	if ( i <= 0 || i >= MAX_CLIENTS || !G_VRX_GhostOnFeet( i ) ) {
+		return qfalse;
+	}
+	return level.time < vrxStunUntil[i] + 300 || level.time < vrxStaggerUntil[i] + 300;
+}
+
+static qboolean G_VRX_GhostOnFeet( int i ) {
+	gentity_t *e = &g_entities[i];
+	return !( G_VRX_GoreBits( e ) & VRX_GB_DOWNED ) && !( vrxUpAt[i] && level.time < vrxUpAt[i] + VRX_GETUP_MS );
+}
+
+static void G_VRX_GhostFrame( void ) {
+	int i, j;
+
+	for ( i = 1; i < MAX_CLIENTS && i < level.maxclients; i++ ) {
+		gentity_t *e = &g_entities[i];
+		qboolean down;
+
+		if ( !e->inuse || !e->client || !e->aiCharacter || e->health <= 0 ) {
+			vrxGhost[i] = qfalse;       // (dead: the game's own corpse now)
+			continue;
+		}
+		// (and staggering from a hit: the cgame's physics has him anywhere round where his box stands)
+		down = ( G_VRX_GoreBits( e ) & VRX_GB_DOWNED ) || ( vrxUpAt[i] && level.time < vrxUpAt[i] + VRX_GETUP_MS ) ||
+			   level.time < vrxStunUntil[i] + 300 || level.time < vrxStaggerUntil[i] + 300;
+		if ( down ) {
+			if ( e->r.contents == CONTENTS_BODY ) {
+				e->r.contents = CONTENTS_CORPSE;
+				vrxGhost[i] = qtrue;
+				trap_LinkEntity( e );       // (the player's own prediction goes by what's linked)
+			}
+			continue;
+		}
+		if ( !vrxGhost[i] ) {
+			continue;
+		}
+		if ( e->r.contents != CONTENTS_CORPSE ) {
+			vrxGhost[i] = qfalse;       // (something else changed it since)
+			continue;
+		}
+		for ( j = 0; j < MAX_CLIENTS && j < level.maxclients; j++ ) {
+			gentity_t *o = &g_entities[j];
+			if ( j == i || !o->inuse || !o->client || o->health <= 0 || o->r.contents != CONTENTS_BODY ) {
+				continue;
+			}
+			if ( o->r.absmin[0] < e->r.absmax[0] && o->r.absmax[0] > e->r.absmin[0] &&
+				 o->r.absmin[1] < e->r.absmax[1] && o->r.absmax[1] > e->r.absmin[1] &&
+				 o->r.absmin[2] < e->r.absmax[2] && o->r.absmax[2] > e->r.absmin[2] ) {
+				break;      // someone's standing in him: not yet
+			}
+		}
+		if ( j >= MAX_CLIENTS || j >= level.maxclients ) {
+			e->r.contents = CONTENTS_BODY;
+			vrxGhost[i] = qfalse;
+			trap_LinkEntity( e );
+		}
+	}
+}
+
+static void G_VRX_ScreamFrame( void ) {
+	int i;
+
+	for ( i = 1; i < level.maxclients; i++ ) {
+		gentity_t *e = &g_entities[i];
+		if ( !e->inuse || !e->client || !e->aiCharacter || e->health <= 0 || level.time < vrxNextScream[i] ||
+			 !( G_VRX_GoreBits( e ) & ( VRX_GB_LARM | VRX_GB_RARM | VRX_GB_LLEG | VRX_GB_RLEG ) ) ) {
+			continue;
+		}
+		G_VRX_Scream( e );
+	}
+}
+
+// knocked off his feet (the cgame's physics: he staggers, falls, and lies there); with his
+// legs he gets back up after a few seconds (permanent: a leg off, down for good, bleeding)
+static void G_VRX_KnockDown( gentity_t *targ, gentity_t *attacker, int region, qboolean permanent ) {
 	cast_state_t *cs = AICast_GetCastState( targ->s.number );
 	gentity_t *m;
-	int style;
+	int style, n = targ->s.number, down = VRX_DOWN_MS + rand() % VRX_DOWN_RAND;
 
 	switch ( region ) {
 	case VRH_BELLY: style = random() < 0.6f ? 1 : 2; break;
@@ -486,35 +740,326 @@ static void G_VRX_KnockDown( gentity_t *targ, gentity_t *attacker, int region ) 
 	m->s.time2 = style;       // how he goes down (cgame CG_VRX_Downed)
 	m->count = attacker->s.number;
 	m->timestamp = level.time + 900;
-	vrxDownedAt[targ->s.number] = level.time;
-	vrxDownedYaw[targ->s.number] = targ->client->ps.viewangles[YAW];
+	vrxDownedAt[n] = level.time;
+	vrxDownedYaw[n] = targ->client->ps.viewangles[YAW];
+	vrxGetUpAt[n] = permanent ? 0 : level.time + down;
+	vrxStunUntil[n] = 0;
+	vrxStaggerUntil[n] = 0;
 	if ( cs ) {
-		G_VRX_DropWeapon( targ, cs );
-		cs->noAttackTime = level.time + 3600000;
-		cs->pauseTime = level.time + 3600000;       // stays down
+		if ( permanent ) {
+			G_VRX_DropWeapon( targ, cs );
+		}
+		cs->noAttackTime = level.time + ( permanent ? 3600000 : down + VRX_GETUP_MS );
+		cs->pauseTime = level.time + ( permanent ? 3600000 : down + VRX_GETUP_MS );
 	}
 	VectorClear( targ->client->ps.velocity );
 }
 
+/*
+=================
+G_VRX_DownPos_f
+
+"vrdownpos <entity> <x> <y>" from the cgame: someone knocked down has landed there (his
+ragdoll fell away from where he was hit). His body is moved there, as far as it fits, so he
+gets up where he lies instead of sliding back.
+=================
+*/
+void G_VRX_DownPos_f( gentity_t *ent ) {
+	char arg[MAX_TOKEN_CHARS];
+	gentity_t *targ;
+	trace_t tr;
+	vec3_t to;
+	int n;
+
+	if ( trap_Argc() < 4 || !ent->client ) {
+		return;
+	}
+	trap_Argv( 1, arg, sizeof( arg ) );
+	n = atoi( arg );
+	if ( n <= 0 || n >= MAX_CLIENTS ) {
+		return;
+	}
+	targ = &g_entities[n];
+	if ( !targ->inuse || !targ->client || !targ->aiCharacter || targ->health <= 0 ||
+		 !( ( vrxGetUpAt[n] && ( G_VRX_GoreBits( targ ) & VRX_GB_DOWNED ) ) || vrxStunUntil[n] + 1500 > level.time ||
+			vrxStaggerUntil[n] + 1500 > level.time ) ) {
+		return;
+	}
+	trap_Argv( 2, arg, sizeof( arg ) );
+	to[0] = atof( arg );
+	trap_Argv( 3, arg, sizeof( arg ) );
+	to[1] = atof( arg );
+	to[2] = targ->client->ps.origin[2];
+	if ( Distance( to, targ->client->ps.origin ) > 128.0f ) {
+		return;
+	}
+	// (the world only: the player may be standing in him, he's not in the way now. And as a
+	// man walks: up a step's height, across, and back down, so a kerb or a stair doesn't stop
+	// it short and leave his body behind, to snap back to when he comes to)
+	{
+		vec3_t up, across, dn;
+		VectorCopy( targ->client->ps.origin, up );
+		up[2] += 18.0f;
+		trap_Trace( &tr, targ->client->ps.origin, targ->r.mins, targ->r.maxs, up, n, MASK_SOLID | CONTENTS_PLAYERCLIP | CONTENTS_MONSTERCLIP );
+		if ( tr.startsolid || tr.allsolid ) {
+			return;
+		}
+		VectorCopy( tr.endpos, up );
+		VectorCopy( to, across );
+		across[2] = up[2];
+		trap_Trace( &tr, up, targ->r.mins, targ->r.maxs, across, n, MASK_SOLID | CONTENTS_PLAYERCLIP | CONTENTS_MONSTERCLIP );
+		if ( tr.startsolid || tr.allsolid ) {
+			return;
+		}
+		VectorCopy( tr.endpos, across );
+		VectorCopy( across, dn );
+		dn[2] -= 18.0f + 24.0f;
+		trap_Trace( &tr, across, targ->r.mins, targ->r.maxs, dn, n, MASK_SOLID | CONTENTS_PLAYERCLIP | CONTENTS_MONSTERCLIP );
+		if ( tr.startsolid || tr.allsolid ) {
+			return;
+		}
+		if ( tr.fraction >= 1.0f ) {
+			return;     // nothing under him there (a ledge): his body stays on this side of it
+		}
+	}
+	VectorCopy( tr.endpos, targ->client->ps.origin );
+	VectorCopy( tr.endpos, targ->r.currentOrigin );
+	VectorCopy( tr.endpos, targ->s.pos.trBase );
+	trap_LinkEntity( targ );
+}
+
+/*
+=================
+G_VRX_GetUpYaw_f
+
+"vrgetupyaw <entity> <yaw>" from the cgame: getting up off the floor, he comes up facing the
+way he lay (pushing up off his front, or sitting up and rolling onto a knee), so his body
+turns that way and stays so until he's up, and his animation takes over facing the same way
+=================
+*/
+void G_VRX_GetUpYaw_f( gentity_t *ent ) {
+	char arg[MAX_TOKEN_CHARS];
+	gentity_t *targ;
+	vec3_t ang;
+	int n;
+
+	if ( trap_Argc() < 3 || !ent->client ) {
+		return;
+	}
+	trap_Argv( 1, arg, sizeof( arg ) );
+	n = atoi( arg );
+	if ( n <= 0 || n >= MAX_CLIENTS ) {
+		return;
+	}
+	targ = &g_entities[n];
+	if ( !targ->inuse || !targ->client || !targ->aiCharacter || targ->health <= 0 ||
+		 !( ( G_VRX_GoreBits( targ ) & VRX_GB_DOWNED ) || ( vrxUpAt[n] && level.time < vrxUpAt[n] + 2500 ) ) ) {
+		return;
+	}
+	{
+		cast_state_t *cs = AICast_GetCastState( n );
+		if ( cs ) {     // (the get-up from now: the cgame may have waited for him to lie still)
+			if ( cs->noAttackTime < level.time + VRX_GETUP_MS ) {
+				cs->noAttackTime = level.time + VRX_GETUP_MS;
+			}
+			if ( cs->pauseTime < level.time + VRX_GETUP_MS ) {
+				cs->pauseTime = level.time + VRX_GETUP_MS;
+			}
+		}
+	}
+	trap_Argv( 2, arg, sizeof( arg ) );
+	vrxDownedYaw[n] = AngleNormalize360( atof( arg ) );
+	vrxGetUpHold[n] = level.time + VRX_GETUP_MS - 400;
+	VectorSet( ang, 0, vrxDownedYaw[n], 0 );
+	SetClientViewAngle( targ, ang );
+	if ( trap_Argc() >= 5 ) {
+		// and where the get-up animation leaves him standing: his body goes there, as far as it fits
+		trace_t tr;
+		vec3_t to;
+		trap_Argv( 3, arg, sizeof( arg ) );
+		to[0] = atof( arg );
+		trap_Argv( 4, arg, sizeof( arg ) );
+		to[1] = atof( arg );
+		to[2] = targ->client->ps.origin[2];
+		if ( Distance( to, targ->client->ps.origin ) <= 96.0f ) {
+			trap_Trace( &tr, targ->client->ps.origin, targ->r.mins, targ->r.maxs, to, n, MASK_PLAYERSOLID );
+			if ( !tr.startsolid && !tr.allsolid ) {
+				VectorCopy( tr.endpos, targ->client->ps.origin );
+				VectorCopy( tr.endpos, targ->r.currentOrigin );
+				VectorCopy( tr.endpos, targ->s.pos.trBase );
+				trap_LinkEntity( targ );
+			}
+		}
+	}
+}
+
+/*
+=================
+G_VRX_Stun
+
+Shot and still on his feet: for a moment he doesn't fight or move, he's shocked, and the
+cgame's physics has him stagger about under the bullets, clutching where he was hit (the
+marker's time2 VRX_STUN_MARK). Each hit keeps it going, up to VRX_STUN_MAX.
+=================
+*/
+// stunned or staggering till then: held where he is. Shot in the chest he fights back, aiming
+// and firing as he reels (the cgame holds his gun on you, cg_ragdoll.c HR_Aim); he only can't
+// walk. Otherwise he doesn't fight at all till he's steady
+static void G_VRX_HoldStunned( cast_state_t *cs, int until, qboolean fightBack ) {
+	if ( !cs ) {
+		return;
+	}
+	if ( fightBack ) {
+		if ( cs->castScriptStatus.scriptNoMoveTime < until ) {
+			cs->castScriptStatus.scriptNoMoveTime = until;
+		}
+		return;
+	}
+	if ( cs->noAttackTime < until ) {
+		cs->noAttackTime = until;
+	}
+	if ( cs->pauseTime < until ) {
+		cs->pauseTime = until;
+	}
+}
+
+static void G_VRX_Stun( gentity_t *targ, gentity_t *attacker, qboolean fightBack ) {
+	cast_state_t *cs = AICast_GetCastState( targ->s.number );
+	gentity_t *m;
+	int n = targ->s.number, until;
+
+	if ( !targ->client || !targ->aiCharacter || targ->health <= 0 || n >= MAX_CLIENTS || G_VRX_Downed( targ ) ||
+		 !VRX_HUMAN_MALE( targ->aiCharacter ) || !G_VRX( VRX_REACTIONS ) ) {
+		return;
+	}
+	if ( vrxStunUntil[n] <= level.time ) {
+		vrxStunStart[n] = level.time;
+	}
+	until = level.time + VRX_STUN_MS + rand() % VRX_STUN_RAND;
+	if ( until > vrxStunStart[n] + VRX_STUN_MAX ) {
+		until = vrxStunStart[n] + VRX_STUN_MAX;
+	}
+	if ( until < vrxStunUntil[n] ) {
+		until = vrxStunUntil[n];
+	}
+	vrxStunUntil[n] = until;
+	m = G_VRX_Marker( targ, qtrue );
+	m->s.time2 = VRX_STUN_MARK;
+	if ( attacker ) {
+		m->count = attacker->s.number;
+	}
+	vrxDownedYaw[n] = targ->client->ps.viewangles[YAW];
+	vrxFightBack[n] = fightBack;
+	G_VRX_HoldStunned( cs, until + 300, fightBack );
+	VectorClear( targ->client->ps.velocity );
+}
+
+/*
+=================
+G_VRX_Fell_f
+
+"vrfell <entity>" from the cgame: someone stunned was shoved over (his ragdoll tipped too far
+to catch himself): knocked down, and he'll get up again
+=================
+*/
+void G_VRX_Fell_f( gentity_t *ent ) {
+	char arg[MAX_TOKEN_CHARS];
+	gentity_t *targ;
+	int n;
+
+	if ( trap_Argc() < 2 || !ent->client ) {
+		return;
+	}
+	trap_Argv( 1, arg, sizeof( arg ) );
+	n = atoi( arg );
+	if ( n <= 0 || n >= MAX_CLIENTS ) {
+		return;
+	}
+	targ = &g_entities[n];
+	if ( !targ->inuse || !targ->client || !targ->aiCharacter || targ->health <= 0 ||
+		 ( vrxStunUntil[n] + 1000 < level.time && vrxStaggerUntil[n] + 1000 < level.time ) || G_VRX_Downed( targ ) ) {
+		return;
+	}
+	vrxStaggerUntil[n] = 0;
+	G_VRX_KnockDown( targ, ent, VRH_NONE, qfalse );
+}
+
+/*
+=================
+G_VRX_Stagger_f
+
+"vrstagger <entity>" from the cgame, every quarter second: his stun is over, but he's still
+staggering, not yet steady on his feet. He's held where he is, not fighting, until he is (or
+the cgame gives up on him, 3 s at most)
+=================
+*/
+void G_VRX_Stagger_f( gentity_t *ent ) {
+	char arg[MAX_TOKEN_CHARS];
+	gentity_t *targ;
+	cast_state_t *cs;
+	int n, until;
+
+	if ( trap_Argc() < 2 || !ent->client ) {
+		return;
+	}
+	trap_Argv( 1, arg, sizeof( arg ) );
+	n = atoi( arg );
+	if ( n <= 0 || n >= MAX_CLIENTS ) {
+		return;
+	}
+	targ = &g_entities[n];
+	if ( !targ->inuse || !targ->client || !targ->aiCharacter || targ->health <= 0 || G_VRX_Downed( targ ) ||
+		 vrxStunUntil[n] + 3000 < level.time ) {
+		return;
+	}
+	until = level.time + 500;
+	if ( until > vrxStunUntil[n] + 3000 ) {
+		until = vrxStunUntil[n] + 3000;
+	}
+	if ( until > vrxStaggerUntil[n] ) {
+		vrxStaggerUntil[n] = until;
+	}
+	cs = AICast_GetCastState( n );
+	G_VRX_HoldStunned( cs, until + 300, vrxFightBack[n] );
+}
+
+// back on his feet (G_VRX_MarkersFrame): the cgame stands him up, then he fights on
+static void G_VRX_GetUp( gentity_t *body, gentity_t *m ) {
+	cast_state_t *cs = AICast_GetCastState( body->s.number );
+
+	m->s.density &= ~VRX_GB_DOWNED;
+	vrxGetUpAt[body->s.number] = 0;
+	vrxUpAt[body->s.number] = level.time;
+	vrxGetUpHold[body->s.number] = level.time + VRX_GETUP_MS + 2000;     // (the cgame may wait for him to come to rest first)
+	if ( cs ) {
+		cs->noAttackTime = level.time + VRX_GETUP_MS;
+		cs->pauseTime = level.time + VRX_GETUP_MS;
+	}
+}
+
 // an arm off someone alive: no gun, running, bleeding
-static void G_VRX_Cripple( gentity_t *targ, gentity_t *attacker, int arm, const vec3_t dir, const vec3_t point ) {
+// (event: the cgame cuts the arm off at the shoulder or elbow; not when its voxel gore shot it off itself)
+static void G_VRX_Cripple( gentity_t *targ, gentity_t *attacker, int arm, const vec3_t dir, const vec3_t point, qboolean event ) {
 	cast_state_t *cs = AICast_GetCastState( targ->s.number );
 	gentity_t *m, *te;
 	int high = random() < 0.4f ? arm : 0;
 
 	G_VRX_AddGoreBits( targ, arm | VRX_GB_CRIPPLED );
+	G_VRX_Scream( targ );
 	m = G_VRX_Marker( targ, qtrue );
 	m->s.frame |= high;
 	m->count = attacker->s.number;      // who he runs from (and who gets him when he bleeds out)
 	m->timestamp = level.time + 700;    // the first bleed
 
-	te = G_TempEntity( (float *)point, EV_VR_GORE );
-	te->s.eventParm = VRG_LIMBS;
-	te->s.otherEntityNum = targ->s.number;
-	te->s.density = arm;
-	te->s.frame = high;
-	if ( dir ) {
-		VectorCopy( dir, te->s.origin2 );
+	if ( event ) {
+		te = G_TempEntity( (float *)point, EV_VR_GORE );
+		te->s.eventParm = VRG_LIMBS;
+		te->s.otherEntityNum = targ->s.number;
+		te->s.density = arm;
+		te->s.frame = high;
+		if ( dir ) {
+			VectorCopy( dir, te->s.origin2 );
+		}
 	}
 	if ( cs ) {
 		G_VRX_DropWeapon( targ, cs );
@@ -524,6 +1069,73 @@ static void G_VRX_Cripple( gentity_t *targ, gentity_t *attacker, int arm, const 
 		cs->dangerEntityValidTime = level.time + 3600000;
 		cs->dangerDist = 1200;
 		cs->dangerEntityTimestamp = level.time;
+	}
+}
+
+// the leg off someone alive (the voxel gore): down on the ground writhing and screaming, bleeding
+// out, as SoF2's agony (cgame CG_VRX_Downed) with the leg cut through (cg_vrgore.c)
+static void G_VRX_LegOff( gentity_t *targ, gentity_t *attacker, int leg, const vec3_t dir, const vec3_t point, qboolean event ) {
+	gentity_t *te;
+	int high = random() < 0.4f ? leg : 0;
+
+	G_VRX_AddGoreBits( targ, leg );
+	G_VRX_Marker( targ, qtrue )->s.frame |= high;
+	G_VRX_KnockDown( targ, attacker, leg == VRX_GB_LLEG ? VRH_LLEG : VRH_RLEG, qtrue );
+	if ( event ) {
+		te = G_TempEntity( (float *)point, EV_VR_GORE );
+		te->s.eventParm = VRG_LIMBS;
+		te->s.otherEntityNum = targ->s.number;
+		te->s.density = leg;
+		te->s.frame = high;
+		if ( dir ) {
+			VectorCopy( dir, te->s.origin2 );
+		}
+	}
+	G_VRX_Scream( targ );
+}
+
+/*
+=================
+G_VRX_Severed_f
+
+"vrsever <entity> <limbs>" from the cgame: its voxel gore shot a hand, an arm, a foot or a leg
+clean off someone still alive (cg_vrgore.c VRG_Sever). An arm: crippled (no gun, running,
+bleeding out); a leg: down writhing. The cgame has already taken the part off itself.
+=================
+*/
+void G_VRX_Severed_f( gentity_t *ent ) {
+	char arg[MAX_TOKEN_CHARS];
+	gentity_t *targ;
+	int n, limbs, have;
+	vec3_t dir;
+
+	if ( trap_Argc() < 3 || !ent->client ) {
+		return;
+	}
+	trap_Argv( 1, arg, sizeof( arg ) );
+	n = atoi( arg );
+	trap_Argv( 2, arg, sizeof( arg ) );
+	limbs = atoi( arg ) & ( VRX_GB_LARM | VRX_GB_RARM | VRX_GB_LLEG | VRX_GB_RLEG );
+	if ( n <= 0 || n >= MAX_CLIENTS || !limbs ) {
+		return;
+	}
+	targ = &g_entities[n];
+	if ( !targ->inuse || !targ->client || !targ->aiCharacter || targ->health <= 0 || targ == ent ||
+		 Distance( targ->r.currentOrigin, ent->r.currentOrigin ) > 4096 ) {
+		return;
+	}
+	have = G_VRX_GoreBits( targ );
+	VectorSubtract( targ->r.currentOrigin, ent->r.currentOrigin, dir );
+	VectorNormalize( dir );
+	if ( ( limbs & ( VRX_GB_LARM | VRX_GB_RARM ) ) && !( have & ( VRX_GB_LARM | VRX_GB_RARM ) ) ) {
+		G_VRX_Cripple( targ, ent, ( limbs & VRX_GB_RARM ) ? VRX_GB_RARM : VRX_GB_LARM, dir, targ->r.currentOrigin, qfalse );
+	} else if ( limbs & ( VRX_GB_LARM | VRX_GB_RARM ) ) {
+		G_VRX_AddGoreBits( targ, limbs & ( VRX_GB_LARM | VRX_GB_RARM ) );
+	}
+	if ( ( limbs & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) && !( have & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) ) {
+		G_VRX_LegOff( targ, ent, ( limbs & VRX_GB_RLEG ) ? VRX_GB_RLEG : VRX_GB_LLEG, dir, targ->r.currentOrigin, qfalse );
+	} else if ( limbs & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) {
+		G_VRX_AddGoreBits( targ, limbs & ( VRX_GB_LLEG | VRX_GB_RLEG ) );
 	}
 }
 
@@ -551,7 +1163,7 @@ void G_VRX_TestState( gentity_t *targ, gentity_t *by, qboolean groin, int style 
 		G_VRX_GroinHit( targ, by );
 		return;
 	}
-	G_VRX_KnockDown( targ, by, VRH_NONE );
+	G_VRX_KnockDown( targ, by, VRH_NONE, qfalse );
 	if ( style >= 1 && style <= VRX_DOWN_STYLES ) {
 		G_VRX_Marker( targ, qtrue )->s.time2 = style;
 	}
@@ -575,7 +1187,10 @@ static qboolean G_VRX_Finisher( gentity_t *targ, gentity_t *attacker, const vec3
 void G_VRX_HoldDowned( gentity_t *ent, usercmd_t *ucmd ) {
 	vec3_t ang;
 
-	if ( !ent->client || !ent->aiCharacter || ent->health <= 0 || !( G_VRX_GoreBits( ent ) & VRX_GB_DOWNED ) ) {
+	if ( !ent->client || !ent->aiCharacter || ent->health <= 0 ||
+		 ( !( G_VRX_GoreBits( ent ) & VRX_GB_DOWNED ) && vrxStunUntil[ent->s.number] <= level.time &&
+		   vrxStaggerUntil[ent->s.number] <= level.time &&
+		   ( level.time >= vrxGetUpHold[ent->s.number] || vrxGetUpHold[ent->s.number] - level.time > VRX_GETUP_MS + 2500 ) ) ) {
 		return;
 	}
 	ucmd->forwardmove = ucmd->rightmove = ucmd->upmove = 0;
@@ -589,6 +1204,72 @@ void G_VRX_HoldDowned( gentity_t *ent, usercmd_t *ucmd ) {
 	SetClientViewAngle( ent, ang );
 }
 
+/*
+=================
+G_VRX_ShotTraceLoose
+
+Someone on the floor, getting up, or staggering is drawn by the cgame's physics, and his body
+reaches well outside his bounding box (lying, his head and legs are a man's length from where
+the box stands), so a shot at those parts never met the box and went through him: he looked
+invincible. So for them the shot is also tried against the body as drawn, and hits it if it
+gets there before anything else.
+=================
+*/
+static void G_VRX_ShotTraceLoose( trace_t *tr, const vec3_t start, const vec3_t end, int passEnt ) {
+	int i, bestEnt = -1, saveEnt = vrxHitEnt, saveRegion = vrxHitRegion;
+	qboolean saveTop = vrxHitHeadTop;
+	float total = Distance( start, end ), best = tr->fraction;
+	vec3_t hit, bestHit, savePoint, d;
+
+	if ( total < 1.0f ) {
+		return;
+	}
+	VectorCopy( vrxHitPoint, savePoint );
+	VectorClear( bestHit );
+	VectorSubtract( end, start, d );
+	VectorScale( d, 1.0f / total, d );
+	for ( i = 1; i < MAX_CLIENTS && i < level.maxclients; i++ ) {
+		gentity_t *e = &g_entities[i];
+		vec3_t to, near;
+		float t;
+		if ( i == passEnt || !e->inuse || !e->client || !e->aiCharacter || e->health <= 0 || !e->takedamage ) {
+			continue;
+		}
+		if ( !( G_VRX_GoreBits( e ) & VRX_GB_DOWNED ) && !( vrxUpAt[i] && level.time < vrxUpAt[i] + VRX_GETUP_MS + 2500 ) &&
+			 vrxStunUntil[i] + 500 < level.time && vrxStaggerUntil[i] + 500 < level.time ) {
+			continue;       // on his feet as his box is
+		}
+		// (only if the shot passes near him at all)
+		VectorSubtract( e->r.currentOrigin, start, to );
+		t = DotProduct( to, d );
+		t = t < 0 ? 0 : t > total ? total : t;
+		VectorMA( start, t, d, near );
+		if ( Distance( near, e->r.currentOrigin ) > 90.0f ) {
+			continue;
+		}
+		if ( G_VRX_BodyTrace( e, start, end, hit ) > 0 && Distance( start, hit ) / total < best ) {
+			best = Distance( start, hit ) / total;
+			bestEnt = i;
+			VectorCopy( hit, bestHit );
+		}
+	}
+	if ( bestEnt < 0 ) {
+		vrxHitEnt = saveEnt;        // (as the box trace left them)
+		vrxHitRegion = saveRegion;
+		vrxHitHeadTop = saveTop;
+		VectorCopy( savePoint, vrxHitPoint );
+		return;
+	}
+	G_VRX_BodyTrace( &g_entities[bestEnt], start, end, hit );   // (its region, for G_VRX_HitRegion)
+	tr->fraction = best;
+	VectorCopy( bestHit, tr->endpos );
+	tr->entityNum = bestEnt;
+	tr->surfaceFlags = 0;
+	tr->contents = CONTENTS_BODY;
+	tr->startsolid = tr->allsolid = qfalse;
+	VectorNegate( d, tr->plane.normal );
+}
+
 int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const vec3_t dir, const vec3_t point,
 			   int mod, int take, qboolean headshot ) {
 	vec3_t ang, right, rel;
@@ -596,11 +1277,25 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 	int region;
 
 	vrxExecution = qfalse;
+	// (a knife into someone still alive: the head can't come off for this blow, even if it kills
+	// him, only once he's lying dead, G_VRX_Decap_f)
+	if ( targ->client && targ->aiCharacter && targ->health > 0 && G_VRX_Knife( mod ) && targ->s.number < MAX_CLIENTS ) {
+		vrxKnifedAlive[targ->s.number] = level.time;
+	}
+	// a shot into the upper half of the head (eyes and up) kills, whatever the gun and however far
+	// (a person, not a monster); lower, the face and jaw, it's a wound (no tight boxes: the stock headshot)
+	if ( targ->client && targ->aiCharacter && targ->health > 0 && take > 0 && point && attacker && attacker->client &&
+		 !attacker->aiCharacter && attacker != targ && mod != MOD_UNKNOWN && mod != MOD_KICKED && !G_VRX_Blast( mod ) &&
+		 !G_VRX_Knife( mod ) && G_VRX_HeadshotKills( targ ) &&
+		 ( G_VRX_HitHeadTop( targ, point ) == 1 || ( headshot && G_VRX_HitHeadTop( targ, point ) < 0 ) ) ) {
+		return targ->health + 50;
+	}
 	// the downed, writhing on the floor, aren't killed by stray fire: shots from further off
 	// do half, and for the first seconds none can finish him (so he's seen going down); a
 	// blast, or finishing him on purpose (knife, kick, a shot from close by), still does
-	if ( targ->client && targ->aiCharacter && targ->health > 0 && take > 0 && mod != MOD_UNKNOWN &&
+	if ( targ->client && targ->aiCharacter && targ->health > 0 && take > 0 && mod != MOD_UNKNOWN && !vrxGetUpAt[targ->s.number] &&
 		 G_VRX_Downed( targ ) && !G_VRX_Blast( mod ) && !G_VRX_Finisher( targ, attacker, dir, point, mod, headshot ) ) {
+		// (only someone down for good, a leg off: knocked down, a shot kills as ever)
 		take = take > 3 ? take / 4 : 1;
 		if ( take >= targ->health && level.time < vrxDownedAt[targ->s.number] + VRX_DOWN_GRACE ) {
 			take = targ->health - 1;
@@ -608,6 +1303,21 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 		if ( take <= 0 ) {
 			return 0;
 		}
+	}
+	// a hit that doesn't kill or blow him off his feet: stunned, shoved about by the bullets
+	if ( targ->client && targ->aiCharacter && targ->health > 0 && take > 0 && take < targ->health && mod != MOD_UNKNOWN &&
+		 !G_VRX_Blast( mod ) && attacker && attacker->client && attacker != targ && !G_VRX_Boss( targ ) ) {
+		G_VRX_Stun( targ, attacker, point && G_VRX_HitRegion( targ, point ) == VRH_CHEST );
+		// shot in the arm he holds it with: it drops from his hand, and he picks it up again once
+		// he's himself (G_VRX_DisarmFrame)
+		if ( point && G_VRX_HitRegion( targ, point ) == VRH_RARM ) {
+			G_VRX_Disarm( targ );
+		}
+	}
+	// somewhere that bleeds: he keeps bleeding, and bleeds out in the end unless finished first
+	if ( targ->client && targ->aiCharacter && targ->health > 0 && take > 0 && take < targ->health && mod != MOD_UNKNOWN && point &&
+		 !G_VRX_Boss( targ ) ) {
+		G_VRX_Bleed( targ, attacker, point, G_VRX_HitRegion( targ, point ), mod, headshot );
 	}
 	if ( mod == MOD_UNKNOWN || !targ->client || !targ->aiCharacter || targ->health <= 0 || take <= 0 || !attacker || !attacker->client ||
 		 attacker->aiCharacter || !G_VRX_Gore( VRX_DISMEMBER ) || G_VRX( VRX_DISMEMBER ) < 2 ||
@@ -625,29 +1335,24 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 		G_VRX_GroinHit( targ, attacker );
 		return take;
 	}
-	// a body shot that leaves them half dead, or one that would have killed someone not yet
-	// badly hurt: down, writhing (SoF2's agony animations, cgame CG_VRX_Downed)
-	if ( !headshot && !G_VRX_Downed( targ ) && ( !point || !G_VRX_ShotAtHead( targ, dir, point ) ) ) {
-		int max = targ->client->ps.stats[STAT_MAX_HEALTH] > 0 ? targ->client->ps.stats[STAT_MAX_HEALTH] : 100;
-		if ( take < targ->health && targ->health - take <= max * 0.5f && random() < 0.85f ) {
-			G_VRX_KnockDown( targ, attacker, region );
-			return take;
-		}
-		if ( take >= targ->health && targ->health > max * 0.3f && !G_VRX_Heavy( targ, attacker, mod, take ) && random() < 0.5f ) {
-			G_VRX_KnockDown( targ, attacker, region );
-			return targ->health - max * 0.35f;
-		}
-	}
+	// (no dice to knock him down any more: hit, he staggers and fights to keep his feet, and
+	// only goes down when he has to: a leg off, bleeding out, or dead)
 	if ( headshot || !point || take >= targ->health || !G_VRX_Heavy( targ, attacker, mod, take ) ||
 		 G_VRX_ShotAtHead( targ, dir, point ) ) {
 		return take;
 	}
 	if ( region == VRH_LLEG || region == VRH_RLEG ) {
+		if ( G_VRX_Gore( VRX_VOXEL ) ) {
+			if ( !( G_VRX_GoreBits( targ ) & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) && random() < 0.5f ) {
+				G_VRX_LegOff( targ, attacker, region == VRH_LLEG ? VRX_GB_LLEG : VRX_GB_RLEG, dir, point, qtrue );
+			}
+			return take < targ->health ? take : targ->health - 1;
+		}
 		return random() < 0.5f ? targ->health + 50 : take;
 	}
 	if ( region == VRH_LARM || region == VRH_RARM ) {
 		if ( !( G_VRX_GoreBits( targ ) & ( VRX_GB_LARM | VRX_GB_RARM ) ) && random() < 0.6f ) {
-			G_VRX_Cripple( targ, attacker, region == VRH_RARM ? VRX_GB_RARM : VRX_GB_LARM, dir, point );
+			G_VRX_Cripple( targ, attacker, region == VRH_RARM ? VRX_GB_RARM : VRX_GB_LARM, dir, point, qtrue );
 		}
 		return take;
 	}
@@ -661,13 +1366,153 @@ int G_VRX_Hit( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 	side = DotProduct( rel, right );
 	if ( point[2] < targ->r.currentOrigin[2] - 4 ) {
 		if ( random() < 0.5f ) {
+			if ( G_VRX_Gore( VRX_VOXEL ) ) {        // the leg goes, and he goes down screaming
+				if ( !( G_VRX_GoreBits( targ ) & ( VRX_GB_LLEG | VRX_GB_RLEG ) ) ) {
+					G_VRX_LegOff( targ, attacker, side > 0 ? VRX_GB_RLEG : VRX_GB_LLEG, dir, point, qtrue );
+				}
+				return take < targ->health ? take : targ->health - 1;
+			}
 			return targ->health + 50;   // the leg goes, and he goes down with it (G_VRX_Dismember)
 		}
 	} else if ( fabs( side ) > 6.0f && point[2] < targ->r.currentOrigin[2] + targ->client->ps.viewheight - 8 &&
 				!( G_VRX_GoreBits( targ ) & ( VRX_GB_LARM | VRX_GB_RARM ) ) && random() < 0.6f ) {
-		G_VRX_Cripple( targ, attacker, side > 0 ? VRX_GB_RARM : VRX_GB_LARM, dir, point );
+		G_VRX_Cripple( targ, attacker, side > 0 ? VRX_GB_RARM : VRX_GB_LARM, dir, point, qtrue );
 	}
 	return take;
+}
+
+/*
+=================
+G_VRX_Bleed (g_bleedOut)
+
+RDR2 style: a shot into somewhere that bleeds badly, and doesn't kill him outright, opens a
+wound that keeps bleeding. He fights on, but his health drains, and when there's little left
+he collapses and bleeds out on the floor. Wounds add up.
+
+  the throat (a shot into the head box that isn't a head shot): about 8 s
+  the upper thigh (the femoral) or the groin: about 14 s
+  the chest (a lung): about 22 s
+  the belly (the gut shot): about 35 s
+  an arm or the lower leg: a light bleed that stops after a while, it never kills alone
+=================
+*/
+#define VRX_BLEED_TICK      500         // ms between drains
+#define VRX_BLEED_COLLAPSE  0.1f        // of his health: falls down to bleed out there
+#define VRX_BLEED_LIGHT_MS  12000       // a light wound stops bleeding after this long
+static float vrxBleedRate[MAX_CLIENTS];     // health a second, from the bad wounds
+static float vrxBleedLight[MAX_CLIENTS];    // and from the light ones (they stop)
+static int vrxBleedLightUntil[MAX_CLIENTS];
+static float vrxBleedAcc[MAX_CLIENTS];
+static int vrxBleedNext[MAX_CLIENTS];
+static int vrxBleedBy[MAX_CLIENTS];
+static int vrxBleedRegion[MAX_CLIENTS];
+
+static void G_VRX_Bleed( gentity_t *targ, gentity_t *attacker, const vec3_t point, int region, int mod, qboolean headshot ) {
+	int n = targ->s.number, max;
+	float secs = 0;
+
+	G_VRX_Register();
+	trap_Cvar_Update( &g_bleedOut );
+	if ( !g_bleedOut.integer || n < 0 || n >= MAX_CLIENTS || !targ->client || !targ->aiCharacter || headshot ||
+		 G_VRX_Blast( mod ) || G_VRX_Knife( mod ) || mod == MOD_KICKED ) {
+		return;
+	}
+	if ( region == VRH_NONE && point ) {
+		// no tight hit box: by height
+		float z = point[2] - targ->r.currentOrigin[2], eye = targ->client->ps.viewheight;
+		region = z > eye - 4 ? VRH_HEAD : z > eye - 20 ? VRH_CHEST : z > -2 ? VRH_BELLY : z > -12 ? VRH_GROIN : VRH_LLEG;
+	}
+	switch ( region ) {
+	case VRH_HEAD:  secs = 8; break;        // the throat
+	case VRH_GROIN: secs = 14; break;
+	case VRH_CHEST: secs = 22; break;
+	case VRH_BELLY: secs = 35; break;
+	case VRH_LLEG:
+	case VRH_RLEG:
+		if ( point && point[2] > targ->r.currentOrigin[2] - 12 ) {
+			secs = 14;      // the upper thigh
+		}
+		break;
+	case VRH_LARM:
+	case VRH_RARM:
+		break;
+	default:
+		return;
+	}
+	max = targ->client->ps.stats[STAT_MAX_HEALTH] > 0 ? targ->client->ps.stats[STAT_MAX_HEALTH] : 100;
+	if ( secs > 0 ) {
+		vrxBleedRate[n] += max / ( secs * ( 0.85f + 0.3f * random() ) );
+		vrxBleedRegion[n] = region;
+	} else {
+		vrxBleedLight[n] += max / 60.0f;
+		vrxBleedLightUntil[n] = level.time + VRX_BLEED_LIGHT_MS;
+	}
+	if ( !vrxBleedNext[n] ) {
+		vrxBleedNext[n] = level.time + VRX_BLEED_TICK;
+		vrxBleedAcc[n] = 0;
+	}
+	vrxBleedBy[n] = attacker ? attacker->s.number : ENTITYNUM_WORLD;
+}
+
+static void G_VRX_BleedClear( int n ) {
+	vrxBleedRate[n] = vrxBleedLight[n] = vrxBleedAcc[n] = 0;
+	vrxBleedNext[n] = vrxBleedLightUntil[n] = 0;
+}
+
+static void G_VRX_BleedFrame( void ) {
+	int n;
+
+	trap_Cvar_Update( &g_bleedOut );
+
+	for ( n = 0; n < MAX_CLIENTS; n++ ) {
+		gentity_t *e = &g_entities[n], *by;
+		float rate;
+		int max;
+
+		if ( !vrxBleedNext[n] ) {
+			continue;
+		}
+		if ( !e->inuse || !e->client || e->health <= 0 || !g_bleedOut.integer ) {
+			G_VRX_BleedClear( n );      // dead (or gone): the next life starts clean
+			continue;
+		}
+		if ( level.time < vrxBleedNext[n] ) {
+			continue;
+		}
+		vrxBleedNext[n] = level.time + VRX_BLEED_TICK;
+		if ( vrxBleedLight[n] > 0 && level.time >= vrxBleedLightUntil[n] ) {
+			vrxBleedLight[n] = 0;       // a light wound has clotted
+		}
+		rate = vrxBleedRate[n] + vrxBleedLight[n];
+		if ( rate <= 0 ) {
+			G_VRX_BleedClear( n );
+			continue;
+		}
+		max = e->client->ps.stats[STAT_MAX_HEALTH] > 0 ? e->client->ps.stats[STAT_MAX_HEALTH] : 100;
+		vrxBleedAcc[n] += rate * VRX_BLEED_TICK * 0.001f;
+		if ( vrxBleedAcc[n] < 1 ) {
+			continue;
+		}
+		{
+			int dmg = (int)vrxBleedAcc[n];
+			vrxBleedAcc[n] -= dmg;
+			if ( vrxBleedRate[n] <= 0 && dmg >= e->health ) {
+				dmg = e->health - 1;        // light wounds alone never kill
+				if ( dmg <= 0 ) {
+					continue;
+				}
+			}
+			by = vrxBleedBy[n] >= 0 && vrxBleedBy[n] < MAX_GENTITIES && g_entities[vrxBleedBy[n]].inuse ? &g_entities[vrxBleedBy[n]] : NULL;
+			G_Damage( e, by, by ? by : e, NULL, NULL, dmg, DAMAGE_NO_KNOCKBACK | DAMAGE_NO_PROTECTION, MOD_UNKNOWN );
+		}
+		// weak from the blood lost: down on the floor, bleeding out there
+		if ( e->inuse && e->health > 0 && e->aiCharacter && vrxBleedRate[n] > 0 && e->health <= max * VRX_BLEED_COLLAPSE &&
+			 !( G_VRX_GoreBits( e ) & ( VRX_GB_DOWNED | VRX_GB_CRIPPLED ) ) && VRX_HUMAN_MALE( e->aiCharacter ) ) {
+			by = vrxBleedBy[n] >= 0 && vrxBleedBy[n] < MAX_GENTITIES && g_entities[vrxBleedBy[n]].inuse ? &g_entities[vrxBleedBy[n]] : e;
+			if ( trap_Cvar_VariableIntegerValue( "vr_log" ) ) G_Printf( "VRLOG down %d: bled to %d of %d\n", n, e->health, max );
+			G_VRX_KnockDown( e, by, vrxBleedRegion[n], qtrue );
+		}
+	}
 }
 
 /*
@@ -692,7 +1537,7 @@ void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, con
 		return;
 	}
 	// a blast close by tears the body open (head shots are the cgame's: cg_vrextras.c head wounds)
-	if ( VRX_HUMAN_MALE( targ->aiCharacter ) && G_VRX_HeavyBlast( mod, inflictor ) && G_VRX_Gore( VRX_DISMEMBER ) &&
+	if ( VRX_HUMAN_MALE( targ->aiCharacter ) && G_VRX_HeavyBlast( mod, inflictor ) && G_VRX_OldGore( VRX_DISMEMBER ) &&
 		 ( !inflictor || Distance( inflictor->r.currentOrigin, targ->r.currentOrigin ) < 220.0f ) ) {
 		G_VRX_AddGoreBits( targ, VRX_GB_BLOWN );
 	}
@@ -718,18 +1563,13 @@ void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, con
 			VectorCopy( targ->r.currentOrigin, neck );
 			neck[2] += targ->client->ps.viewheight - 4;
 		}
-		if ( execution && G_VRX_Knife( mod ) && G_VRX_Gore( VRX_DECAP ) ) {
-			G_VRX_AddGoreBits( targ, VRX_GB_HEAD );
-			G_VRX_SpawnHead( targ, neck, attacker );
-			te = G_TempEntity( neck, EV_VR_GORE );
-			te->s.eventParm = VRG_DECAP;
-			te->s.otherEntityNum = targ->s.number;
-			te->s.otherEntityNum2 = attacker ? attacker->s.number : ENTITYNUM_WORLD;
-			G_AddEvent( targ, EV_GENERAL_SOUND, G_SoundIndex( "sound/weapons/knife/knife_hit3.wav" ) );
+		// (a knife finishing someone downed: the head comes off only if the blade was at his neck,
+		// which the cgame sees and asks for, G_VRX_Decap_f; on an arm or a leg it cuts that)
+		if ( execution && G_VRX_Knife( mod ) ) {
 			return;
 		}
-		if ( execution ||
-			 ( headshot && G_VRX_Heavy( targ, attacker, mod, damage ) ) ) {
+		if ( !G_VRX_Gore( VRX_VOXEL ) && ( execution ||
+			 ( headshot && G_VRX_Heavy( targ, attacker, mod, damage ) ) ) ) {     // (the voxel gore holes heads itself)
 			G_VRX_AddGoreBits( targ, VRX_GB_HEAD );
 			te = G_TempEntity( neck, EV_VR_GORE );
 			te->s.eventParm = VRG_HEADPOP;
@@ -745,7 +1585,7 @@ void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, con
 
 	// a shotgun blast to the gut from close by spills it
 	if ( ( mod == MOD_M97 || mod == MOD_AUTO5 || mod == MOD_M30 || mod == MOD_SHOTGUN ) && point && !headshot &&
-		 VRX_HUMAN_MALE( targ->aiCharacter ) && G_VRX_Gore( VRX_DISMEMBER ) &&
+		 VRX_HUMAN_MALE( targ->aiCharacter ) && G_VRX_OldGore( VRX_DISMEMBER ) &&
 		 attacker && Distance( attacker->r.currentOrigin, targ->r.currentOrigin ) < 400.0f &&
 		 !G_VRX_ShotAtHead( targ, dir, point ) ) {
 		neck = targ->r.currentOrigin[2] + targ->client->ps.viewheight - 12.0f;
@@ -761,7 +1601,7 @@ void G_VRX_Kill( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, con
 			return;
 		}
 	}
-	if ( !G_VRX_Gore( VRX_THROAT ) ) {
+	if ( !G_VRX_OldGore( VRX_THROAT ) ) {
 		return;
 	}
 	if ( mod == MOD_KNIFE || mod == MOD_KNIFE2 || mod == MOD_KNIFE_STEALTH ) {
@@ -1321,11 +2161,21 @@ static void G_VRX_MarkersFrame( void ) {
 		body = &g_entities[e->s.otherEntityNum2];
 		if ( !body->inuse || !body->client ||
 			 ( body->health > 0 && !( e->s.density & ( VRX_GB_SCARED | VRX_GB_SURRENDER | VRX_GB_CRIPPLED | VRX_GB_DOWNED ) ) &&
-			   !( e->s.time && level.time < e->s.time + VRX_GROIN_MS + 500 ) ) ) {
+			   !( e->s.time && level.time < e->s.time + VRX_GROIN_MS + 500 ) &&
+			   !( body->s.number < MAX_CLIENTS && ( level.time < vrxStunUntil[body->s.number] + 1000 ||
+													level.time < vrxUpAt[body->s.number] + 1000 ) ) ) ) {
 			G_FreeEntity( e );
 			continue;
 		}
-		if ( body->health > 0 && ( e->s.density & ( VRX_GB_CRIPPLED | VRX_GB_DOWNED ) ) && level.time >= e->timestamp ) {
+		if ( e->s.time2 == VRX_STUN_MARK && ( body->health <= 0 || level.time >= vrxStunUntil[body->s.number] ) ) {
+			e->s.time2 = 0;     // comes to (the cgame eases him back into his animation)
+		}
+		if ( body->health > 0 && ( e->s.density & VRX_GB_DOWNED ) && vrxGetUpAt[body->s.number] &&
+			 level.time >= vrxGetUpAt[body->s.number] ) {
+			G_VRX_GetUp( body, e );
+		}
+		if ( body->health > 0 && ( ( e->s.density & VRX_GB_CRIPPLED ) || ( ( e->s.density & VRX_GB_DOWNED ) && !vrxGetUpAt[body->s.number] ) ) &&
+			 level.time >= e->timestamp ) {
 			// bleeding out, still running from whoever did it
 			gentity_t *by = e->count >= 0 && e->count < MAX_CLIENTS && g_entities[e->count].inuse ? &g_entities[e->count] : NULL;
 			cast_state_t *cs = AICast_GetCastState( body->s.number );
@@ -1414,6 +2264,10 @@ void G_VRX_Decap_f( gentity_t *ent ) {
 	body = &g_entities[n];
 	if ( !body->inuse || !body->client || !body->aiCharacter || body->health > 0 ||
 		 ( G_VRX_GoreBits( body ) & VRX_GB_HEAD ) ) {
+		return;
+	}
+	// only the dead: not the blow that killed him (a living man stabbed, the downed finished off)
+	if ( vrxKnifedAlive[n] && level.time - vrxKnifedAlive[n] < 1500 ) {
 		return;
 	}
 	for ( i = 0; i < 3; i++ ) {
@@ -1542,6 +2396,14 @@ void G_VRX_Revive( gentity_t *ent ) {
 		G_FreeEntity( m );
 	}
 	vrxDownedAt[n] = 0;
+	vrxGetUpAt[n] = 0;
+	vrxStunUntil[n] = 0;
+	vrxStaggerUntil[n] = 0;
+	vrxUpAt[n] = 0;
+	vrxDisarmed[n] = 0;
+	vrxPickupAt[n] = 0;
+	G_VRX_DisarmItemFree( n );
+	ent->r.svFlags &= ~SVF_NOCLIENT;        // (a body that had gone, G_VRX_BodyGone)
 	cs = AICast_GetCastState( n );
 	if ( trap_Cvar_VariableIntegerValue( "vr_debug" ) == 8 ) {     // vr_debug 8 traces Survival respawns
 		G_Printf( "VR revive: %i %s, gore marker %s, weapons %s, frozen %s\n", n, ent->aiName ? ent->aiName : "",
@@ -1559,6 +2421,157 @@ void G_VRX_Revive( gentity_t *ent ) {
 			cs->dangerEntityValidTime = 0;      // no longer running from whoever crippled them
 		}
 		// (the weapon to hold is picked by the AI as usual, as after any death)
+	}
+}
+
+/*
+=================
+G_VRX_Disarm, G_VRX_DisarmFrame
+
+Shot in the right arm and still alive: his weapon falls from his hand and lies where it fell
+(nobody else can take it). Once he's over the hit (no longer stunned, staggering, down or getting
+up) he stoops for it, and has it again a moment later.
+=================
+*/
+#define VRX_DISARM_MARK     0x56520000
+#define VRX_PICKUP_MS       900
+static void G_VRX_DisarmItemFree( int n ) {
+	int k = vrxDisarmItem[n];
+
+	vrxDisarmItem[n] = 0;
+	if ( k > 0 && k < MAX_GENTITIES ) {
+		gentity_t *it = &g_entities[k];
+		if ( it->inuse && it->s.eType == ET_ITEM && it->damage == VRX_DISARM_MARK + n ) {
+			G_FreeEntity( it );
+		}
+	}
+}
+
+static void G_VRX_Disarm( gentity_t *targ ) {
+	cast_state_t *cs = AICast_GetCastState( targ->s.number );
+	gitem_t *item;
+	gentity_t *it;
+	vec3_t org, vel, right;
+	int n = targ->s.number;
+
+	if ( !cs || !targ->client || n <= 0 || n >= MAX_CLIENTS || vrxDisarmed[n] || targ->client->ps.weapon <= WP_NONE ||
+		 !VRX_HUMAN_MALE( targ->aiCharacter ) || !G_VRX( VRX_REACTIONS ) || G_VRX_Downed( targ ) ||
+		 ( G_VRX_GoreBits( targ ) & ( VRX_GB_SURRENDER | VRX_GB_CRIPPLED ) ) ) {
+		return;
+	}
+	vrxDisarmed[n] = targ->client->ps.weapon;
+	vrxPickupAt[n] = 0;
+	G_VRX_DisarmItemFree( n );
+	if ( !vrxWeaponsSaved[n] ) {
+		memcpy( vrxSavedWeapons[n], targ->client->ps.weapons, sizeof( vrxSavedWeapons[0] ) );
+		vrxWeaponsSaved[n] = qtrue;
+	}
+	item = BG_FindItemForWeapon( targ->client->ps.weapon );
+	if ( item ) {
+		AngleVectors( targ->client->ps.viewangles, NULL, right, NULL );
+		VectorCopy( targ->r.currentOrigin, org );
+		org[2] += 26;
+		VectorMA( org, 9, right, org );
+		VectorSet( vel, crandom() * 40, crandom() * 40, 70 );
+		VectorMA( vel, 40, right, vel );
+#ifdef VR_NET_HANDS
+		it = LaunchItem( item, org, vel, n );
+#else
+		it = LaunchItem( item, org, vel );
+#endif
+		if ( it ) {
+			it->touch = NULL;               // his: not for the taking
+			it->r.contents = 0;
+			it->damage = VRX_DISARM_MARK + n;
+			it->think = G_FreeEntity;       // (whatever becomes of him, it doesn't lie there for ever)
+			it->nextthink = level.time + 60000;
+			vrxDisarmItem[n] = it->s.number;
+		}
+	}
+	memset( targ->client->ps.weapons, 0, sizeof( targ->client->ps.weapons ) );
+	targ->client->ps.weapon = WP_NONE;
+	cs->weaponNum = WP_NONE;
+}
+
+static void G_VRX_DisarmFrame( void ) {
+	int n;
+
+	for ( n = 1; n < MAX_CLIENTS && n < level.maxclients; n++ ) {
+		gentity_t *e = &g_entities[n];
+		cast_state_t *cs;
+
+		if ( !vrxDisarmed[n] ) {
+			continue;
+		}
+		if ( !e->inuse || !e->client || !e->aiCharacter || e->health <= 0 ) {
+			// dead: it stays where it fell a while (his weapons come back with him, G_VRX_Revive)
+			vrxDisarmed[n] = 0;
+			vrxPickupAt[n] = 0;
+			continue;
+		}
+		if ( G_VRX_GoreBits( e ) & ( VRX_GB_SURRENDER | VRX_GB_CRIPPLED ) ) {
+			vrxDisarmed[n] = 0;     // given up, or an arm off: he's done with it
+			vrxPickupAt[n] = 0;
+			continue;
+		}
+		cs = AICast_GetCastState( n );
+		if ( !cs ) {
+			continue;
+		}
+		if ( G_VRX_Downed( e ) || vrxGetUpAt[n] || ( vrxUpAt[n] && level.time < vrxUpAt[n] + VRX_GETUP_MS ) ||
+			 level.time < vrxStunUntil[n] + 400 || level.time < vrxStaggerUntil[n] + 400 ) {
+			vrxPickupAt[n] = 0;     // not himself yet (or hit again as he stooped)
+			if ( cs->noAttackTime < level.time + 500 ) {
+				cs->noAttackTime = level.time + 500;
+			}
+			continue;
+		}
+		if ( !vrxPickupAt[n] ) {
+			// himself again: down for it
+			vrxPickupAt[n] = level.time + VRX_PICKUP_MS;
+			cs->attackcrouch_time = level.time + VRX_PICKUP_MS;
+			if ( cs->noAttackTime < level.time + VRX_PICKUP_MS + 200 ) {
+				cs->noAttackTime = level.time + VRX_PICKUP_MS + 200;
+			}
+			if ( cs->pauseTime < level.time + VRX_PICKUP_MS ) {
+				cs->pauseTime = level.time + VRX_PICKUP_MS;
+			}
+			continue;
+		}
+		if ( level.time < vrxPickupAt[n] ) {
+			continue;
+		}
+		// he has it
+		if ( vrxWeaponsSaved[n] ) {
+			memcpy( e->client->ps.weapons, vrxSavedWeapons[n], sizeof( e->client->ps.weapons ) );
+			vrxWeaponsSaved[n] = qfalse;
+		}
+		e->client->ps.weapon = vrxDisarmed[n];
+		cs->weaponNum = vrxDisarmed[n];
+		G_VRX_DisarmItemFree( n );
+		vrxDisarmed[n] = 0;
+		vrxPickupAt[n] = 0;
+	}
+}
+
+/*
+=================
+G_VRX_BodyGone
+
+Survival: a body that has lain 30 seconds goes (ai_cast_think.c), whoever it was and whether or
+not it's due back: it isn't sent to anyone and nothing touches it, until it's spawned again
+(G_VRX_Revive). Bodies left lying cost every frame they're in view.
+=================
+*/
+void G_VRX_BodyGone( gentity_t *ent ) {
+	if ( !ent->client || ( ent->r.svFlags & SVF_NOCLIENT ) ) {
+		return;
+	}
+	ent->r.svFlags |= SVF_NOCLIENT;
+	ent->r.contents = 0;
+	trap_LinkEntity( ent );
+	if ( ent->s.number > 0 && ent->s.number < MAX_CLIENTS ) {
+		G_VRX_DisarmItemFree( ent->s.number );
 	}
 }
 
@@ -1651,6 +2664,37 @@ static void G_VRX_SurvivalTest( void ) {
 			"vrtestbody belly; wait 120; screenshotJPEG; wait 20;"
 			"vrtestaim; wait 5; +activate; wait 40; screenshotJPEG; wait 5; +attack; wait 3; -attack; -activate; wait 50; screenshotJPEG; wait 30;"
 			"quit\n" );
+		return;
+	}
+	if ( want == -300 && g_cheats.integer && g_gametype.integer == GT_SURVIVAL && player->inuse && player->client ) {
+		// vr_testSurvival -300: once the first wave is up, run goredemo.cfg (the voxel gore's demo)
+		player->flags |= FL_GODMODE | FL_NOTARGET;
+		if ( step ) {
+			// everyone stands still to be shot
+			for ( i = 1; i < level.maxclients; i++ ) {
+				cast_state_t *cs;
+				e = &g_entities[i];
+				if ( e->inuse && e->client && e->aiCharacter && e->health > 0 && ( cs = AICast_GetCastState( i ) ) != NULL ) {
+					cs->pauseTime = level.time + 1000;
+					VectorClear( e->client->ps.velocity );
+					VectorSubtract( player->r.currentOrigin, e->r.currentOrigin, fwd );     // facing the camera
+					vectoangles( fwd, ang );
+					ang[PITCH] = ang[ROLL] = 0;
+					SetClientViewAngle( e, ang );
+					VectorCopy( ang, cs->ideal_viewangles );
+					VectorCopy( ang, cs->viewangles );
+				}
+			}
+			return;
+		}
+		if ( !svParams.waveInProgress || level.time < nextTime ) {
+			if ( !svParams.waveInProgress ) {
+				nextTime = level.time + 4000;
+			}
+			return;
+		}
+		step = 1;
+		trap_SendConsoleCommand( EXEC_APPEND, "exec goredemo.cfg\n" );
 		return;
 	}
 	if ( want < 0 && g_cheats.integer && g_gametype.integer == GT_SURVIVAL && player->inuse && player->client ) {
@@ -1782,7 +2826,7 @@ static void G_VRX_SurvivalTest( void ) {
 	AngleVectors( player->client->ps.viewangles, fwd, NULL, NULL );
 	switch ( step % 4 ) {
 	case 1:     // shot down (writhing, gun dropped), then finished with a kick
-		G_VRX_KnockDown( best, player, VRH_BELLY );
+		G_VRX_KnockDown( best, player, VRH_BELLY, qfalse );
 		pendingKill = best->s.number;
 		pendingTime = level.time + 1200;
 		G_Printf( "VR survtest: wave %i, %i (%s) shot down\n", svParams.waveCount, best->s.number, best->aiName ? best->aiName : "" );

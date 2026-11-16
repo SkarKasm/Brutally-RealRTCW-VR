@@ -1369,6 +1369,11 @@ void R_Register( void ) {
 	r_exportCompressedModels = ri.Cvar_Get( "r_exportCompressedModels", "0", 0 ); // saves compressed models
 	r_buildScript = ri.Cvar_Get( "com_buildscript", "0", 0 );
 	r_bonesDebug = ri.Cvar_Get( "r_bonesDebug", "0", CVAR_CHEAT );
+	// RealRTCW-VR: what R_VRX_Decals takes (2: the cells of one atlas, any number of kinds of
+	// blood in one draw, holes known to lie on the skin): read by the cgame, which draws each
+	// kind on its own for a renderer that doesn't say
+	ri.Cvar_Get( "r_vrDecals", "2", CVAR_ROM );
+	ri.Cvar_Set( "r_vrDecals", "2" );
 
 	// Rafael - wolf fog
 	r_wolffog = ri.Cvar_Get( "r_wolffog", "1", 0 );

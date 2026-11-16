@@ -1380,6 +1380,13 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		return;
 	}
 
+	// RealRTCW-VR: a dead body (a ragdoll now) makes no footstep or landing thuds
+	if ( ( es->eFlags & EF_DEAD ) && ( ( event >= EV_FOOTSTEP && event <= EV_FOOTSTEP_CARPET ) ||
+									   ( event >= EV_FALL_SHORT && event <= EV_FALL_DMG_50 ) ) ) {
+		DEBUGNAME( "dead body footstep/fall (skipped)" );
+		return;
+	}
+
 	switch ( event ) {
 		//
 		// movement generated events
@@ -1967,6 +1974,7 @@ case EV_FILL_CLIP_FULL:
 		}
 
 		CG_FireWeapon(cent, event);
+		CG_Ragdoll_Fired( cent->currentState.number );     // RealRTCW-VR: staggering, the shot kicks his arm back
 		cent->akimboFire = (event == EV_FIRE_WEAPONB);
 		break;
 	case EV_FIRE_WEAPON_LASTSHOT:
@@ -2174,6 +2182,10 @@ case EV_FILL_CLIP_FULL:
 		if ( es->otherEntityNum == cg.snap->ps.clientNum && !es->density && CG_VR_PredictsHits( cg.predictedPlayerState.weapon ) ) {
 			break;
 		}
+		if ( es->otherEntityNum == cg.snap->ps.clientNum ) {
+			// a dead body lying in the way of our shot takes it (the server doesn't know where it lies)
+			CG_Ragdoll_ShootDead( cg.refdef.vieworg, es->pos.trBase, cg.predictedPlayerState.weapon );
+		}
 		ByteToDir( es->eventParm, dir );
 		CG_Bullet( es->pos.trBase, es->otherEntityNum, dir, qfalse, ENTITYNUM_WORLD, qfalse, es->otherEntityNum2 );
 		break;
@@ -2181,6 +2193,10 @@ case EV_FILL_CLIP_FULL:
 	case EV_BULLET_HIT_FLESH:
 		DEBUGNAME( "EV_BULLET_HIT_FLESH" );
 		// RealRTCW-VR: the body is knocked where it was hit (our own shots do it when they're fired)
+		if ( es->otherEntityNum == cg.snap->ps.clientNum && !( !es->density && CG_VR_PredictsHits( cg.predictedPlayerState.weapon ) ) &&
+			 CG_Ragdoll_ShootDead( cg.refdef.vieworg, es->pos.trBase, cg.predictedPlayerState.weapon ) == es->eventParm ) {
+			// (a dead body, shot where it lies: done)
+		} else
 		if ( !( es->otherEntityNum == cg.snap->ps.clientNum && !es->density &&
 				CG_VR_PredictsHits( cg.predictedPlayerState.weapon ) ) &&
 			 es->otherEntityNum >= 0 && es->otherEntityNum < MAX_GENTITIES ) {
@@ -2193,7 +2209,7 @@ case EV_FILL_CLIP_FULL:
 				from[2] += DEFAULT_VIEWHEIGHT;
 			}
 			VectorSubtract( es->pos.trBase, from, shot );
-			CG_VRX_Wound( es->eventParm, es->pos.trBase, shot );     // GORE & EXTRAS
+			CG_VRX_WoundBy( es->eventParm, es->pos.trBase, shot, cg_entities[es->otherEntityNum].currentState.weapon );     // GORE & EXTRAS
 			VectorSubtract( es->pos.trBase, cg_entities[es->otherEntityNum].lerpOrigin, shot );
 			shot[2] *= 0.3f;
 			CG_Ragdoll_Hit( es->eventParm, es->pos.trBase, shot, 160.0f );
@@ -2284,6 +2300,11 @@ case EV_FILL_CLIP_FULL:
 		//trap_SendServerCommand( -1, va( "cpst %s", s ) );
 //		CG_SubtitlePrint( s, SCREEN_HEIGHT - ( SCREEN_HEIGHT * 0.33 ), 6 );
 		if ( !strstr( s, ".wav" ) ) {
+			// RealRTCW-VR: a body that drops as a ragdoll doesn't play the old death
+			// animation's body falls (voices, on the voice channel, still play)
+			if ( ( es->eFlags & EF_DEAD ) && es->eType == ET_PLAYER && CG_Ragdoll_On() && CG_SoundScriptIsFoley( s ) ) {
+				break;
+			}
 			if ( CG_SoundPlaySoundScript( s, NULL, es->number ) ) {
 				break;
 			}
@@ -2465,6 +2486,7 @@ case EV_FILL_CLIP_FULL:
 
 	case EV_REATTACH_HAT:
 		DEBUGNAME( "EV_REATTACH_HAT" );
+		CG_VRX_NewLife( es->number );       // RealRTCW-VR: a Survival respawn: nothing of the last one left on him
 		ByteToDir( es->eventParm, dir );
 		CG_Player( cent );
 		break;

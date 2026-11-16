@@ -812,6 +812,7 @@ typedef struct {
 
 typedef struct {
 	int clientFrame;                // incremented each frame
+	int kickOnLegsTime;             // RealRTCW-VR: cg.time your own legs last showed the kick
 
 	int clientNum;
 
@@ -2486,6 +2487,7 @@ void CG_ClearTrails( void );
 // Ridah, sound scripting
 int CG_SoundScriptPrecache( const char *name );
 qboolean CG_SoundPlaySoundScript( const char *name, vec3_t org, int entnum );
+qboolean CG_SoundScriptIsFoley( const char *name );
 void CG_SoundPlayIndexedScript( int index, vec3_t org, int entnum );
 void CG_SoundInit( void );
 // done.
@@ -2775,6 +2777,19 @@ void        trap_R_VR_EndScope( void );
 // cg_ragdoll.c (RealRTCW-VR)
 void        CG_Ragdoll_Init( void );
 
+// cg_vrgore.c (RealRTCW-VR: voxel gore)
+void        CG_VRGore_Init( void );
+void        CG_VRGore_Shutdown( void );
+qboolean    CG_VRGore_Shot( int entityNum, const vec3_t point, const vec3_t dir, int weapon );
+void        CG_VRGore_Body( centity_t *cent, refEntity_t *body, const char *modelName );
+void        CG_VRGore_AddPieces( void );
+void        CG_VRGore_Test_f( void );
+void        CG_VRGore_Demo_f( void );
+qboolean    CG_VRGore_Limbs( int entityNum, int limbs, int high, const vec3_t point, const vec3_t dir );
+qboolean    CG_VRGore_Knife( int entityNum, const vec3_t point, const vec3_t dir, qboolean cut );
+void        CG_VRGore_Head( centity_t *cent, refEntity_t *head );
+void        CG_VRGore_NoteHead( qhandle_t hModel, const char *path );
+
 // cg_vrextras.c (RealRTCW-VR: GORE & EXTRAS)
 int         CG_VRX( int which );
 qboolean    CG_VRX_Gore( int which );
@@ -2782,12 +2797,35 @@ float       CG_VRX_Knock( qboolean killing );
 void        CG_VRX_Flinch( int entityNum, const vec3_t point, const vec3_t dir );
 void        CG_VRX_FlinchAngles( centity_t *cent, vec3_t torsoAngles, vec3_t headAngles );
 void        CG_VRX_Wound( int entityNum, const vec3_t point, const vec3_t dir );
+void        CG_VRX_WoundBy( int entityNum, const vec3_t point, const vec3_t dir, int weapon );
 void        CG_VRX_AddWounds( centity_t *cent, refEntity_t *body );
+void        CG_VRX_NewLife( int entityNum );
+void        CG_VRGore_Clear( int entityNum );
+void        CG_Ragdoll_Purge( void );
+int         CG_Ragdoll_ShootDead( const vec3_t start, const vec3_t end, int weapon );
+int         CG_Ragdoll_Trace( const vec3_t start, const vec3_t end, int only, vec3_t point );
+void        CG_VRX_OverlayTrailer( int entityNum, const float *trailer, int n );
+void        CG_Ragdoll_Fired( int entityNum );
+
+// blood laid on a body's skin by the renderer (tr_animation.c R_VRX_Decals): 12 floats a mark.
+// With the atlas (vr_gorebloodatlas, a renderer that says r_vrDecals 2) every kind of blood on
+// a body is one draw, each mark naming its picture: its eleventh float is the picture + 1,
+// under 0 to mirror it. Without, a draw for each kind (CG_VRGore_BloodAtlas 0).
+#define VRX_DECAL_MAX       352     // marks in one draw (the renderer's VRX_MAX_BODYWOUNDS)
+#define VRX_STAIN_MARKS     176     // of them, at most, what landed on him (cg_vrextras.c VRX_DrawStains)
+enum { VRD_WHOLE, VRD_SOAK, VRD_SPLAT, VRD_RUN, VRD_TRAIL, VRD_RIM, VRD_DROPS, VRD_STREAK, VRD_STREAK2 };
+qhandle_t   CG_VRGore_BloodAtlas( void );
+// the blood that landed on a body, for the voxel gore to draw with its own (qfalse: it isn't
+// drawing this one, the caller does)
+qboolean    CG_VRGore_TakeBlood( int entityNum, const refEntity_t *body, qboolean dead, const float *marks, int count );
+// a mark of someone's own blood on his clothes (cg_vrextras.c): streak, down the skin along dir
+void        CG_VRX_BloodMark( int entityNum, int bone, const vec3_t point, const vec3_t normal, const vec3_t dir, float amount, qboolean streak );
+qboolean CG_Ragdoll_RealWeights( void );  // vr_realWeights 1: a man's own weights, physics at 125 a second
+qboolean CG_VRLogOn( void );    // vr_log 1: shots and falls written to the console log (cg_vr.c)
 void        CG_VRX_AddCryptGore( centity_t *cent, refEntity_t *body );
 void        CG_VRX_BloodPool( centity_t *cent, refEntity_t *body );
 qboolean    CG_VRX_BodyPoints( int clientNum, int group, orientation_t *or );
 void        CG_VRX_Downed( centity_t *cent, refEntity_t *body );
-void        CG_VRX_HitReact( centity_t *cent, refEntity_t *body );
 void        CG_VRX_AddLimbs( void );
 void        CG_VRX_TestHit_f( void );
 void        CG_VRX_ShowModel_f( void );
@@ -2819,6 +2857,7 @@ qboolean    CG_VR_BodyDrawn( void );
 void        CG_VR_BodyAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3] );
 void        CG_VR_BodyApply( centity_t *cent, refEntity_t *body );
 void        CG_FlatLegs( centity_t *cent, const refEntity_t *legs );
+qboolean    CG_FlatLegsShown( centity_t *cent );
 void        CG_VR_Geom( int weapon, vrWeaponGeom_t *g );
 float       CG_VR_WeaponScale( void );
 
@@ -2835,6 +2874,30 @@ float       CG_AdsFraction( void );           // cg_weapons.c: flat aiming down 
 void        CG_VR_RecoilInit( void );
 void        CG_VR_RecoilKick( int weapon );
 void        CG_VR_RecoilUpdate( void );
+
+// cg_vrhandtweak.c (RealRTCW-VR): hand alignment per weapon (handtweak)
+#define VR_HT_GUN       0       // the whole gun with its hands, in the controller
+#define VR_HT_TRIG      1       // the trigger hand's palm and fingers, on the gun
+#define VR_HT_SUP       2       // the support hand's
+#define VR_HT_PARTS     3
+typedef struct {
+	float   v[6];       // forward left up (model units), pitch yaw roll (degrees)
+	float   size;       // 1 as modelled
+} vrHandTweak_t;
+void        CG_VR_HandTweakInit( void );
+void        CG_VR_HandTweakFrame( void );
+void        CG_VR_HandTweakDraw2D( void );
+const vrHandTweak_t *CG_VR_HandTweakGet( int weapon, int part );
+qboolean    CG_VR_HandTweakMoves( const vrHandTweak_t *t );
+int         CG_VR_HandParts( int weapon );     // cg_vr.c: bit (1 << VR_HT_TRIG / VR_HT_SUP) per hand the gun has
+void        CG_VR_HandTweak_f( void );
+void        CG_VR_HandTweakPart_f( void );
+void        CG_VR_HandTweakNudge_f( void );
+void        CG_VR_HandTweakReset_f( void );
+void        CG_VR_HandTweakUndo_f( void );
+void        CG_VR_HandTweakPrint_f( void );
+void        CG_VR_HandTweakLoad_f( void );
+void        CG_VR_HandTweakSave_f( void );
 
 // cg_vrwrist.c (RealRTCW-VR)
 void        CG_VR_WristInit( void );
@@ -2854,6 +2917,41 @@ qboolean    CG_VR_RemoteBody( centity_t *cent );
 void        CG_VR_BodyApplyRemote( centity_t *cent, refEntity_t *body );
 #endif
 void        CG_Ragdoll_DebugHead( centity_t *cent, const vec3_t headOrigin );
+void        CG_Ragdoll_PhysicsOff( void );
+qboolean    CG_Ragdoll_On( void );
+qboolean    CG_Ragdoll_Has( int entityNum );
+const float *CG_VRX_KneelPose( centity_t *cent, refEntity_t *body );     // getting up off the floor
+enum { VRX_GU_KNEEL, VRX_GU_PRESS, VRX_GU_TUCK, VRX_GU_SIT, VRX_GU_POSES };
+const float *CG_VRX_GetUpPose( centity_t *cent, refEntity_t *body, int which );
+
+// cg_vrblood.c: blood as droplets (vr_bloodFX)
+typedef struct {
+	int     last, phase, nextDrip;
+	float   acc;
+	int     owner;                  // whose wound (his own blood doesn't land on him as it leaves)
+	int     lastDrop, lastDropBorn; // the stream's last drop: the next one joins on to it
+} vrbWound_t;
+enum { VRB_ARTERY = 1, VRB_FLOW, VRB_SEEP };
+qboolean    CG_VRB_On( void );
+qboolean    CG_VRB_Near( const vec3_t org, float radius );
+void        CG_VRB_Body( int entityNum, int numCaps, vec3_t a[], vec3_t b[], const float *r, const int *bone );
+void        CG_VRX_BloodOnBody( int entityNum, int bone, const vec3_t point, const vec3_t normal, const vec3_t dir, float amount );
+void        CG_VRB_Spurt( const vec3_t origin, const vec3_t dir, float speed, int count, float spread );
+void        CG_VRB_Drip( const vec3_t pos, const vec3_t vel, int owner );   // a drop off a wound: it marks what it lands on
+void        CG_VRB_Impact( const vec3_t point, const vec3_t dir, int entityNum );
+void        CG_VRB_Wound( vrbWound_t *b, const vec3_t p, const vec3_t n, const vec3_t down, int kind, float strength );
+void        CG_VRB_AddDrops( void );
+qboolean    CG_VRX_Stunned( centity_t *cent );
+qboolean    CG_Ragdoll_PhysHits( void );     // bullets knock the living about physically (vr_activeHits)
+int         CG_VRX_DownedStyle( centity_t *cent );
+
+//
+// cg_physworld.c (vr_physics: Jolt)
+//
+void        CG_Physics_Init( void );
+void        CG_Physics_Frame( void );
+void        CG_Physics_Shutdown( void );
+qboolean    CG_Physics_Ready( void );
 void        trap_R_RemapShader( const char *oldShader, const char *newShader, const char *timeOffset );
 qboolean    trap_R_inPVS( const vec3_t p1, const vec3_t p2 );
 

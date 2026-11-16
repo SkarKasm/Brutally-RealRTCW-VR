@@ -47,3 +47,7 @@ profile
 run/
 run_test/
 dist/
+
+# Python
+__pycache__/
+*.pyc

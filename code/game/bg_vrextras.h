@@ -33,10 +33,13 @@ typedef enum {
 	VRX_DECAP,          // knife decapitation of the dead
 	VRX_HEADSCARE,      // thrown heads: 0 nothing, 1 scare, 2 scare and surrender
 	VRX_STOCKGIBS,      // RTCW's own gibbing of soldiers (0 off: bodies stay for our gore)
+	VRX_VOXEL,          // voxel gore (cgame cg_vrgore.c): bullets open the body; the older body
+						// gore (wound decals, throats, guts, limbs off) is off then, but for the
+						// knife's decapitation and head wounds
 	VRX_COUNT
 } vrExtra_t;
 
-#define VRX_DEFAULTS    "1111122120"     // a digit per setting, in that order
+#define VRX_DEFAULTS    "11111221201"    // a digit per setting, in that order
 
 // EV_VR_GORE (eventParm): what happened to the body otherEntityNum, the blow along origin2
 typedef enum {
@@ -85,6 +88,7 @@ typedef enum {
 
 #define VRX_DOWN_STYLES 8     // ways to go down: the SoF2 agony animations (cgame cg_vrsof2anims.h)
 #define VRX_GROIN_MS 2800     // how long a shot in the balls doubles someone over
+#define VRX_STUN_MARK 99      // a gore marker's time2: shot and stunned, shoved about by the bullets (G_VRX_Stun)
 #define VRB_GROUPS      ( ( VRB_COUNT + 3 ) / 4 )
 
 // where a shot met someone

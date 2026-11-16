@@ -79,11 +79,14 @@ void CG_VR_Init( void ) {
 
 	memset( &cgvr, 0, sizeof( cgvr ) );
 	CG_Ragdoll_Init();
+	CG_Physics_Init();
+	CG_VRGore_Init();
 	CG_VR_BodyInit();
 	CG_VR_ScopeInit();
 	CG_VR_RecoilInit();
 	CG_VR_WristInit();
 	CG_VR_ComfortInit();
+	CG_VR_HandTweakInit();     // hand alignment per weapon (cg_vrhandtweak.c)
 
 	// Fine tuning on top of the measured grip, "forward left up pitch yaw roll" in model
 	// units/degrees. vr_gunOffset_<weapon number> applies to a single weapon.
@@ -256,7 +259,12 @@ float CG_VR_ScaleFor( int weapon ) {
 		}
 	}
 	s *= CG_VR_GunSize();
-	return s < 0.3f ? 0.3f : ( s > 1.75f ? 1.75f : s );
+	s = s < 0.3f ? 0.3f : ( s > 1.75f ? 1.75f : s );
+	// the weapon size set in the Hand Editor (vr_handalign.txt, the gun line's size)
+	if ( weapon > WP_NONE ) {
+		s *= CG_VR_HandTweakGet( weapon, VR_HT_GUN )->size;
+	}
+	return s;
 }
 
 // the held gun's size, also for the game's reloading (g_vr.c)
@@ -354,6 +362,20 @@ static const vrHandPose_t *CG_VR_HandPose( int weapon ) {
 		}
 	}
 	return NULL;
+}
+
+// which of its hands a gun has, for the hand alignment (cg_vrhandtweak.c)
+int CG_VR_HandParts( int weapon ) {
+	const vrHandPose_t *hp = CG_VR_HandPose( weapon );
+	int parts = 0;
+
+	if ( hp && hp->trigPiece != -2 ) {
+		parts |= 1 << VR_HT_TRIG;
+	}
+	if ( hp && hp->supPiece != -2 ) {
+		parts |= 1 << VR_HT_SUP;
+	}
+	return parts;
 }
 
 // the flat game's arms are drawn on the gun. With two guns each one has its gun hand: the
@@ -783,45 +805,105 @@ static void CG_VR_StretchCentre( int weapon, const vrHandPose_t *hp, vec3_t out 
 	VectorCopy( hp->trigWrist, out );
 }
 
+/*
+=================
+CG_VR_TweakEntity
+
+A gun's hand drawn where the hand alignment put it (handtweak, cg_vrhandtweak.c): sized f
+about centre, turned about the wrist and moved, in the gun's (hands model) space.
+=================
+*/
+static void CG_VR_TweakEntity( int weapon, const vrHandTweak_t *tw, float f, const vec3_t centre,
+							   const vec3_t wristModel, const refEntity_t *in, refEntity_t *out ) {
+	vec3_t origin, axis[3], unit[3], c, w, ang, l[3], o1, move;
+	int i, j;
+
+	CG_VR_WeaponPose( weapon, origin, axis );
+	BG_VR_ModelPoint( origin, axis, centre, c );
+	BG_VR_ModelPoint( origin, axis, wristModel, w );
+	for ( i = 0; i < 3; i++ ) {
+		VectorCopy( axis[i], unit[i] );
+		VectorNormalize( unit[i] );
+	}
+	VectorSet( ang, tw->v[3], tw->v[4], tw->v[5] );
+	AnglesToAxis( ang, l );
+	VectorClear( move );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( move, tw->v[i], axis[i], move );      // model units: the scaled axes
+	}
+
+	*out = *in;
+	// sized about the centre
+	for ( i = 0; i < 3; i++ ) {
+		o1[i] = c[i] + ( in->origin[i] - c[i] ) * f;
+	}
+	// turned about the wrist (in the gun's frame) and moved
+	{
+		vec3_t d, r;
+		VectorSubtract( o1, w, d );
+		VectorClear( r );
+		for ( j = 0; j < 3; j++ ) {
+			float cj = DotProduct( d, unit[j] );
+			VectorMA( r, cj, l[j], r );     // gun coordinates, turned
+		}
+		for ( i = 0; i < 3; i++ ) {
+			out->origin[i] = w[i] + r[0] * unit[0][i] + r[1] * unit[1][i] + r[2] * unit[2][i] + move[i];
+		}
+	}
+	for ( i = 0; i < 3; i++ ) {
+		vec3_t a, r;
+		VectorScale( in->axis[i], f, a );
+		VectorClear( r );
+		for ( j = 0; j < 3; j++ ) {
+			VectorMA( r, DotProduct( a, unit[j] ), l[j], r );
+		}
+		for ( j = 0; j < 3; j++ ) {
+			out->axis[i][j] = r[0] * unit[0][j] + r[1] * unit[1][j] + r[2] * unit[2][j];
+		}
+	}
+	VectorCopy( out->origin, out->oldorigin );
+	out->nonNormalizedAxes = qtrue;
+}
+
 void CG_VR_StretchHand( int weapon, int piece, refEntity_t *ent ) {
 	const vrHandPose_t *hp = CG_VR_GunHands() ? CG_VR_HandPose( weapon ) : NULL;
 	const char *file = weapon > WP_NONE ? BG_GetWeaponFilename( weapon ) : NULL;
-	vec3_t origin, axis[3], wrist;
+	const vrHandTweak_t *tw;
+	vec3_t centre;
 	refEntity_t copy;
+	qboolean trig, moved;
 	float f = 0;
-	int i, h, dom = CG_VR_DominantHand();
+	int h, dom = CG_VR_DominantHand();
 
 
 	if ( !hp || !file || !*file || ( ent->renderfx & RF_VR_NOHANDS ) || piece < -1 ) {
 		return;
 	}
-	if ( piece == hp->trigPiece ) {
-		f = CG_VR_HandStretch( weapon, qtrue );
-	} else if ( piece == hp->supPiece ) {
-		f = CG_VR_HandStretch( weapon, qfalse );
+	if ( piece != hp->trigPiece && piece != hp->supPiece ) {
+		return;
 	}
-	if ( f <= 0 || ( f > 0.98f && f < 1.02f ) ) {
-		return;     // the bigger hand (or the same): as modelled
+	trig = piece == hp->trigPiece;
+	f = CG_VR_HandStretch( weapon, trig );
+	tw = CG_VR_HandTweakGet( weapon, trig ? VR_HT_TRIG : VR_HT_SUP );
+	moved = CG_VR_HandTweakMoves( tw );
+	f *= tw->size;
+	if ( f <= 0 || ( !moved && f > 0.98f && f < 1.02f ) ) {
+		return;     // the bigger hand (or the same), not realigned: as modelled
 	}
-	h = piece == hp->trigPiece ? dom : !dom;
-	CG_VR_WeaponPose( weapon, origin, axis );
-	if ( piece == hp->trigPiece ) {
-		vec3_t centre;
+	h = trig ? dom : !dom;
+	if ( trig ) {
 		CG_VR_StretchCentre( weapon, hp, centre );
-		BG_VR_ModelPoint( origin, axis, centre, wrist );
 	} else {
-		BG_VR_ModelPoint( origin, axis, hp->supWrist, wrist );
+		VectorCopy( hp->supWrist, centre );
 	}
 
-	copy = *ent;
-	for ( i = 0; i < 3; i++ ) {
-		copy.origin[i] = wrist[i] + ( ent->origin[i] - wrist[i] ) * f;
-		VectorScale( ent->axis[i], f, copy.axis[i] );
-	}
-	VectorCopy( copy.origin, copy.oldorigin );
-	copy.nonNormalizedAxes = qtrue;
+	CG_VR_TweakEntity( weapon, tw, f, centre, trig ? hp->trigWrist : hp->supWrist, ent, &copy );
 	copy.renderfx |= RF_VR_ONLYHANDS | RF_VR_NOSLEEVES;
-	CG_VR_ArmBend( h, &copy );
+	if ( moved ) {
+		copy.vrBendMagic = 0;       // (the palm moved off the wrist the arm is bent at)
+	} else {
+		CG_VR_ArmBend( h, &copy );
+	}
 	trap_R_AddRefEntityToScene( &copy );
 	ent->renderfx |= RF_VR_NOPALMS;
 }
@@ -874,6 +956,15 @@ void CG_VR_AddRifleHand( int weapon, refEntity_t *gun, const refEntity_t *parent
 	ent.hModel = model;
 	ent.customSkin = cgvr.handSkin;
 	ent.renderfx &= ~( RF_VR_NOHANDS | RF_VR_NOSLEEVES );
+	{
+		// realigned (handtweak): this hand is its own model, moved whole
+		const vrHandTweak_t *tw = CG_VR_HandTweakGet( weapon, VR_HT_TRIG );
+		if ( CG_VR_HandTweakMoves( tw ) || tw->size != 1.0f ) {
+			refEntity_t moved;
+			CG_VR_TweakEntity( weapon, tw, tw->size, hp->trigWrist, hp->trigWrist, &ent, &moved );
+			ent = moved;
+		}
+	}
 	CG_VR_PieceArmBend( weapon, -3, &ent );
 	trap_R_AddRefEntityToScene( &ent );
 }
@@ -1077,9 +1168,28 @@ static void CG_VR_SupportSpot( void ) {
 		return;
 	}
 	CG_VR_Geom( weapon, &geom );
-	cgVR->supportRel[0] = ( vrHandSpans[i].supPalm[0] - geom.grip[0] ) * geom.scale;
-	cgVR->supportRel[1] = ( vrHandSpans[i].supPalm[1] - geom.grip[1] ) * geom.scale;
-	cgVR->supportRel[2] = ( vrHandSpans[i].supPalm[2] - geom.grip[2] ) * geom.scale;
+	{
+		// the palm where the hand alignment put it (handtweak): the support hand turned and
+		// sized about its wrist and moved, the gun moved in the hand
+		const vrHandTweak_t *gt = CG_VR_HandTweakGet( weapon, VR_HT_GUN );
+		const vrHandTweak_t *st = CG_VR_HandTweakGet( weapon, VR_HT_SUP );
+		const vrHandPose_t *hp = CG_VR_HandPose( weapon );
+		vec3_t palm, d, l[3], ang;
+		int j;
+
+		VectorCopy( vrHandSpans[i].supPalm, palm );
+		if ( hp && hp->supPiece != -2 && ( CG_VR_HandTweakMoves( st ) || st->size != 1.0f ) ) {
+			VectorSubtract( palm, hp->supWrist, d );
+			VectorSet( ang, st->v[3], st->v[4], st->v[5] );
+			AnglesToAxis( ang, l );
+			for ( j = 0; j < 3; j++ ) {
+				palm[j] = hp->supWrist[j] + st->size * ( d[0] * l[0][j] + d[1] * l[1][j] + d[2] * l[2][j] ) + st->v[j];
+			}
+		}
+		for ( j = 0; j < 3; j++ ) {
+			cgVR->supportRel[j] = ( palm[j] - geom.grip[j] + gt->v[j] ) * geom.scale;
+		}
+	}
 	cgVR->supportValid = 1;
 }
 
@@ -1097,6 +1207,7 @@ void CG_VR_BeginFrame( void ) {
 	}
 
 	CG_VR_ReloadSounds();
+	CG_VR_HandTweakFrame();     // hand alignment mode: the off hand drags the chosen part
 	CG_VR_WeaponScale();        // for the game's reloading too
 	CG_VR_SupportSpot();        // where the off hand takes hold of it
 	CG_VRX_KnifeFrame();        // GORE & EXTRAS: the blade through a dead body's neck
@@ -1214,6 +1325,14 @@ void CG_VR_WeaponPose( int weapon, vec3_t origin, vec3_t axis[3] ) {
 	}
 	if ( buf[0] ) {
 		sscanf( buf, "%f %f %f %f %f %f", &adj[0], &adj[1], &adj[2], &adj[3], &adj[4], &adj[5] );
+	}
+	// and the hand alignment (handtweak, cg_vrhandtweak.c)
+	{
+		const vrHandTweak_t *tw = CG_VR_HandTweakGet( weapon, VR_HT_GUN );
+		int i;
+		for ( i = 0; i < 6; i++ ) {
+			adj[i] += tw->v[i];
+		}
 	}
 
 	CG_VR_Geom( weapon, &geom );
@@ -1936,6 +2055,13 @@ qboolean CG_VR_PredictsHits( int weapon ) {
 	return cgvr.active && vr_predictHits.integer && !cg.demoPlayback && CG_VR_HitscanWeapon( weapon );
 }
 
+// vr_log 1: each shot and fall is written to the console log (for working out a bug report)
+qboolean CG_VRLogOn( void ) {
+	char b[8];
+	trap_Cvar_VariableStringBuffer( "vr_log", b, sizeof( b ) );
+	return atoi( b ) != 0;
+}
+
 /*
 =================
 CG_VR_PredictBullet
@@ -1966,6 +2092,14 @@ void CG_VR_PredictBullet( int weapon ) {
 	VectorMA( start, 8192 * 2, forward, end );
 
 	CG_Trace( &tr, start, NULL, NULL, end, self, MASK_SHOT );
+	{
+		// (for comparing with the server's shot, G_VRX: the log tells where each went)
+		vec3_t a;
+		vectoangles( forward, a );
+		if ( CG_VRLogOn() ) CG_Printf( "VRLOG cshot %d: from %.1f %.1f %.1f pitch %.2f yaw %.2f hit %.1f %.1f %.1f ent %d\n", cg.time, start[0], start[1], start[2],
+				   AngleNormalize180( a[PITCH] ), a[YAW], tr.endpos[0], tr.endpos[1], tr.endpos[2], tr.entityNum );
+	}
+	CG_Ragdoll_ShootDead( start, tr.endpos, weapon );      // a dead body lying in its way takes it
 	if ( tr.fraction >= 1.0f || ( tr.surfaceFlags & ( SURF_NOIMPACT | SURF_SKY ) ) ) {
 		return;
 	}
@@ -1976,7 +2110,7 @@ void CG_VR_PredictBullet( int weapon ) {
 	if ( tr.entityNum < MAX_CLIENTS && tr.entityNum != self ) {
 		CG_Bullet( tr.endpos, self, tr.plane.normal, qtrue, tr.entityNum, qfalse, ENTITYNUM_NONE );
 		CG_Ragdoll_Hit( tr.entityNum, tr.endpos, forward, 160.0f );     // knocks a body where it's hit
-		CG_VRX_Wound( tr.entityNum, tr.endpos, forward );
+		CG_VRX_WoundBy( tr.entityNum, tr.endpos, forward, weapon );
 	} else {
 		VectorMA( forward, -2 * DotProduct( forward, tr.plane.normal ), tr.plane.normal, reflect );
 		VectorNormalize( reflect );

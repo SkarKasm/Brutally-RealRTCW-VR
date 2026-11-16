@@ -55,7 +55,7 @@ If you have questions concerning this license or the applicable additional terms
 ============
 AICast_SurvivalPace
 
-RealRTCW-VR: g_survivalPace (default 2) speeds Survival up: that many times as many enemies
+RealRTCW-VR: g_survivalRush (default 1: RealRTCW's own waves; was g_survivalPace, default 2) speeds Survival up: that many times as many enemies
 up at once (up to each type's cap), the caps grow that much faster each wave, and the
 ordinary ones come back that much sooner. 1 is RealRTCW's own pace.
 ============
@@ -65,7 +65,7 @@ static float AICast_SurvivalPace( void ) {
 	static qboolean registered;
 
 	if ( !registered ) {
-		trap_Cvar_Register( &pace, "g_survivalPace", "2", CVAR_ARCHIVE );
+		trap_Cvar_Register( &pace, "g_survivalRush", "1", CVAR_ARCHIVE );
 		registered = qtrue;
 	}
 	trap_Cvar_Update( &pace );

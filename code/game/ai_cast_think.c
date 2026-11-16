@@ -499,6 +499,11 @@ void AICast_Think( int client, float thinktime ) {
 	}
 	// if we're dead, do special stuff only
 	if ( ent->health <= 0 || cs->revivingTime || cs->rebirthTime ) {
+		// RealRTCW-VR: Survival: every body goes 30 seconds after it died (lopers and the ones not
+		// due back lay there for good, and every body in view costs frame rate)
+		if ( g_gametype.integer == GT_SURVIVAL && ent->health <= 0 && cs->deathTime && level.time > cs->deathTime + 30000 ) {
+			G_VRX_BodyGone( ent );
+		}
 		//
 		if ( cs->revivingTime && cs->revivingTime < level.time ) {
 			// start us thinking again

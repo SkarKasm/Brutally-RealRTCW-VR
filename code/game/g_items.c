@@ -2291,7 +2291,14 @@ void G_BounceItem( gentity_t *ent, trace_t *trace ) {
 		// do a bounce
         if ( ent->item && ( ent->item->giType == IT_WEAPON || ent->item->giType == IT_AMMO ) && ent->item->giTag > WP_NONE && ent->item->giTag < WP_NUM_WEAPONS)
 		{
-			G_AddEvent( ent, EV_BOUNCE_SOUND, ent->item->giType == IT_WEAPON ? 0 : 1 );
+			// RealRTCW-VR: only a real impact clatters, and not again within half a second, so a
+			// dropped gun rocking or jittering on a step can't repeat its bounce sound forever
+			static int lastBounceSound[MAX_GENTITIES];
+			if ( -DotProduct( velocity, trace->plane.normal ) > 120.0f &&
+				 ( level.time - lastBounceSound[ent->s.number] > 500 || level.time < lastBounceSound[ent->s.number] ) ) {
+				G_AddEvent( ent, EV_BOUNCE_SOUND, ent->item->giType == IT_WEAPON ? 0 : 1 );
+				lastBounceSound[ent->s.number] = level.time;
+			}
 			ent->s.weapon = ent->item->giTag;
 		}
 

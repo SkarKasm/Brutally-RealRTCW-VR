@@ -2251,6 +2251,26 @@ void ClientCommand( int clientNum ) {
 
 	// RealRTCW-VR test aids (cheats): the nearest enemy dead in front of the player, and
 	// looking at the nearest body
+	if ( Q_stricmp( cmd, "vrsever" ) == 0 ) {
+		G_VRX_Severed_f( ent );    // RealRTCW-VR: the voxel gore shot a limb off someone alive
+		return;
+	}
+	if ( Q_stricmp( cmd, "vrfell" ) == 0 ) {
+		G_VRX_Fell_f( ent );       // RealRTCW-VR: someone stunned was shoved over
+		return;
+	}
+	if ( Q_stricmp( cmd, "vrstagger" ) == 0 ) {
+		G_VRX_Stagger_f( ent );    // RealRTCW-VR: his stun's over, but he's still staggering
+		return;
+	}
+	if ( Q_stricmp( cmd, "vrgetupyaw" ) == 0 ) {
+		G_VRX_GetUpYaw_f( ent );   // RealRTCW-VR: getting up, he faces the way he lay
+		return;
+	}
+	if ( Q_stricmp( cmd, "vrdownpos" ) == 0 ) {
+		G_VRX_DownPos_f( ent );    // RealRTCW-VR: someone knocked down landed away from his body
+		return;
+	}
 	if ( Q_stricmp( cmd, "vrdecap" ) == 0 ) {
 		G_VRX_Decap_f( ent );      // RealRTCW-VR: a knife through a dead body's neck
 		return;

@@ -3704,6 +3704,9 @@ void CG_AddPlayerFoot( refEntity_t *parent, playerState_t *ps, centity_t *cent )
 	if ( !( cg.snap->ps.persistant[PERS_WOLFKICK] ) ) {
 		return;
 	}
+	if ( cg.kickOnLegsTime == cg.time ) {
+		return;     // RealRTCW-VR: your own legs are doing the kick (CG_KickLegs)
+	}
 
 	memset( &wolfkick, 0, sizeof( wolfkick ) );
 
@@ -5043,7 +5046,12 @@ CG_AltfireWeapon_f
 */
 void CG_AltWeapon_f( void ) {
 	int original, num;
-	float spd = VectorLength( cg.snap->ps.velocity );
+	float spd;
+
+	if ( !cg.snap ) {
+		return;     // RealRTCW-VR: no snapshot yet (Alt of Alt-Tab while a map loads)
+	}
+	spd = VectorLength( cg.snap->ps.velocity );
 
 	if (cg.snap && cg.snap->ps.weapon == WP_KNIFE)
 	{
@@ -5393,6 +5401,9 @@ void CG_LastWeaponUsed_f( void ) {
 		return; // force pause so holding it down won't go too fast
 	}
 
+	if ( !cg.snap ) {
+		return;     // RealRTCW-VR: no snapshot yet (a weapon key, or Alt of Alt-Tab, while a map loads)
+	}
 	trap_S_StartSoundEx(NULL, cg.snap->ps.clientNum, CHAN_WEAPON, cgs.media.nullSound, SND_CUTOFF);
 
 	cg.weaponSelectTime = cg.time;  // flash the current weapon icon
@@ -5420,6 +5431,9 @@ void CG_NextWeaponInBank_f( void ) {
 
 	}
 
+	if ( !cg.snap ) {
+		return;     // RealRTCW-VR: no snapshot yet (a weapon key, or Alt of Alt-Tab, while a map loads)
+	}
 	trap_S_StartSoundEx(NULL, cg.snap->ps.clientNum, CHAN_WEAPON, cgs.media.nullSound, SND_CUTOFF);
 
 
@@ -5452,6 +5466,9 @@ void CG_PrevWeaponInBank_f( void ) {
 
 	}
 
+	if ( !cg.snap ) {
+		return;     // RealRTCW-VR: no snapshot yet (a weapon key, or Alt of Alt-Tab, while a map loads)
+	}
 	trap_S_StartSoundEx(NULL, cg.snap->ps.clientNum, CHAN_WEAPON, cgs.media.nullSound, SND_CUTOFF);
 
 	// this cvar is an option that lets the player use his weapon switching keys (probably the mousewheel)
@@ -5486,6 +5503,9 @@ void CG_NextWeapon_f( void ) {
 		return;
 	}
 
+	if ( !cg.snap ) {
+		return;     // RealRTCW-VR: no snapshot yet (a weapon key, or Alt of Alt-Tab, while a map loads)
+	}
 	trap_S_StartSoundEx(NULL, cg.snap->ps.clientNum, CHAN_WEAPON, cgs.media.nullSound, SND_CUTOFF);
 
 	// this cvar is an option that lets the player use his weapon switching keys (probably the mousewheel)
@@ -5523,6 +5543,9 @@ void CG_PrevWeapon_f( void ) {
 		return;
 	}
 
+	if ( !cg.snap ) {
+		return;     // RealRTCW-VR: no snapshot yet (a weapon key, or Alt of Alt-Tab, while a map loads)
+	}
 	trap_S_StartSoundEx(NULL, cg.snap->ps.clientNum, CHAN_WEAPON, cgs.media.nullSound, SND_CUTOFF);
 
 	// this cvar is an option that lets the player use his weapon switching keys (probably the mousewheel)
@@ -5559,6 +5582,9 @@ void CG_WeaponBank_f( void ) {
 	int num, i, curweap;
 	int curbank = 0, curcycle = 0, bank = 0, cycle = 0;
 	
+	if ( !cg.snap ) {
+		return;     // RealRTCW-VR: no snapshot yet (a weapon key, or Alt of Alt-Tab, while a map loads)
+	}
 	trap_S_StartSoundEx(NULL, cg.snap->ps.clientNum, CHAN_WEAPON, cgs.media.nullSound, SND_CUTOFF);
 
 	if ( !cg.snap ) {
@@ -5622,6 +5648,9 @@ void CG_Weapon_f( void ) {
 	int bank = 0, cycle = 0, newbank = 0, newcycle = 0;
 	qboolean banked = qfalse;
 
+	if ( !cg.snap ) {
+		return;     // RealRTCW-VR: no snapshot yet (a weapon key, or Alt of Alt-Tab, while a map loads)
+	}
 	trap_S_StartSoundEx(NULL, cg.snap->ps.clientNum, CHAN_WEAPON, cgs.media.nullSound, SND_CUTOFF);
 
 	if ( !cg.snap ) {
@@ -7511,7 +7540,13 @@ void CG_Bullet( vec3_t end, int sourceEntityNum, vec3_t normal, qboolean flesh, 
 		aiType = cg_entities[fleshEntityNum].currentState.aiChar;
 
 		if ( fleshEntityNum < MAX_CLIENTS ) {
-			CG_Bleed( end, fleshEntityNum );
+			vec3_t from, along;
+			if ( CG_VRB_On() && sourceEntityNum >= 0 && CG_CalcMuzzlePoint( sourceEntityNum, from ) ) {
+				VectorSubtract( end, from, along );
+				CG_VRB_Impact( end, along, fleshEntityNum );     // RealRTCW-VR: a spray of droplets
+			} else {
+				CG_Bleed( end, fleshEntityNum );
+			}
 		}
 
 		// play the bullet hit flesh sound

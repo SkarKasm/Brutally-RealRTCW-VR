@@ -325,20 +325,9 @@ void CG_FragmentBounceSound( localEntity_t *le, trace_t *trace )
 		}
 		break;
 	case LEBS_BLOOD:
-		    if ( rand() & 1 ) {
-			int r = rand() & 3;
-			sfxHandle_t s;
-	
-			if ( r < 2 ) {
-				s = cgs.media.gibBounce1Sound;
-			} else if ( r == 2 ) {
-				s = cgs.media.gibBounce2Sound;
-			} else {
-				s = cgs.media.gibBounce3Sound;
-			}
-			trap_S_StartSound( trace->endpos, ENTITYNUM_WORLD, CHAN_AUTO, s );
-			}
-			break;
+	case LEBS_BONE:
+		// RealRTCW-VR: gibs, bones and severed bits land silently (no ground impact sounds)
+		break;
 	case LEBS_ROCK:
 		if ( rand() & 1 ) {
 			int r = rand() & 3;
@@ -353,9 +342,6 @@ void CG_FragmentBounceSound( localEntity_t *le, trace_t *trace )
 			}
 			trap_S_StartSound( trace->endpos, ENTITYNUM_WORLD, CHAN_AUTO, s );
 		}
-		break;
-	case LEBS_BONE:
-	trap_S_StartSound( trace->endpos, ENTITYNUM_WORLD, CHAN_AUTO, cgs.media.boneBounceSound );
 		break;
 	default:
 		return;
