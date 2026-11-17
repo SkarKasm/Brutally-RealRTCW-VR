@@ -2941,6 +2941,11 @@ void        CG_VRB_Drip( const vec3_t pos, const vec3_t vel, int owner );   // a
 void        CG_VRB_Impact( const vec3_t point, const vec3_t dir, int entityNum );
 void        CG_VRB_Wound( vrbWound_t *b, const vec3_t p, const vec3_t n, const vec3_t down, int kind, float strength );
 void        CG_VRB_AddDrops( void );
+// vr_goreLite 0/1/2 as 2 High (the default: as made) / 1 Medium / 0 Low, and vr_perfStats (cg_vrblood.c)
+int         CG_VR_GoreQuality( void );
+enum { VRP_PHYSICS, VRP_GORESHOT, VRP_GOREDRAW, VRP_DROPS, VRP_BODYBLOOD, VRP_NUM };
+double      CG_VRPerf_Now( void );
+void        CG_VRPerf_Add( int what, double ms );
 qboolean    CG_VRX_Stunned( centity_t *cent );
 qboolean    CG_Ragdoll_PhysHits( void );     // bullets knock the living about physically (vr_activeHits)
 int         CG_VRX_DownedStyle( centity_t *cent );

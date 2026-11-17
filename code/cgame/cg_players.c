@@ -4807,7 +4807,11 @@ void CG_Player( centity_t *cent ) {
 			CG_KickLegs( cent, ci, &legs );
 		}
 		CG_VRX_Dismember( cent, &legs );    // RealRTCW-VR: limbs off, then wounds on the pose being drawn
-		CG_VRX_AddWounds( cent, &legs );
+		{
+			double t0 = CG_VRPerf_Now();
+			CG_VRX_AddWounds( cent, &legs );
+			CG_VRPerf_Add( VRP_BODYBLOOD, CG_VRPerf_Now() - t0 );
+		}
 		CG_VRX_AddCryptGore( cent, &legs );     // the crypt's torn soldier pieces
 		CG_VRX_BloodPool( cent, &legs );        // the blood spreading under a body
 		CG_VRGore_Body( cent, &legs, ci->modelName );     // voxel gore: its holes and flesh

@@ -66,6 +66,112 @@ qboolean CG_VRB_On( void ) {
 	return vr_bloodFX.integer && cg_blood.integer;
 }
 
+/*
+=================
+CG_VR_GoreQuality, CG_VRPerf_*
+
+vr_goreLite: how much the new gore may cost a frame, for headsets that can't keep up.
+CG_VR_GoreQuality gives 2 for High (vr_goreLite 0, the default: everything as it was made),
+1 for Medium (vr_goreLite 1): half the mist off a hit, half as
+many drops in the air at once, round 3D blood only up close, fewer drop marks on clothes,
+blood layers drawn on bodies a little less far off, the physics given at most 4 ms a frame.
+0 for Low (vr_goreLite 2): less again (and flat blood in the air), 3 ms of physics.
+
+vr_perfStats 1: once a second, how long the gore and physics took a frame (console).
+=================
+*/
+static vmCvar_t vr_goreQuality, vr_perfStats;
+static qboolean vrqRegistered;
+
+int CG_VR_GoreQuality( void ) {
+	if ( !vrqRegistered ) {
+		// (the cvar counts down from full detail, so one not set yet, as the menu sees it
+		// before a level has loaded, reads as High)
+		trap_Cvar_Register( &vr_goreQuality, "vr_goreLite", "0", CVAR_ARCHIVE );
+		trap_Cvar_Register( &vr_perfStats, "vr_perfStats", "0", 0 );
+		vrqRegistered = qtrue;
+	}
+	return vr_goreQuality.integer <= 0 ? 2 : ( vr_goreQuality.integer >= 2 ? 0 : 1 );
+}
+
+#ifdef _WIN32
+// (kernel32's, declared here: windows.h doesn't mix with the game's headers)
+__declspec( dllimport ) int __stdcall QueryPerformanceCounter( long long *count );
+__declspec( dllimport ) int __stdcall QueryPerformanceFrequency( long long *freq );
+#else
+#include <time.h>
+#endif
+
+double CG_VRPerf_Now( void ) {      // milliseconds, fine grained
+#ifdef _WIN32
+	static long long freq;
+	long long c;
+	if ( !freq ) {
+		QueryPerformanceFrequency( &freq );
+		if ( !freq ) {
+			freq = 1;
+		}
+	}
+	QueryPerformanceCounter( &c );
+	return (double)c * 1000.0 / (double)freq;
+#else
+	struct timespec ts;
+	clock_gettime( CLOCK_MONOTONIC, &ts );
+	return ts.tv_sec * 1000.0 + ts.tv_nsec / 1000000.0;
+#endif
+}
+
+static double vrpSum[VRP_NUM], vrpMax[VRP_NUM], vrpFrame[VRP_NUM];
+static int vrpCount[VRP_NUM], vrpFrames, vrpSecond;
+
+void CG_VRPerf_Add( int what, double ms ) {
+	if ( what < 0 || what >= VRP_NUM ) {
+		return;
+	}
+	vrpSum[what] += ms;
+	vrpFrame[what] += ms;
+	vrpCount[what]++;
+}
+
+// once a frame (the first eye)
+static void VRP_Frame( void ) {
+	static const char *names[VRP_NUM] = { "physics", "gore shots", "gore meshes", "blood drops", "body blood" };
+	int i;
+
+	CG_VR_GoreQuality();
+	trap_Cvar_Update( &vr_goreQuality );
+	trap_Cvar_Update( &vr_perfStats );
+	for ( i = 0; i < VRP_NUM; i++ ) {
+		if ( vrpFrame[i] > vrpMax[i] ) {
+			vrpMax[i] = vrpFrame[i];
+		}
+		vrpFrame[i] = 0;
+	}
+	vrpFrames++;
+	if ( cg.time / 1000 == vrpSecond ) {
+		return;
+	}
+	vrpSecond = cg.time / 1000;
+	if ( vr_perfStats.integer && vrpFrames > 0 ) {
+		char line[512];
+		int live = 0;
+		Com_sprintf( line, sizeof( line ), "perf (quality %d): %d frames", CG_VR_GoreQuality(), vrpFrames );
+		for ( i = 0; i < VRP_NUM; i++ ) {
+			Q_strcat( line, sizeof( line ), va( " | %s %.2f ms/f (worst %.1f)", names[i], vrpSum[i] / vrpFrames, vrpMax[i] ) );
+		}
+		for ( i = 0; i < VRB_MAX; i++ ) {
+			live += vrbDrops[i].life != 0;
+		}
+		Q_strcat( line, sizeof( line ), va( " | %d drops\n", live ) );
+		CG_Printf( "%s", line );
+	}
+	for ( i = 0; i < VRP_NUM; i++ ) {
+		vrpSum[i] = vrpMax[i] = 0;
+		vrpCount[i] = 0;
+	}
+	vrpFrames = 0;
+}
+
 static void VRB_Shaders( void ) {
 	int k;
 
@@ -82,7 +188,11 @@ static void VRB_Shaders( void ) {
 static vrDrop_t *VRB_New( int kind, const vec3_t pos, const vec3_t vel, float size, int life, int owner ) {
 	vrDrop_t *d = &vrbDrops[vrbNext];
 
-	vrbNext = ( vrbNext + 1 ) % VRB_MAX;    // (full: the oldest goes)
+	{
+		// (full: the oldest goes. vr_goreLite: fewer in the air at once)
+		int q = CG_VR_GoreQuality(), most = q >= 2 ? VRB_MAX : ( q == 1 ? VRB_MAX / 2 : VRB_MAX / 4 );
+		vrbNext = vrbNext + 1 >= most ? 0 : vrbNext + 1;
+	}
 	memset( d, 0, sizeof( *d ) );
 	d->kind = kind;
 	VectorCopy( pos, d->pos );
@@ -131,6 +241,9 @@ void CG_VRB_Impact( const vec3_t point, const vec3_t dir, int entityNum ) {
 	VectorNormalize2( dir, d );
 	VectorNegate( d, back );
 	n = 34 + rand() % 14;
+	if ( CG_VR_GoreQuality() < 2 ) {
+		n = CG_VR_GoreQuality() == 1 ? n / 2 : n / 3;
+	}
 	for ( i = 0; i < n; i++ ) {
 		// most out of the far side, some back out of the hole
 		qboolean out = i < n * 0.65f;
@@ -140,6 +253,9 @@ void CG_VRB_Impact( const vec3_t point, const vec3_t dir, int entityNum ) {
 		VRB_New( VRB_MIST, point, v, 0.14f + random() * 0.26f, 250 + rand() % 450, entityNum );
 	}
 	n = 4 + rand() % 4;
+	if ( CG_VR_GoreQuality() == 0 ) {
+		n = 2 + rand() % 2;
+	}
 	for ( i = 0; i < n; i++ ) {
 		VRB_Spread( d, 0.45f, v );
 		v[2] += 0.25f;
@@ -467,6 +583,8 @@ static void VRB_Shade( polyVert_t *v, const vec3_t nrm, const vec3_t toEye, floa
 // no wider than a hair's breadth more than that (or three pixels of this view), where its
 // roundness can't be made out
 static float vrbPixel;      // how wide a pixel of this view is at distance 1
+static qboolean vrbFlat;    // Low: all of it flat
+static float vrbFlatFar;    // Medium: flat further off than this
 
 static float VRB_Least( const vec3_t at, float r, float *alpha, vec3_t toEye, qboolean *thin ) {
 	float least, dist;
@@ -480,7 +598,7 @@ static float VRB_Least( const vec3_t at, float r, float *alpha, vec3_t toEye, qb
 	if ( *alpha > 1 ) {
 		*alpha = 1;
 	}
-	*thin = r < 1.3f * least || r < 1.5f * vrbPixel * dist;
+	*thin = r < 1.3f * least || r < 1.5f * vrbPixel * dist || vrbFlat || ( vrbFlatFar > 0 && dist > vrbFlatFar );
 	return r;
 }
 
@@ -662,11 +780,19 @@ void CG_VRB_AddDrops( void ) {
 	int i, dt;
 	float sec;
 
+	double t0 = CG_VRPerf_Now();
+
+	if ( cg.time != vrbLastUpdate ) {
+		VRP_Frame();
+	}
 	if ( !CG_VRB_On() ) {
 		vrbNumLive = 0;
+		vrbLastUpdate = cg.time;
 		return;
 	}
 	VRB_Shaders();
+	vrbFlat = CG_VR_GoreQuality() == 0;
+	vrbFlatFar = CG_VR_GoreQuality() == 1 ? 160.0f : 0;
 	// (how wide a pixel of this view is at distance 1: what is too thin to show as round)
 	vrbPixel = cg.refdef.width > 0 ? 2.0f * tan( DEG2RAD( cg.refdef.fov_x ) * 0.5f ) / cg.refdef.width : 0.001f;
 	dt = cg.time - vrbLastUpdate;
@@ -697,8 +823,8 @@ void CG_VRB_AddDrops( void ) {
 			d->vel[2] -= VRB_GRAVITY * sec;
 			VectorCopy( d->pos, d->last );
 			VectorMA( d->pos, sec, d->vel, d->pos );
-			// on someone: it soaks into his clothes there
-			if ( VRB_HitBodies( d ) ) {
+			// on someone: it soaks into his clothes there (Low: not the mist)
+			if ( ( d->kind != VRB_MIST || CG_VR_GoreQuality() > 0 ) && VRB_HitBodies( d ) ) {
 				d->life = 0;
 				continue;
 			}
@@ -776,4 +902,5 @@ void CG_VRB_AddDrops( void ) {
 			VRB_Quad( vrbDots[d->shader], a, b, d->size, 0, 1, alpha );
 		}
 	}
+	CG_VRPerf_Add( VRP_DROPS, CG_VRPerf_Now() - t0 );
 }

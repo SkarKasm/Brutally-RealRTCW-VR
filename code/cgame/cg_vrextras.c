@@ -2034,7 +2034,8 @@ static vrStain_t *VRX_SplatSlot( vrStained_t *st, int bone, const vec3_t local, 
 			oldest = o;
 		}
 	}
-	if ( splats >= VRX_MAX_SPLATS || st->num >= VRX_MAX_STAINS_ALL ) {
+	if ( splats >= ( CG_VR_GoreQuality() >= 2 ? VRX_MAX_SPLATS : ( CG_VR_GoreQuality() == 1 ? VRX_MAX_SPLATS / 2 : VRX_MAX_SPLATS / 4 ) ) ||
+		 st->num >= VRX_MAX_STAINS_ALL ) {
 		return oldest;
 	}
 	return &st->s[st->num++];
@@ -2397,8 +2398,9 @@ void CG_VRX_AddWounds( centity_t *cent, refEntity_t *body ) {
 		vrLife[ln].dead = dead;
 		VectorCopy( cent->lerpOrigin, vrLife[ln].origin );
 	}
-	// (far off, none of it could be made out: the body isn't drawn again for it)
-	if ( Distance( cg.refdef.vieworg, body->origin ) > 1500.0f ) {
+	// (far off, none of it could be made out: the body isn't drawn again for it.
+	// vr_goreLite: nearer)
+	if ( Distance( cg.refdef.vieworg, body->origin ) > ( CG_VR_GoreQuality() >= 2 ? 1500.0f : ( CG_VR_GoreQuality() == 1 ? 1000.0f : 600.0f ) ) ) {
 		return;
 	}
 

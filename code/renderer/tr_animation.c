@@ -1295,7 +1295,7 @@ static int R_VRX_ClipDecal( const vrxDecalVert_t *in, int n, vrxDecalVert_t *out
 
 #define VRX_DECAL_SLABS     32
 
-void R_VRX_Decals( const float *g, int firstVert, int numVerts, int firstIndex ) {
+static qboolean R_VRX_DecalsBuild( const float *g, int firstVert, int numVerts, int firstIndex ) {
 	static vec4_t xyz[SHADER_MAX_VERTEXES], nrm[SHADER_MAX_VERTEXES];
 	static glIndex_t tri[SHADER_MAX_INDEXES], sorted[SHADER_MAX_INDEXES];
 	// each vertex against the hole in hand (worked out when first asked for, stampA / stampB):
@@ -1315,17 +1315,17 @@ void R_VRX_Decals( const float *g, int firstVert, int numVerts, int firstIndex )
 	tess.numIndexes = firstIndex;       // only what's made here is drawn
 	tess.numVertexes = firstVert;
 	if ( !g || numVerts > SHADER_MAX_VERTEXES || numVerts <= 0 ) {
-		return;
+		return qtrue;
 	}
 	magic.f = g[0];
 	if ( magic.i != VRX_WOUND_MAGIC ) {
-		return;
+		return qtrue;
 	}
 	count = (int)g[1];
 	count = count < 0 ? 0 : ( count > VRX_MAX_BODYWOUNDS ? VRX_MAX_BODYWOUNDS : count );
 	g += 2;
 	if ( !count ) {
-		return;
+		return qtrue;
 	}
 
 	// the deformed surface, put aside
@@ -1548,7 +1548,7 @@ void R_VRX_Decals( const float *g, int firstVert, int numVerts, int firstIndex )
 					}
 				}
 				if ( tess.numVertexes + num > SHADER_MAX_VERTEXES - 1 || tess.numIndexes + ( num - 2 ) * 3 > SHADER_MAX_INDEXES - 1 ) {
-					return;
+					return qfalse;
 				}
 				v0 = tess.numVertexes;
 				for ( k = 0; k < num; k++ ) {
@@ -1570,6 +1570,215 @@ void R_VRX_Decals( const float *g, int firstVert, int numVerts, int firstIndex )
 #undef VRX_VERT_A
 #undef VRX_VERT_B
 	}
+	return qtrue;
+}
+
+static qboolean R_SkinCacheOn( void );
+
+/*
+==============
+R_VRX_Decals (cached)
+
+What R_VRX_DecalsBuild lays on a surface depends only on the surface as deformed (its
+vertexes, normals and triangles) and the holes and blood given. VR draws every body once for
+each eye with all of that the same, and a still body keeps it from frame to frame, so the
+result is kept with exactly what it was made from (memcmp, no tolerance) and copied the next
+time. Nothing drawn changes. r_vrSkinCache 0: off (with the skin cache).
+==============
+*/
+#define DCC_SLOTS       128
+#define DCC_MAX_VERTS   16384
+#define DCC_MAX_INDEXES 65536
+
+typedef struct {
+	qboolean    used;
+	int         numVerts, numIdx, numG, outVerts, outIdx, lastUsed;
+	unsigned    hash;
+	int         capX, capN, capI, capG, capOX, capON, capOS, capOI;
+	vec4_t      *xyz, *nrm, *oxyz, *onrm;
+	vec2_t      *ost;
+	int         *idx, *oidx;
+	float       *g;
+} decalCacheSlot_t;
+
+static decalCacheSlot_t dcc[DCC_SLOTS];
+static int dccClock;
+
+void R_DecalCacheClear( void ) {
+	int i;
+	for ( i = 0; i < DCC_SLOTS; i++ ) {
+		dcc[i].used = qfalse;
+	}
+}
+
+static qboolean R_DCC_Grow( void **p, int *cap, int need, size_t size ) {
+	void *n;
+	if ( *cap >= need ) {
+		return qtrue;
+	}
+	need = need < 256 ? 256 : need + need / 4;
+	n = realloc( *p, size * need );
+	if ( !n ) {
+		return qfalse;
+	}
+	*p = n;
+	*cap = need;
+	return qtrue;
+}
+
+static unsigned R_DCC_Hash( const float *g, int numG, int firstVert, int numVerts, int firstIndex, int numIdx ) {
+	unsigned h = 2166136261u;
+	int i, step;
+	union { float f; unsigned u; } c;
+#define DCC_MIX( x ) { h ^= (unsigned)( x ); h *= 16777619u; }
+	DCC_MIX( numVerts );
+	DCC_MIX( numIdx );
+	DCC_MIX( numG );
+	for ( i = 0; i < numG; i += 7 ) {
+		c.f = g[i];
+		DCC_MIX( c.u );
+	}
+	step = numVerts / 16 + 1;
+	for ( i = 0; i < numVerts; i += step ) {
+		c.f = tess.xyz[firstVert + i][0];
+		DCC_MIX( c.u );
+		c.f = tess.xyz[firstVert + i][2];
+		DCC_MIX( c.u );
+	}
+	step = numIdx / 16 + 1;
+	for ( i = 0; i < numIdx; i += step ) {
+		DCC_MIX( (int)tess.indexes[firstIndex + i] - firstVert );
+	}
+#undef DCC_MIX
+	return h;
+}
+
+static qboolean R_DCC_Same( const decalCacheSlot_t *s, const float *g, int firstVert, int firstIndex ) {
+	int i;
+	if ( memcmp( s->g, g, sizeof( float ) * s->numG ) ||
+		 memcmp( s->xyz, tess.xyz + firstVert, sizeof( vec4_t ) * s->numVerts ) ||
+		 memcmp( s->nrm, tess.normal + firstVert, sizeof( vec4_t ) * s->numVerts ) ) {
+		return qfalse;
+	}
+	for ( i = 0; i < s->numIdx; i++ ) {
+		if ( (int)tess.indexes[firstIndex + i] - firstVert != s->idx[i] ) {
+			return qfalse;
+		}
+	}
+	return qtrue;
+}
+
+void R_VRX_Decals( const float *g, int firstVert, int numVerts, int firstIndex ) {
+	union { float f; int i; } magic;
+	int numIdx = tess.numIndexes - firstIndex, numG, count, i;
+	unsigned hash;
+	decalCacheSlot_t *s;
+	qboolean complete;
+
+	if ( !g || !R_SkinCacheOn() || numVerts <= 0 || numVerts > DCC_MAX_VERTS || numIdx < 0 || numIdx > DCC_MAX_INDEXES ) {
+		R_VRX_DecalsBuild( g, firstVert, numVerts, firstIndex );
+		return;
+	}
+	magic.f = g[0];
+	count = (int)g[1];
+	if ( magic.i != VRX_WOUND_MAGIC || count <= 0 || count > VRX_MAX_BODYWOUNDS ) {
+		R_VRX_DecalsBuild( g, firstVert, numVerts, firstIndex );
+		return;
+	}
+	numG = 2 + count * 12;
+	// (the fourth parts of the vertexes and normals aren't set by the deforming, and the surface
+	// is replaced by what's laid on it anyway: made the same, so they compare)
+	for ( i = 0; i < numVerts; i++ ) {
+		tess.xyz[firstVert + i][3] = 1.0f;
+		tess.normal[firstVert + i][3] = 0.0f;
+	}
+	hash = R_DCC_Hash( g, numG, firstVert, numVerts, firstIndex, numIdx );
+	for ( i = 0; i < DCC_SLOTS; i++ ) {
+		s = &dcc[i];
+		if ( !s->used || s->hash != hash || s->numVerts != numVerts || s->numIdx != numIdx || s->numG != numG ) {
+			continue;
+		}
+		if ( !R_DCC_Same( s, g, firstVert, firstIndex ) ) {
+			continue;
+		}
+		if ( firstVert + s->outVerts > SHADER_MAX_VERTEXES - 1 || firstIndex + s->outIdx > SHADER_MAX_INDEXES - 1 ) {
+			break;      // (no room for all of it here: made again, as far as it goes)
+		}
+		tess.numVertexes = firstVert + s->outVerts;
+		tess.numIndexes = firstIndex + s->outIdx;
+		memcpy( tess.xyz + firstVert, s->oxyz, sizeof( vec4_t ) * s->outVerts );
+		memcpy( tess.normal + firstVert, s->onrm, sizeof( vec4_t ) * s->outVerts );
+		for ( i = 0; i < s->outVerts; i++ ) {
+			tess.texCoords[firstVert + i][0][0] = s->ost[i][0];
+			tess.texCoords[firstVert + i][0][1] = s->ost[i][1];
+		}
+		for ( i = 0; i < s->outIdx; i++ ) {
+			tess.indexes[firstIndex + i] = (glIndex_t)( s->oidx[i] + firstVert );
+		}
+		s->lastUsed = ++dccClock;
+		return;
+	}
+
+	// made, with what it was made from put by first (the build overwrites the surface)
+	s = &dcc[0];
+	for ( i = 0; i < DCC_SLOTS; i++ ) {
+		if ( !dcc[i].used ) {
+			s = &dcc[i];
+			break;
+		}
+		if ( dcc[i].lastUsed < s->lastUsed ) {
+			s = &dcc[i];
+		}
+	}
+	s->used = qfalse;
+	if ( !R_DCC_Grow( (void **)&s->xyz, &s->capX, numVerts, sizeof( vec4_t ) ) ||
+		 !R_DCC_Grow( (void **)&s->nrm, &s->capN, numVerts, sizeof( vec4_t ) ) ) {
+		R_VRX_DecalsBuild( g, firstVert, numVerts, firstIndex );
+		return;
+	}
+	if ( !R_DCC_Grow( (void **)&s->idx, &s->capI, numIdx, sizeof( int ) ) || !R_DCC_Grow( (void **)&s->g, &s->capG, numG, sizeof( float ) ) ) {
+		R_VRX_DecalsBuild( g, firstVert, numVerts, firstIndex );
+		return;
+	}
+	memcpy( s->xyz, tess.xyz + firstVert, sizeof( vec4_t ) * numVerts );
+	memcpy( s->nrm, tess.normal + firstVert, sizeof( vec4_t ) * numVerts );
+	for ( i = 0; i < numIdx; i++ ) {
+		s->idx[i] = (int)tess.indexes[firstIndex + i] - firstVert;
+	}
+	memcpy( s->g, g, sizeof( float ) * numG );
+
+	complete = R_VRX_DecalsBuild( g, firstVert, numVerts, firstIndex );
+	if ( !complete ) {
+		return;
+	}
+	s->outVerts = tess.numVertexes - firstVert;
+	s->outIdx = tess.numIndexes - firstIndex;
+	if ( s->outVerts < 0 || s->outIdx < 0 ) {
+		return;
+	}
+	if ( !R_DCC_Grow( (void **)&s->oxyz, &s->capOX, s->outVerts, sizeof( vec4_t ) ) ||
+		 !R_DCC_Grow( (void **)&s->onrm, &s->capON, s->outVerts, sizeof( vec4_t ) ) ||
+		 !R_DCC_Grow( (void **)&s->ost, &s->capOS, s->outVerts, sizeof( vec2_t ) ) ) {
+		return;
+	}
+	if ( !R_DCC_Grow( (void **)&s->oidx, &s->capOI, s->outIdx, sizeof( int ) ) ) {
+		return;
+	}
+	memcpy( s->oxyz, tess.xyz + firstVert, sizeof( vec4_t ) * s->outVerts );
+	memcpy( s->onrm, tess.normal + firstVert, sizeof( vec4_t ) * s->outVerts );
+	for ( i = 0; i < s->outVerts; i++ ) {
+		s->ost[i][0] = tess.texCoords[firstVert + i][0][0];
+		s->ost[i][1] = tess.texCoords[firstVert + i][0][1];
+	}
+	for ( i = 0; i < s->outIdx; i++ ) {
+		s->oidx[i] = (int)tess.indexes[firstIndex + i] - firstVert;
+	}
+	s->numVerts = numVerts;
+	s->numIdx = numIdx;
+	s->numG = numG;
+	s->hash = hash;
+	s->used = qtrue;
+	s->lastUsed = ++dccClock;
 }
 
 /*
@@ -1718,6 +1927,136 @@ static void R_VRG_Flesh( const vrGoreDraw_t *gd, const mdsHeader_t *header, cons
 RB_SurfaceAnim
 ==============
 */
+/*
+==============
+R_SkinCache (RealRTCW-VR performance)
+
+A skeletal surface deformed by the same bones comes out the same, vertex for vertex. In VR
+every body is drawn twice (once an eye), and a bloodied or gored body is drawn again for its
+blood (the whole body skinned, then all but the triangles under the blood thrown away). So
+the vertexes deformed for a surface are kept, with the bones they were made with, and the
+next time the same surface is asked for with exactly the same bones (memcmp, no tolerance)
+they are copied instead of worked out again. Nothing drawn changes. r_vrSkinCache 0: off.
+==============
+*/
+#define SKC_SLOTS   96
+
+typedef struct {
+	const mdsSurface_t *surf;
+	int         renderCount, cutMode, numRefs, cap, lastUsed;
+	unsigned    cutMask[VRX_CUT_WORDS];
+	mdsBoneFrame_t bones[MDS_MAX_BONES];
+	vec4_t      *xyz, *nrm;
+	vec2_t      *st;
+	byte        *cut;
+} skinCacheSlot_t;
+
+static skinCacheSlot_t skc[SKC_SLOTS];
+static int skcClock;
+static cvar_t *r_vrSkinCache;
+
+void R_SkinCacheClear( void ) {
+	int i;
+	for ( i = 0; i < SKC_SLOTS; i++ ) {
+		skc[i].surf = NULL;
+	}
+}
+
+static qboolean R_SkinCacheOn( void ) {
+	if ( !r_vrSkinCache ) {
+		r_vrSkinCache = ri.Cvar_Get( "r_vrSkinCache", "1", CVAR_ARCHIVE );
+	}
+	return r_vrSkinCache->integer != 0 && !r_bonesDebug->integer;
+}
+
+static void R_SkinCacheKey( const int *boneList, int numRefs, mdsBoneFrame_t *out ) {
+	int i;
+	for ( i = 0; i < numRefs; i++ ) {
+		out[i] = bones[boneList[i]];
+	}
+}
+
+// the slot holding this surface with these bones, or NULL
+static skinCacheSlot_t *R_SkinCacheFind( const mdsSurface_t *surface, const mdsBoneFrame_t *key, int numRefs, int renderCount,
+										 int cutMode, const unsigned *cutMask ) {
+	int i;
+
+	for ( i = 0; i < SKC_SLOTS; i++ ) {
+		skinCacheSlot_t *s = &skc[i];
+		if ( s->surf != surface || s->renderCount != renderCount || s->numRefs != numRefs || s->cutMode != cutMode ) {
+			continue;
+		}
+		if ( cutMode >= 0 && memcmp( s->cutMask, cutMask, sizeof( s->cutMask ) ) ) {
+			continue;
+		}
+		if ( memcmp( s->bones, key, sizeof( mdsBoneFrame_t ) * numRefs ) ) {
+			continue;
+		}
+		s->lastUsed = ++skcClock;
+		return s;
+	}
+	return NULL;
+}
+
+static void R_SkinCacheStore( const mdsSurface_t *surface, const mdsBoneFrame_t *key, int numRefs, int renderCount,
+							  int cutMode, const unsigned *cutMask, const vec4_t *xyz, const vec4_t *nrm,
+							  vec2_t const *st, int stStride, const byte *cut ) {
+	skinCacheSlot_t *s = &skc[0];
+	int i;
+
+	for ( i = 0; i < SKC_SLOTS; i++ ) {
+		if ( !skc[i].surf ) {
+			s = &skc[i];
+			break;
+		}
+		if ( skc[i].lastUsed < s->lastUsed ) {
+			s = &skc[i];
+		}
+	}
+	if ( s->cap < renderCount ) {
+		int cap = renderCount < 512 ? 512 : renderCount;
+		vec4_t *nx = realloc( s->xyz, sizeof( vec4_t ) * cap ), *nn;
+		vec2_t *ns;
+		byte *nc;
+		if ( nx ) {
+			s->xyz = nx;
+		}
+		nn = realloc( s->nrm, sizeof( vec4_t ) * cap );
+		if ( nn ) {
+			s->nrm = nn;
+		}
+		ns = realloc( s->st, sizeof( vec2_t ) * cap );
+		if ( ns ) {
+			s->st = ns;
+		}
+		nc = realloc( s->cut, cap );
+		if ( nc ) {
+			s->cut = nc;
+		}
+		if ( !nx || !nn || !ns || !nc ) {
+			s->surf = NULL;
+			return;
+		}
+		s->cap = cap;
+	}
+	s->surf = surface;
+	s->renderCount = renderCount;
+	s->numRefs = numRefs;
+	s->cutMode = cutMode;
+	if ( cutMode >= 0 ) {
+		memcpy( s->cutMask, cutMask, sizeof( s->cutMask ) );
+	}
+	memcpy( s->bones, key, sizeof( mdsBoneFrame_t ) * numRefs );
+	memcpy( s->xyz, xyz, sizeof( vec4_t ) * renderCount );
+	memcpy( s->nrm, nrm, sizeof( vec4_t ) * renderCount );
+	for ( i = 0; i < renderCount; i++ ) {
+		s->st[i][0] = st[i * stStride][0];
+		s->st[i][1] = st[i * stStride][1];
+	}
+	memcpy( s->cut, cut, renderCount );
+	s->lastUsed = ++skcClock;
+}
+
 void RB_SurfaceAnim( mdsSurface_t *surface ) {
 	int j, k;
 	refEntity_t *refent;
@@ -1864,7 +2203,29 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 		int cutMode;
 
 	R_VRX_Trailer( header, refent, &cutMode, cutMask );
-	for ( j = 0; j < render_count; j++, tempVert += 4, tempNormal += 4 ) {
+	// RealRTCW-VR: the same surface with the same bones already deformed (the other eye, the
+	// body drawn again for its blood): copied, not worked out again
+	{
+		static mdsBoneFrame_t skcKey[MDS_MAX_BONES];
+		skinCacheSlot_t *hit = NULL;
+		qboolean cacheable = R_SkinCacheOn() && render_count <= MDS_MAX_VERTS && surface->numBoneReferences <= MDS_MAX_BONES;
+		if ( cacheable ) {
+			R_SkinCacheKey( boneList, surface->numBoneReferences, skcKey );
+			hit = R_SkinCacheFind( surface, skcKey, surface->numBoneReferences, render_count, cutMode, cutMask );
+		}
+		if ( hit ) {
+			memcpy( tess.xyz + baseVertex, hit->xyz, sizeof( vec4_t ) * render_count );
+			memcpy( tess.normal + baseVertex, hit->nrm, sizeof( vec4_t ) * render_count );
+			for ( j = 0; j < render_count; j++ ) {
+				tess.texCoords[baseVertex + j][0][0] = hit->st[j][0];
+				tess.texCoords[baseVertex + j][0][1] = hit->st[j][1];
+			}
+			memcpy( cutVert, hit->cut, render_count );
+			j = render_count;      // (skips the deforming below)
+		} else {
+			j = 0;
+		}
+	for ( ; j < render_count; j++, tempVert += 4, tempNormal += 4 ) {
 		mdsWeight_t *w;
 		float cutW = 0;
 
@@ -1887,6 +2248,12 @@ void RB_SurfaceAnim( mdsSurface_t *surface ) {
 		tess.texCoords[baseVertex + j][0][1] = v->texCoords[1];
 
 		v = (mdsVertex_t *)&v->weights[v->numWeights];
+	}
+		if ( cacheable && !hit ) {
+			R_SkinCacheStore( surface, skcKey, surface->numBoneReferences, render_count, cutMode, cutMask,
+							  (const vec4_t *)( tess.xyz + baseVertex ), (const vec4_t *)( tess.normal + baseVertex ),
+							  (vec2_t const *)&tess.texCoords[baseVertex][0], 2, cutVert );
+		}
 	}
 	// RealRTCW-VR dismemberment: the triangles mostly on the cut bones dropped (the body),
 	// or only those kept (the limb that came off)

@@ -643,7 +643,16 @@ A bullet from a weapon (or -1) hit entityNum at point, travelling along dir. qtr
 voxel gore took it (so the old wound decals don't).
 =================
 */
+static qboolean VRG_Shot( int entityNum, const vec3_t point, const vec3_t dir, int weapon );
+
 qboolean CG_VRGore_Shot( int entityNum, const vec3_t point, const vec3_t dir, int weapon ) {
+	double t0 = CG_VRPerf_Now();
+	qboolean took = VRG_Shot( entityNum, point, dir, weapon );
+	CG_VRPerf_Add( VRP_GORESHOT, CG_VRPerf_Now() - t0 );
+	return took;
+}
+
+static qboolean VRG_Shot( int entityNum, const vec3_t point, const vec3_t dir, int weapon ) {
 	vrgEnt_t *e;
 	vec3_t p, d;
 	goreShot_t r;
@@ -1262,6 +1271,9 @@ static void VRG_AddBodyBlood( vrgEnt_t *e, const refEntity_t *body, int trailerE
 	// (the blood is the whole body drawn again: far off, where a trickle or a stain couldn't be
 	// made out, it isn't)
 	far = Distance( cg.refdef.vieworg, body->origin );
+	if ( CG_VR_GoreQuality() < 2 ) {
+		far *= CG_VR_GoreQuality() == 1 ? 1.5f : 2.5f;     // (vr_goreLite: the layers stop nearer)
+	}
 	if ( far > 1500.0f ) {
 		return;
 	}
@@ -1503,7 +1515,9 @@ static void VRG_DrawBody( vrgEnt_t *e, refEntity_t *body ) {
 	}
 	{
 		static const float white[3] = { 255, 255, 255 }, none[3] = { 0, 0, 0 }, up[3] = { 0, 0, 1 };
+		double t0 = CG_VRPerf_Now();
 		d = Gore_Draw( e->body, e->pose, white, none, up );
+		CG_VRPerf_Add( VRP_GOREDRAW, CG_VRPerf_Now() - t0 );
 	}
 	if ( !d ) {
 		return;
@@ -1589,7 +1603,9 @@ static void VRG_DrawHead( vrgEnt_t *e, refEntity_t *head ) {
 	}
 	{
 		static const float white[3] = { 255, 255, 255 }, none[3] = { 0, 0, 0 }, up[3] = { 0, 0, 1 };
+		double t0 = CG_VRPerf_Now();
 		d = Gore_Draw( e->head, vrgIdentity, white, none, up );
+		CG_VRPerf_Add( VRP_GOREDRAW, CG_VRPerf_Now() - t0 );
 	}
 	if ( !d ) {
 		return;

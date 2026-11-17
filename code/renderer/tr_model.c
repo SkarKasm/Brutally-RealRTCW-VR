@@ -1830,7 +1830,12 @@ void RE_BeginRegistration( glconfig_t *glconfigOut ) {
 R_ModelInit
 ===============
 */
+void R_SkinCacheClear( void );     // tr_animation.c (RealRTCW-VR)
+void R_DecalCacheClear( void );
 void R_ModelInit( void ) {
+	R_SkinCacheClear();
+	R_DecalCacheClear();
+
 	model_t     *mod;
 
 	// leave a space for NULL model
