@@ -395,7 +395,8 @@ Called once each time the scene is drawn, before the entities are added.
 =================
 */
 void CG_Physics_Frame( void ) {
-	int steps = 0, stepMs, t0;
+	int steps = 0, stepMs, t0, budget;
+	double pt0;
 
 	trap_Cvar_Update( &vr_physics );
 	trap_Cvar_Update( &vr_ragdollGravityPW );
@@ -433,15 +434,23 @@ void CG_Physics_Frame( void ) {
 	// dragged through the rest, it runs slow for a moment. Without the limit a slow frame owed
 	// more steps, which made the next slower still, down to a few frames a second)
 	trap_Cvar_Update( &vr_physicsBudget );
+	// (vr_goreLite Medium / Low: no more than 4 / 3 ms, whatever vr_physicsBudget says)
+	budget = vr_physicsBudget.integer;
+	if ( CG_VR_GoreQuality() < 2 ) {
+		int most = CG_VR_GoreQuality() == 1 ? 4 : 3;
+		budget = budget <= 0 || budget > most ? most : budget;
+	}
 	t0 = trap_Milliseconds();
+	pt0 = CG_VRPerf_Now();
 	while ( pwSimTime + stepMs <= cg.time ) {
 		pwSimTime += stepMs;
 		if ( steps < PW_MAX_STEPS * PW_STEP_MS / stepMs &&
-			 ( !steps || vr_physicsBudget.integer <= 0 || trap_Milliseconds() - t0 < vr_physicsBudget.integer ) ) {
+			 ( !steps || budget <= 0 || trap_Milliseconds() - t0 < budget ) ) {
 			Phys_Step( stepMs * 0.001f, vr_ragdollGravityPW.value );
 			steps++;
 		}
 	}
+	CG_VRPerf_Add( VRP_PHYSICS, CG_VRPerf_Now() - pt0 );
 	if ( vr_physics.integer > 1 && steps ) {      // 2: a line a second (testing)
 		static int next;
 		if ( cg.time >= next ) {

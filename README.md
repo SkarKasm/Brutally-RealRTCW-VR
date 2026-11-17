@@ -41,6 +41,8 @@ Download it below or from ModDB. This repository also holds the full source.
 
 Single player, single player co-op and the classic co-op mode in one zip. New: physical hit reactions, new blood, knife gore, a hand alignment mode in VR and a Hand Editor for posing the hands on each gun.
 
+**[VR performance patch (November 17)](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_VR-Performance-Patch_2026-11-17.zip)** · [What it does](download/CHANGES_2026-11-17-vr-performance.md): a separate small download for the November 16 update. It makes the new gore cheaper in VR without changing the look, and adds a **Gore detail (VR speed)** option (High, Medium, Low) in Gore & Extras.
+
 Older builds: [October 18](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_SP_2026-10-18.zip) ([notes](download/CHANGES_2026-10-18.md)) · [October 24 co-op test](https://github.com/SkarKasm/Brutally-RealRTCW-VR/raw/main/download/Brutally_RealRTCW_VR_Complete_2026-10-24_SP-coop-test.zip) ([notes](download/CHANGES_2026-10-24.md))
 
 Also on ModDB.
